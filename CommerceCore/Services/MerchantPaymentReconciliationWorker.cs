@@ -26,6 +26,7 @@ public sealed class MerchantPaymentReconciliationWorker(IServiceScopeFactory sco
                 var capturedDue = DateTime.UtcNow.AddHours(-1);
                 var ids = await db.CommercePaymentAttempts.AsNoTracking()
                     .Where(x => ((x.State == "Pending" || x.State == "Unknown") && x.UpdatedUtc <= recent)
+                        || (x.State == "Failed" && x.UpdatedUtc <= recent && db.CommerceOrders.Any(o => o.Id == x.CommerceOrderId && o.PaymentStatus == "Pending"))
                         || (x.State == "Captured" && (x.UpdatedUtc <= capturedDue || !db.CommercePaymentEffects.Any(e => e.AttemptId == x.Id)
                             || db.CommercePaymentEffects.Any(e => e.AttemptId == x.Id && e.State == "Pending"))))
                     .OrderBy(x => x.UpdatedUtc).Take(50).Select(x => new { x.Id, x.CommerceBusinessId, x.CommerceOrderId, x.State }).ToListAsync(stoppingToken);

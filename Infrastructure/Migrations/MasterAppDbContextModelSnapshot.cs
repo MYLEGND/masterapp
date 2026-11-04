@@ -2492,6 +2492,10 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("CommerceBusinessId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("CustomerAutomationStateJson")
+                        .IsConcurrencyToken()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<decimal>("GlobalDiscountAmount")
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
@@ -2508,6 +2512,10 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("ShippingConfigurationJson")
+                        .IsConcurrencyToken()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("ShippingFeeCents")
                         .HasColumnType("int");
@@ -2692,7 +2700,7 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
-                    b.Property<Guid>("ClientProfileId")
+                    b.Property<Guid?>("ClientProfileId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("CommerceBusinessId")
@@ -3042,6 +3050,10 @@ namespace Infrastructure.Migrations
 
                     b.Property<int>("ShippingCents")
                         .HasColumnType("int");
+
+                    b.Property<string>("ShippingLabelStateJson")
+                        .IsConcurrencyToken()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Source")
                         .IsRequired()

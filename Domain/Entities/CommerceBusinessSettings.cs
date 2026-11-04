@@ -14,5 +14,10 @@ public sealed class CommerceBusinessSettings
     public decimal GlobalDiscountAmount { get; set; }
     public bool GlobalDiscountIsActive { get; set; }
 
+    // Canonical shared automation configuration. Delivery receipts are owned by MarketingDestinationDelivery.
+    public string? CustomerAutomationStateJson { get; set; }
+
+    public string? ShippingConfigurationJson { get; set; }
+
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

@@ -4,7 +4,7 @@ public sealed class CommerceMerchantAuthorization
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid CommerceBusinessId { get; set; }
-    public Guid ClientProfileId { get; set; }
+    public Guid? ClientProfileId { get; set; }
     public string ProtectedReturnTicket { get; set; } = string.Empty;
     public string Provider { get; set; } = string.Empty;
     public string Environment { get; set; } = string.Empty;

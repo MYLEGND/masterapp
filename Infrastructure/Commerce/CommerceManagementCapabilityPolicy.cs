@@ -43,10 +43,10 @@ public static class CommerceManagementCapabilityPolicy
             if (route is "workspace" or "dashboard" or "preview" ||
                 route.StartsWith("preview/product/", StringComparison.Ordinal))
                 return "website";
-            if (route is "business-profile" or "payments" or "payments/callback") return "settings";
+            if (route is "business-profile" or "payments" or "payments/callback" or "shipping") return "settings";
             if (route is "team") return "team";
             if (route is "products") return "catalog";
-            if (route is "orders") return "orders";
+            if (route is "orders" or "order/packing-slip" or "order/shipping" or "order/reference-label") return "orders";
             if (route is "automations") return "automations";
             if (route.StartsWith("analytics/", StringComparison.Ordinal))
             {
@@ -75,12 +75,12 @@ public static class CommerceManagementCapabilityPolicy
             "product/images/reorder" or "product/images/display" or
             "products/reorder" or "settings/commerce")
             return "catalog";
-        if (route is "business-profile" or "payments/connect" or "payments/confirm" or
+        if (route is "shipping/connect" or "business-profile" or "payments/connect" or "payments/confirm" or
             "payments/default" or "payments/disconnect" or "payments/refresh" or "payments/resume" or "payments/refund" or "payments/reconcile") return "settings";
         if (route is "team/permissions" or "team/add" or "team/remove") return "team";
-        if (route is "order" or "order/receipt")
+        if (route is "order" or "order/receipt" or "order/shipping/rates" or "order/shipping/buy" or "order/shipping/reconcile")
             return "orders";
-        if (route is "automations/workflows" or "automations/workflows/delete")
+        if (route is "automations/workflows" or "automations/workflows/delete" or "automations/email-settings")
             return "automations";
         if (route is "analytics/openai-connect" or "analytics/openai-refresh" or
             "analytics/openai-disconnect" or "analytics/meta-disconnect")
@@ -108,16 +108,17 @@ public static class CommerceManagementCapabilityPolicy
         foreach (var pair in new[] {
             ("", "workspace"), ("dashboard", "dashboard"), ("preview", "preview"), ("preview/product/{slug}", "preview/product/{slug}"), ("settings/business-profile", "business-profile"),
             ("settings/team", "team"), ("commerce/products", "products"),
-            ("commerce/orders", "orders"), ("automations", "automations"), ("analytics", "analytics"),
-            ("settings/payments", "payments"), ("settings/payments/callback", "payments/callback") })
+            ("commerce/orders", "orders"), ("commerce/orders/packing-slip", "order/packing-slip"), ("commerce/orders/reference-label", "order/reference-label"), ("automations", "automations"), ("analytics", "analytics"),
+            ("settings/shipping", "shipping"), ("commerce/orders/shipping", "order/shipping"), ("settings/payments", "payments"), ("settings/payments/callback", "payments/callback") })
             Add("GET", pair.Item1, pair.Item2);
         foreach (var pair in new[] {
+            ("settings/shipping/connect", "shipping/connect"), ("commerce/orders/shipping/rates", "order/shipping/rates"), ("commerce/orders/shipping/buy", "order/shipping/buy"), ("commerce/orders/shipping/reconcile", "order/shipping/reconcile"),
             ("settings/business-profile", "business-profile"), ("settings/team/permissions", "team/permissions"),
             ("settings/team/add", "team/add"), ("settings/team/remove", "team/remove"),
             ("commerce/products", "product"), ("commerce/products/settings", "settings/commerce"),
             ("commerce/products/delete", "product/delete"), ("commerce/products/reorder", "products/reorder"),
             ("commerce/orders/update", "order"), ("commerce/orders/receipt", "order/receipt"),
-            ("automations/workflows", "automations/workflows"), ("automations/workflows/delete", "automations/workflows/delete") })
+            ("automations/email-settings", "automations/email-settings"), ("automations/workflows", "automations/workflows"), ("automations/workflows/delete", "automations/workflows/delete") })
             Add("POST", pair.Item1, pair.Item2);
         foreach (var suffix in new[] { "upload", "delete", "reorder", "display" })
             Add("POST", "commerce/products/images/" + suffix, "product/images/" + suffix);

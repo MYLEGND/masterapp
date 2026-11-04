@@ -1484,8 +1484,15 @@ class FastTrackIdentityObservationTests(unittest.TestCase):
             return self.run
         def sleep(delay): self.sleeps.append(delay); self.now += delay
         with patch.dict(os.environ, self.env, clear=True), patch.object(self.a, 'api_get', side_effect=get), \
-             patch.object(self.a, '_fast_track_policy', return_value=SimpleNamespace(tool_promotion_requested=lambda _: allow)):
+             patch.object(self.a, '_fast_track_policy', return_value=SimpleNamespace(source_integration_requested=lambda _:False, tool_promotion_requested=lambda _: allow)):
             return self.a.assert_fast_track_release_execution(clock=lambda:self.now, sleep=sleep)
+    def test_source_integration_cannot_enter_production_directly(self):
+        policy = SimpleNamespace(source_integration_requested=lambda _:True, tool_promotion_requested=lambda _:False)
+        with patch.dict(os.environ, self.env, clear=True), patch.object(self.a, '_fast_track_policy', return_value=policy), \
+             patch.object(self.a, 'api_get', side_effect=AssertionError('provider admission must not be reached')):
+            with self.assertRaisesRegex(RuntimeError, 'SOURCE_INTEGRATION_NONPUBLISHING'):
+                self.a.assert_fast_track_release_execution(target='portal')
+
     def test_in_progress_requires_exact_live_job(self):
         self.assertEqual(self.invoke(), self.run); self.assertEqual(self.sleeps, [])
     def test_queued_parent_with_exact_live_job_is_valid(self):
@@ -1532,7 +1539,7 @@ class FastTrackIdentityObservationTests(unittest.TestCase):
                 return dict(object=dict(sha=self.sha))
             if '/jobs?' in path:return dict(jobs=[self.job],total_count=1)
             return self.run
-        with patch.dict(os.environ,self.env,clear=True),patch.object(self.a,'api_get',side_effect=get),patch.object(self.a,'_fast_track_policy',return_value=SimpleNamespace(tool_promotion_requested=lambda _:False)):
+        with patch.dict(os.environ,self.env,clear=True),patch.object(self.a,'api_get',side_effect=get),patch.object(self.a,'_fast_track_policy',return_value=SimpleNamespace(source_integration_requested=lambda _:False, tool_promotion_requested=lambda _:False)):
             with self.assertRaises(self.a.EvidenceLookupUnavailable):
                 self.a.assert_fast_track_release_execution(clock=lambda:self.now,sleep=lambda _:None)
 
@@ -1553,12 +1560,12 @@ class FastTrackIdentityObservationTests(unittest.TestCase):
         self.run['head_repository']={'full_name':'other/repo'}
         with self.assertRaises(RuntimeError):self.invoke()
     def test_nonpublishing_permission_still_requires_identity(self):
-        with patch.dict(os.environ,self.env,clear=True),patch.object(self.a,'api_get',side_effect=lambda r,p,t:dict(object=dict(sha=self.sha)) if p.startswith('git/') else (dict(jobs=[self.job],total_count=1) if '/jobs?' in p else self.run)),patch.object(self.a,'_fast_track_policy',return_value=SimpleNamespace(tool_promotion_requested=lambda _:True)):
+        with patch.dict(os.environ,self.env,clear=True),patch.object(self.a,'api_get',side_effect=lambda r,p,t:dict(object=dict(sha=self.sha)) if p.startswith('git/') else (dict(jobs=[self.job],total_count=1) if '/jobs?' in p else self.run)),patch.object(self.a,'_fast_track_policy',return_value=SimpleNamespace(source_integration_requested=lambda _:False, tool_promotion_requested=lambda _:True)):
             self.assertEqual(self.a.assert_fast_track_release_execution(allow_nonpublishing=True),self.run)
     def test_malformed_job_inventory_fails_immediately(self):
         for payload in [{'jobs':[],'total_count':1},{'jobs':[None],'total_count':1},{'jobs':[],'total_count':True}]:
             def get(r,p,t):return payload if '/jobs?' in p else self.run
-            with self.subTest(payload=payload),patch.dict(os.environ,self.env,clear=True),patch.object(self.a,'api_get',side_effect=get),patch.object(self.a,'_fast_track_policy',return_value=SimpleNamespace(tool_promotion_requested=lambda _:False)):
+            with self.subTest(payload=payload),patch.dict(os.environ,self.env,clear=True),patch.object(self.a,'api_get',side_effect=get),patch.object(self.a,'_fast_track_policy',return_value=SimpleNamespace(source_integration_requested=lambda _:False, tool_promotion_requested=lambda _:False)):
                 with self.assertRaisesRegex(RuntimeError,'ACTIVE_JOB'):self.a.assert_fast_track_release_execution()
     def test_api_retry_backoff_obeys_parent_budget(self):
         def sleep(delay):self.now+=delay
@@ -2780,6 +2787,66 @@ class DiagnosticsBootstrapTests(unittest.TestCase):
         for change in cases:
             with self.subTest(path=change[0]), self.assertRaisesRegex(ValueError, 'BOOTSTRAP'):
                 self.scope(self.candidate(self.request, [change]))
+
+
+class SourceIntegrationPolicyTests(unittest.TestCase):
+    def invoke(self, mutate=None, extra=False, request_mode=False, malformed=None):
+        import release_policy as owner
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            def git(*args):
+                return subprocess.check_output(['git', *args], cwd=root, text=True).strip()
+            git('init', '-q'); git('config', 'user.name', 'Test'); git('config', 'user.email', 'test@example.invalid')
+            path = root / owner.REQUEST; path.parent.mkdir(parents=True)
+            previous = dict(requestId='prior', releaseMode='validate-only', perResourceBaselines={'immutable': 'history'},
+                protectSupersession={'immutable': 'disposition'})
+            path.write_text(json.dumps(previous)); (root / 'app.txt').write_text('old')
+            git('add', '.'); git('commit', '-qm', 'base'); base = git('rev-parse', 'HEAD')
+            (root / 'app.txt').write_text('reviewed')
+            git('commit', '-qam', 'reviewed'); source = git('rev-parse', 'HEAD')
+            request = dict(previous, requestId='fresh', requestedBy='Founder', authorization='Authorized source sync',
+                purpose='Integrate reviewed application source without publication', targets=[],
+                cloudflareWebsiteRouting=False, preserveLiveTargets=False,
+                sourceIntegration=dict(schemaVersion=1, baseRevision=base, sourceRevision=source))
+            if mutate: mutate(request)
+            if malformed == 'null': request['sourceIntegration'] = None
+            path.write_text(json.dumps(request))
+            if extra: (root / 'app.txt').write_text('unreviewed')
+            if request_mode: path.chmod(0o755)
+            git('add', '.'); git('commit', '-qm', 'request'); candidate = git('rev-parse', 'HEAD')
+            merge = git('commit-tree', git('rev-parse', 'HEAD^{tree}'), '-p', base, '-p', candidate, '-m', 'merge')
+            admission = dict(candidate=candidate, executionAuthority=merge, sourcePr=1,
+                validation={key:{} for key in ('approved-release-security-validation.yml',
+                    'masterapp-platform-architecture-validation.yml', 'parfait-isolated-validation.yml')})
+            original = subprocess.run
+            with patch.object(owner.subprocess, 'run', side_effect=lambda args, **kw: original(args, cwd=root, **kw)):
+                return owner.source_integration(base, merge, admission)
+
+    def test_real_git_exact_merge_preserves_history_without_publication(self):
+        proof = self.invoke()
+        self.assertEqual('source-integration', proof['phase'])
+        self.assertFalse(proof['productionEligible']); self.assertFalse(proof['authorizesMutation'])
+
+    def test_invalid_authorization_and_historical_changes_fail_closed(self):
+        for change in (lambda r:r.update(releaseMode='approved-only'), lambda r:r.update(targets=['masterapp-parfait']),
+                       lambda r:r.update(cloudflareWebsiteRouting=True), lambda r:r.update(preserveLiveTargets=True),
+                       lambda r:r.update(trustedToolPromotion=None), lambda r:r.update(requestId='prior'),
+                       lambda r:r.update(requestedBy='other'), lambda r:r.update(authorization=''),
+                       lambda r:r['perResourceBaselines'].update(immutable='altered'),
+                       lambda r:r.pop('protectSupersession'),
+                       lambda r:r['sourceIntegration'].update(baseRevision='a'*40),
+                       lambda r:r['sourceIntegration'].update(sourceRevision='b'*40)):
+            with self.subTest(change=change), self.assertRaises(ValueError): self.invoke(change)
+
+    def test_unreviewed_bytes_and_request_modes_are_rejected(self):
+        with self.assertRaises(ValueError): self.invoke(extra=True)
+        with self.assertRaises(ValueError): self.invoke(request_mode=True)
+        with self.assertRaises(ValueError): self.invoke(malformed='null')
+
+    def test_marker_presence_including_null_is_a_hold(self):
+        import release_policy as owner
+        with patch.object(owner, 'read_request', return_value={'sourceIntegration': None}):
+            self.assertTrue(owner.source_integration_requested('a'*40))
 
 
 if __name__ == '__main__':

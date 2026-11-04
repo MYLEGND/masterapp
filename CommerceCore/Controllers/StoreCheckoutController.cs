@@ -147,10 +147,17 @@ public sealed class StoreCheckoutController : Controller
         if (redirect is not null) return redirect;
 
         ApplyStoreContext(store);
-        ViewBag.MerchantHostedCheckout = UseMerchantCheckout(store);
-        ViewBag.SquareApplicationId = UseMerchantCheckout(store) ? null : _squareOptions.ApplicationId;
-        ViewBag.SquareLocationId = UseMerchantCheckout(store) ? null : _squareOptions.LocationId;
-        ViewBag.SquareEnvironment = _squareOptions.Environment.ToString();
+        var merchant = UseMerchantCheckout(store);
+        var browser = merchant && _merchantCheckout is not null
+            ? await _merchantCheckout.GetBrowserConfigurationAsync(store.CommerceBusinessId, ct) : null;
+        ViewBag.MerchantHostedCheckout = merchant && browser is null;
+        ViewBag.CheckoutAvailable = merchant
+            ? _merchantCheckout is not null && await _merchantCheckout.IsConfiguredAsync(store.CommerceBusinessId, ct)
+            : _squareOptions.HasBrowserCredentials() && _squareOptions.HasServerCredentials();
+        ViewBag.SquareApplicationId = merchant ? browser?.ApplicationId : _squareOptions.ApplicationId;
+        ViewBag.SquareLocationId = merchant ? browser?.LocationId : _squareOptions.LocationId;
+        ViewBag.SquareEnvironment = merchant ? browser?.Environment : _squareOptions.Environment.ToString();
+        ViewBag.MerchantConnectionRevision = browser?.ConnectionRevisionId;
         return View("~/Views/Store/Checkout.cshtml");
     }
 
@@ -198,6 +205,23 @@ public sealed class StoreCheckoutController : Controller
         if (string.IsNullOrWhiteSpace(request.CheckoutAttemptId))
             return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = "Checkout session expired. Refresh and try again." });
 
+        // Existing intents retain their immutable server quote and processor owner.
+        // Recovery never prepares another order, consent receipt, or amount.
+        var prepared = _orders.GetOrderByCheckoutAttemptId(store.CommerceBusinessId, request.CheckoutAttemptId);
+        if (prepared is not null && UseMerchantCheckout(store) && _merchantCheckout is not null)
+        {
+            var merchantAttempt = await _merchantCheckout.GetAttemptAsync(store.CommerceBusinessId, prepared.CommerceOrderId, ct);
+            if (prepared.IsPaid)
+            {
+                if (merchantAttempt is null && _completion is not null)
+                    await _completion.ResumeLegacyOrderAsync(store.CommerceBusinessId, prepared.CommerceOrderId, ct);
+                return Ok(new { success = true, redirectUrl = SuccessUrl(store, prepared.OrderNumber) });
+            }
+            if (merchantAttempt is null && _orders.HasProcessorPayment(store.CommerceBusinessId, prepared.CommerceOrderId))
+                return PaymentPending(prepared.OrderNumber); // Legacy receipts never become merchant charges.
+            return await BeginMerchantAsync(store, prepared, request.SourceId, request.MerchantConnectionRevision, ct);
+        }
+
         var validationError = ValidateCustomer(request.Customer);
         if (!string.IsNullOrWhiteSpace(validationError))
             return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = validationError });
@@ -219,7 +243,10 @@ public sealed class StoreCheckoutController : Controller
         if (validatedItems.Count == 0)
             return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = "No valid cart items were found." });
 
-        var paymentStart = _orders.BeginCheckoutPayment(
+        CheckoutPaymentStartResult paymentStart;
+        try
+        {
+            paymentStart = _orders.BeginCheckoutPayment(
             store.CommerceBusinessId,
             request.CheckoutAttemptId!,
             request.Customer,
@@ -230,7 +257,24 @@ public sealed class StoreCheckoutController : Controller
             quote.DiscountCents,
             quote.ShippingCents,
             quote.TaxCents,
-            HttpContext);
+            HttpContext,
+            request.MarketingEmailConsent ? order =>
+            {
+                var environment = HttpContext.RequestServices.GetService<IHostEnvironment>();
+                _automations.RecordMarketingOptIn(store.CommerceBusinessId, order, environment?.IsProduction() != true);
+                _automations.CaptureCheckoutLead(store.CommerceBusinessId, new ParfaitAutomationCheckoutLeadCaptureRequest {
+                    CheckoutAttemptId = request.CheckoutAttemptId, Customer = request.Customer, Items = request.Items, DiscountCode = request.DiscountCode
+                }, quote);
+            } : null);
+        }
+        catch (Exception ex) when (ex is Microsoft.EntityFrameworkCore.DbUpdateException or Microsoft.Data.SqlClient.SqlException or InvalidOperationException)
+        {
+            HttpContext.RequestServices.GetService<ILogger<StoreCheckoutController>>()?.LogWarning(
+                "Checkout preparation failed before provider invocation for business {BusinessId}: {FailureType}", store.CommerceBusinessId, ex.GetType().Name);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ParfaitCheckoutPayResponse {
+                Success = false, Error = "Checkout details could not be saved. No payment was started. Please retry."
+            });
+        }
 
         if (paymentStart.State == CheckoutPaymentStartState.AlreadyPaid)
         {
@@ -245,7 +289,7 @@ public sealed class StoreCheckoutController : Controller
         }
 
         if (UseMerchantCheckout(store))
-            return await BeginMerchantAsync(store, paymentStart.Order, ct);
+            return await BeginMerchantAsync(store, paymentStart.Order, request.SourceId, request.MerchantConnectionRevision, ct);
 
         if (_completion is null)
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new ParfaitCheckoutPayResponse
@@ -256,16 +300,14 @@ public sealed class StoreCheckoutController : Controller
             if (await _completion.ResumeLegacyOrderAsync(store.CommerceBusinessId, paymentStart.Order.CommerceOrderId, ct))
                 return Ok(new ParfaitCheckoutPayResponse { Success = true, OrderNumber = paymentStart.Order.OrderNumber,
                     RedirectUrl = SuccessUrl(store, paymentStart.Order.OrderNumber) });
-            return Conflict(new ParfaitCheckoutPayResponse
-            {
-                Success = false,
-                OrderNumber = paymentStart.Order.OrderNumber,
-                Error = "Payment is already processing for this order. Please wait."
-            });
+            // Preparation is durable before the billing receipt exists. A lost response
+            // in that gap may resume the SAME snapshot/key; any receipt forbids a new call.
+            if (_orders.HasProcessorPayment(store.CommerceBusinessId, paymentStart.Order.CommerceOrderId))
+                return PaymentPending(paymentStart.Order.OrderNumber);
         }
 
         var order = paymentStart.Order;
-        var firstItem = validatedItems.FirstOrDefault();
+        var firstItem = order.Items.FirstOrDefault();
         var signalContext = BuildSignalContext(store) with
         {
             OrderId = order.CommerceOrderId, EventUtc = order.CreatedUtc, OrderValueCents = order.TotalCents
@@ -277,9 +319,9 @@ public sealed class StoreCheckoutController : Controller
                 request.CheckoutAttemptId!,
                 signalContext,
                 firstItem is null ? null : ProductSignal(firstItem),
-                CustomerSignal(request.Customer),
+                new CommerceSignalCustomer(order.FirstName, order.LastName, order.Email, order.Phone, order.City, order.State, order.PostalCode),
                 order.OrderNumber,
-                validatedItems.Select(ProductSignal).ToArray(),
+                order.Items.Select(ProductSignal).ToArray(),
                 ct);
         }
 
@@ -300,6 +342,12 @@ public sealed class StoreCheckoutController : Controller
                     BuildPaymentCorrelationId(store, order),
                     CommerceCompletionContextJson: JsonSerializer.Serialize(signalContext)),
                 ct);
+        }
+        catch (Exception ex) when (IsPaymentInsertCollision(ex)
+            && _orders.HasProcessorPayment(store.CommerceBusinessId, order.CommerceOrderId))
+        {
+            // The unique durable receipt owns the gateway invocation. The loser waits.
+            return PaymentPending(order.OrderNumber);
         }
         catch
         {
@@ -340,10 +388,26 @@ public sealed class StoreCheckoutController : Controller
         });
     }
 
+    private IActionResult PaymentPending(string orderNumber) => Conflict(new ParfaitCheckoutPayResponse
+    {
+        Success = false, OrderNumber = orderNumber,
+        Error = "Payment is already processing for this order. Please wait."
+    });
+
+    private static bool IsPaymentInsertCollision(Exception error)
+    {
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
+            if (current is Microsoft.Data.SqlClient.SqlException sql && sql.Number is 2601 or 2627) return true;
+            if (current is Microsoft.Data.Sqlite.SqliteException sqlite && sqlite.SqliteExtendedErrorCode is 1555 or 2067) return true;
+        }
+        return false;
+    }
+
     private bool UseMerchantCheckout(CommerceStoreContext store) =>
         !store.IsParfait || (_configuration?.GetValue<bool>("MerchantPayments:ParfaitCutoverEnabled") ?? false);
 
-    private async Task<IActionResult> BeginMerchantAsync(CommerceStoreContext store, ParfaitOrderRecord order, CancellationToken ct)
+    private async Task<IActionResult> BeginMerchantAsync(CommerceStoreContext store, ParfaitOrderRecord order, string? sourceToken, Guid? connectionRevision, CancellationToken ct)
     {
         if (_merchantCheckout is null) return StatusCode(503, new { success = false, error = "Merchant payments are unavailable." });
         try
@@ -359,16 +423,28 @@ public sealed class StoreCheckoutController : Controller
                     order.Items.FirstOrDefault() is { } first ? ProductSignal(first) : null,
                     new CommerceSignalCustomer(order.FirstName, order.LastName, order.Email, order.Phone, order.City, order.State, order.PostalCode),
                     order.OrderNumber, order.Items.Select(ProductSignal).ToArray(), ct);
-            var evidence = await _merchantCheckout.BeginAsync(store.CommerceBusinessId, order.CommerceOrderId, returnUrl, JsonSerializer.Serialize(signal), ct);
+            var evidence = await _merchantCheckout.BeginAsync(store.CommerceBusinessId, order.CommerceOrderId, returnUrl, JsonSerializer.Serialize(signal), ct, sourceToken, connectionRevision);
             if (evidence.State == "Captured")
             {
                 var saved = await _merchantCheckout.GetAttemptAsync(store.CommerceBusinessId, order.CommerceOrderId, ct);
                 if (saved is not null && _completion is not null) await _completion.CompleteAsync(saved.Id, ct);
                 return Ok(new { success = true, redirectUrl = SuccessUrl(store, order.OrderNumber) });
             }
-            return string.IsNullOrWhiteSpace(evidence.CheckoutUrl)
-                ? StatusCode(503, new { success = false, error = "Payment verification is pending. Retry this checkout to check its status." })
+            if (evidence.State == "Failed")
+            {
+                var failed = await _merchantCheckout.GetAttemptAsync(store.CommerceBusinessId, order.CommerceOrderId, ct);
+                if (failed is not null && _completion is not null) await _completion.CompleteAsync(failed.Id, ct);
+                return UnprocessableEntity(new { success = false, paymentDeclined = true,
+                    error = "Your card was declined. No payment was taken. You can try another card." });
+            }
+            var pending = await _merchantCheckout.GetAttemptAsync(store.CommerceBusinessId, order.CommerceOrderId, ct);
+            return pending?.Provider == "Square" || string.IsNullOrWhiteSpace(evidence.CheckoutUrl)
+                ? StatusCode(503, new { success = false, paymentPending = true, orderNumber = order.OrderNumber, error = "Payment verification is pending. Check its status before starting another payment." })
                 : Ok(new { success = true, redirectUrl = evidence.CheckoutUrl });
+        }
+        catch (MerchantPaymentException ex) when (ex.Message == "PAYMENT_FORM_CHANGED")
+        {
+            return Conflict(new { success = false, error = "Payment setup changed. Refresh this page before trying again." });
         }
         catch (MerchantPaymentException)
         {
@@ -378,19 +454,45 @@ public sealed class StoreCheckoutController : Controller
 
     [HttpGet("checkout/return")]
     [HttpGet("s/{businessKey}/checkout/return")]
-    public async Task<IActionResult> MerchantReturn(string? businessKey, string orderNumber, string attempt, CancellationToken ct)
+    public async Task<IActionResult> MerchantReturn(string? businessKey, string? orderNumber, string attempt, CancellationToken ct)
     {
         var store = await ResolveStoreAsync(businessKey, ct);
+        if (store is null && _stores is not null)
+            store = await _stores.ResolveRetainedTransactionAsync(HttpContext, businessKey, orderNumber, attempt, ct);
         if (store is null || !UseMerchantCheckout(store) || _merchantCheckout is null) return NotFound();
-        var order = _orders.GetOrder(store.CommerceBusinessId, orderNumber);
-        if (order is null || string.IsNullOrWhiteSpace(attempt) || order.CheckoutAttemptId != attempt) return NotFound();
+        var order = string.IsNullOrWhiteSpace(orderNumber)
+            ? _orders.GetOrderByCheckoutAttemptId(store.CommerceBusinessId, attempt)
+            : _orders.GetOrder(store.CommerceBusinessId, orderNumber);
+        if (order is null || string.IsNullOrWhiteSpace(attempt) || order.CheckoutAttemptId != attempt)
+            return StatusCode(503, new { success = false, paymentPending = true, error = "The original checkout has not been found yet. Check its status again; do not start another payment." });
+        orderNumber = order.OrderNumber;
         Response.Headers["Referrer-Policy"] = "no-referrer";
         Response.Headers["Cache-Control"] = "no-store";
+        var processor = await _merchantCheckout.GetAttemptAsync(store.CommerceBusinessId, order.CommerceOrderId, ct);
+        if (processor is null && !_orders.HasProcessorPayment(store.CommerceBusinessId, order.CommerceOrderId))
+        {
+            var browser = await _merchantCheckout.GetBrowserConfigurationAsync(store.CommerceBusinessId, ct);
+            if (browser is not null)
+                return Ok(new { success = false, paymentNotStarted = true, orderNumber, recovery = new {
+                    checkoutAttemptId = order.CheckoutAttemptId, totalCents = order.TotalCents,
+                    merchantConnectionRevision = browser.ConnectionRevisionId,
+                    customer = new { firstName = order.FirstName, lastName = order.LastName, email = order.Email, phone = order.Phone,
+                        addressLine1 = order.AddressLine1, addressLine2 = order.AddressLine2, city = order.City, state = order.State, postalCode = order.PostalCode },
+                    items = order.Items.Select(x => new { id = x.Id, size = x.Size, quantity = x.Quantity })
+                }, error = "No processor payment was started. You can retry this same saved order." });
+        }
         var evidence = await _merchantCheckout.ReconcileAsync(store.CommerceBusinessId, order.CommerceOrderId, ct);
-        if (evidence?.State != "Captured") return Content("Your payment is awaiting verification. Refresh this page to check again. Do not start a second payment.");
+        var json = Request.Headers.Accept.ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase);
         var saved = await _merchantCheckout.GetAttemptAsync(store.CommerceBusinessId, order.CommerceOrderId, ct);
-        if (saved is not null && _completion is not null) await _completion.CompleteAsync(saved.Id, ct);
-        return Redirect(SuccessUrl(store, orderNumber));
+        if ((evidence?.State is "Captured" or "Failed") && saved is not null && _completion is not null)
+            await _completion.CompleteAsync(saved.Id, ct);
+        if (evidence?.State == "Captured")
+            return json ? Ok(new { success = true, redirectUrl = SuccessUrl(store, orderNumber) }) : Redirect(SuccessUrl(store, orderNumber));
+        if (evidence?.State == "Failed")
+            return json ? UnprocessableEntity(new { success = false, paymentDeclined = true, error = "Your card was declined. No payment was taken. You can try another card." })
+                : Content("Your card was declined. No payment was taken. Return to checkout to try another card.");
+        return json ? StatusCode(503, new { success = false, paymentPending = true, orderNumber, error = "Payment verification is pending. Check its status before starting another payment." })
+            : Content("Your payment is awaiting verification. Refresh this page to check again. Do not start a second payment.");
     }
 
     private async Task<IActionResult> SuccessCoreAsync(
@@ -399,14 +501,21 @@ public sealed class StoreCheckoutController : Controller
         CancellationToken ct)
     {
         var store = await ResolveStoreAsync(businessKey, ct);
+        var attempt = Request.Query["attempt"].ToString();
+        if (store is null && _stores is not null)
+            store = await _stores.ResolveRetainedTransactionAsync(HttpContext, businessKey, orderNumber, attempt, ct);
+        if (store is null && _stores is not null)
+            store = await _stores.ResolveRetainedPaidReceiptAsync(HttpContext, businessKey, orderNumber, ct);
         if (store is null) return NotFound();
 
-        var suffix = "/success?orderNumber=" + Uri.EscapeDataString(orderNumber ?? string.Empty);
+        var suffix = "/success?orderNumber=" + Uri.EscapeDataString(orderNumber ?? string.Empty) + (string.IsNullOrEmpty(attempt) ? "" : "&attempt=" + Uri.EscapeDataString(attempt));
         var redirect = await CanonicalizeScopedRequestAsync(store, businessKey, suffix, ct);
         if (redirect is not null) return redirect;
 
         var confirmed = string.IsNullOrWhiteSpace(orderNumber) ? null : _orders.GetOrder(store.CommerceBusinessId, orderNumber);
         if (confirmed is not null && !confirmed.IsPaid) return Content("Your payment has not been confirmed.");
+        Response.Headers["Referrer-Policy"] = "no-referrer";
+        Response.Headers["Cache-Control"] = "no-store";
         ApplyStoreContext(store);
         return View("~/Views/Store/Success.cshtml", new ParfaitOrderSuccessViewModel
         {
@@ -531,8 +640,12 @@ public sealed class StoreCheckoutController : Controller
         return null;
     }
 
-    private static string SuccessUrl(CommerceStoreContext store, string orderNumber) =>
-        $"{store.SuccessPath}?orderNumber={Uri.EscapeDataString(orderNumber)}";
+    private string SuccessUrl(CommerceStoreContext store, string orderNumber)
+    {
+        var attempt = _orders.GetOrder(store.CommerceBusinessId, orderNumber)?.CheckoutAttemptId;
+        return $"{store.SuccessPath}?orderNumber={Uri.EscapeDataString(orderNumber)}" +
+            (string.IsNullOrEmpty(attempt) ? "" : "&attempt=" + Uri.EscapeDataString(attempt));
+    }
 
     private static string BuildPaymentIdempotencyKey(CommerceStoreContext store, ParfaitOrderRecord order) =>
         store.IsParfait ? order.OrderNumber : $"{store.BusinessKey}:{order.OrderNumber}";

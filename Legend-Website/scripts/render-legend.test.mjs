@@ -98,3 +98,13 @@ test('published canonical inquiry renders optional voice from the shared package
       assert.equal(doc.querySelector(`form[data-website-inquiry] [name="${name}"]`).hasAttribute('required'),true,`voice off/absent: ${name} remains required in serialized HTML`);
   }
 });
+
+test('hidden pages retain authored content but are absent from published routes and navigation',async()=>{
+  const input=publication();
+  input.document.pages['/contact'].navigation.isPublished=false;
+  const result=await compileWebsite(input);
+  assert.equal(result.pages['/contact'],undefined);
+  assert.ok(input.document.pages['/contact'].composition.length>0);
+  const home=parseHTML(result.pages['/'].html).document;
+  assert.equal(home.querySelectorAll('.site-header a[href="/contact"]').length,0);
+});

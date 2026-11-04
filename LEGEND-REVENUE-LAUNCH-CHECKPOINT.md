@@ -3014,3 +3014,539 @@ Founder enabled extension file access, but browser setFiles still reports missin
 Confirmed second cause: scoped /internal uploads write Protect's persistent media storage, but LEGEND public /uploads requests select Parfait's separate disk. Canonical Worker now routes only apex/www LEGEND product media to the existing management/website origin. Existing commerce/custom-domain routing unchanged. Existing CommercePreviewMediaMiddleware now admits published LEGEND catalog media through CommerceStoreContextService's authenticated-host/immutable-publication authority when no custom-domain preview/cutover admission exists; image-product-business match, safe paths, nonlinked files and private-no-store retained. No new storage service, copied files, tenant inference, secret or configuration change. Protect must deploy before Worker; existing8e647897 Worker retained as recovery. Parfait does not register this middleware and retains its accepted5921 package.
 
 Follow-up local acceptance PASS:26 Worker routing tests and Wrangler dry-run;12 focused media/store/host tests cover apexGET,wwwHEAD, wrongsecret, validsecret/wrongtransport, foreigntenant, unpublishedStore and traversal. Actual localhost1444 with disposableSQL, real ParfaitProductService upload and actual CommercePreviewMediaMiddleware returns200 image/jpeg332402bytes exactly matching source SHA25611a0df526d43d87b11645fc26ec248baaa3ff1d5f18ba9cd9cae2f463a4cb2de;HEAD200/emptybody. Browser gallery renders uploadedphoto1080x1616. Earlier fixture's generic static uploader was replaced for this proof; no weakening of production authorization. Exact review, Protectpackage/security, direct Protect+Worker publication, live savedphoto readback and PR760 integration remain.
+
+
+### 2026-11-03 UTC — Product media repaired and verified live
+
+Independent exact source/package acceptance completed for a970924baa94ed59e7dfc40d55b806fbaec5e14c. Direct Mac Protect upload454c304fb59d43f08affbfd8fded1ba8 completed status4/active with exact runtimea970924. Artifact SHA256fca60d94ade3b8e1df9b1d1cb8535af1d6fac6cbc39c47897b47f5058c642000. Secure origin verification for both apex/www GET and HEAD returned200; savedPNG1496167bytes SHA256b42ce5c314b8226dd487b237c920f11325fda05355b3358a85eed06bc4c8119d. Then existing Worker deployed directly from Mac preserving bindings/routes: versionaec2891d-fab8-4c8d-869b-0fb39abec0d6 read back100percent. Previous8e647897 remains recovery reference. Parfait retains verified5921a423774022a161170ff7ef8f1983de190cf7; no redundant upload. Portal/Client retain92c; Website unchanged.
+
+Live Chrome verifies original product image1254x1254 on both mylegnd.com and www.mylegnd.com, and the same image in management. Original product/photo preserved; approved hiddenQA deletion verified with one remaining originalproduct/oneimage. Public command-line probes remain403 edge policy and were not bypassed; normal browser media success is the public functional proof. Live premium product and cart styling retained. Evidence /private/tmp/legend-direct-media-a970924 includes origin receipts, Worker readback and live-product-photo.jpg/live-management-preserved.jpg. Registered224/applied232 pending[] inventory remains compatible; no schema mutation performed. Local complete checkout used mock payment/email; no real payment is claimed.
+
+Security41598340030, commerce41598340247 and architecture41598340028 all PASS for exacta970924. Source-only PR760 merged69f282796e0a8e183f0e75305cd280b339f01a87 with expected-head protection; native fetch verifies a970924 ancestry. Release request retains validate-only, targets[], routingfalse. Postmerge41600111853 failed closed at source selection; recovery, admission, schema, application deployment and routing publication all skipped. No GitHub deployment occurred. Production is verified and all implementation changes are integrated; do not replay successful uploads. Prior genuine unresolved diagnostics remain explicit. This checkpoint-only update does not invalidate source/package/live evidence.
+
+
+### 2026-11-03 PST — Ads launch readiness follow-up active
+
+Founder authorizes canonical Square payment readiness, shared subscription/payment authority review, scoped Studio recoverable page removal and publish visibility for all sites including Store, internal favicon repair, banner controls and payment modal layout, focused localhost/live verification and direct Mac release plus source-only integration. Square (not Squarespace) confirmed. Native session preflight atba0a300143823dbf2897525d0b1b1c15c78f9cd8 PASS. Prior a970Protect/5921Parfait/aec2891dWorker production proof remains preserved. No new deployment or production configuration write yet.
+
+Read-only diagnosis: LEGEND has no merchant connection rows. Store controller selects merchant checkout for every non-Parfait store; its merchant payment management actions require ActorClientProfileId although the existing canonical Founder website-owner identity may legitimately have none. Browser /internal/settings/payments reaches ERR_BLOCKED_BY_CLIENT; source currently returns401 for that identity, not evidence of an extension fault. Portal and Protect Azure appsettings expose no Square/MerchantPayments settings; Parfait has Production legacySquare app/location/access settings but merchant OAuth configuration absent. Existing credentials must not be reassigned across business identities. Inspect existing payment configuration authority and verify account ownership before enabling any payment. No real charge authorized or attempted. Studio general removePage UI/server currently restricted to business sites; explicit page visibility semantics and every runtime consumer must be traced before extending.
+
+#### 2026-11-03 — Launch readiness investigation and implementation continuation (not released)
+
+Baseline remains ba0a300143823dbf2897525d0b1b1c15c78f9cd8 on isolation/scoped-store-workspace-20261101; current changes uncommitted/unaccepted. Prior direct-release receipts remain valid; no new production app/config/schema/content mutations or charges in this follow-up.
+
+Read-only production evidence: canonical LEGEND provisioned business has no merchant connection. Global merchant connections/authorizations zero; five Square Production ClientPaymentMethods and five InitialActivation SubscriptionPayments, no Commerce-owned SubscriptionPayments. Client and Parfait existing Square environment/application/location/token fingerprints match. Square read-only /locations + /merchants confirms exact configured location, active merchant/location, USD, CREDIT_CARD_PROCESSING and AUTOMATIC_TRANSFERS. This is readiness, not a settlement or purchase receipt. Existing enabled MerchantPayments--Square--Production Key Vault configuration exists, but required app settings are absent. Protect ambient data protection discriminator AgentPortal differs from ParfaitApp; shared WebsiteEditor ring is configured on both. No key material changed.
+
+Implemented pending review: nullable website-owner payment authorization through existing lifecycle/scope owner; migration20261103081639_ScopedMerchantWebsiteOwners makes only authorization ClientProfileId nullable, destructive Down refuses fabricated identities. Dedicated merchant key-ring discriminator keeps app auth isolation. Explicit PlatformBilling credential-reference envelope binds ONLY configured Founder plus exact provisioned global LEGEND Store to existing subscription account; no token copy. Provider merchant/location verification, immutable app/environment/location pins, pending account confirmation/default, compatible same-account rotation, historical read/refund access, local disconnect, OAuth replacement/resume guard. Existing subscription records/gateway remain unchanged. Independent review found alternate-location confirmation defect; now rejects before mutation and fixes platform location in UI. Application ID is configuration-pinned, not independently provider-proven. OAuth provider availability currently still requires existing full MerchantPayments provider/webhook configuration.
+
+Studio: recoverable page deletion expanded to canonical scopes; IsPublished metadata hides routes without losing content; compiled navigation gets only other-page navigation metadata, never other-page composition. Hidden fixed Protect routes return404 rather than503. Store public resolver respects hidden/deleted Store page. Scoped favicon and honest checkout configuration presentation corrected. Internal Store shared header typography/spacing and payment-provider card grid refined; user clarified internal login/logged-in pages banner, exact global settings control still requires rendered inspection.
+
+Evidence:127 focused authorization/workspace/scope tests PASS;47 protection/publication authority tests PASS;26 combined LEGEND/business/Protect renderer tests PASS. Expanded175 payment/protection/publication/workspace/scope tests PASS before final location-pin regression and CS9107 constructor-capture fix; affected rerun required. Browser extension became unavailable (browser inventory empty); native Chrome also timed out. Reconnect requested; localhost rendered acceptance remains BLOCKED, not waived. Existing localhost1443 fixture still running with stale assemblies; rebuild/restart required before using as evidence. Remaining: final focused tests/review, migration rehearsal/admission, actual banner/payment-modal rendered checks, canonical provider app configuration/reference wiring, local then live account binding and checkout verification, exact reviewed commit/native session finish, selective direct Mac deployment and source-only fast-track integration. Do not claim ads-ready or replay prior successful uploads.
+
+#### Reviewed source checkpoint be03203e8927fa77c8c29bc4cbc6252c19114df0 — release still pending
+
+Implementation committed as be03203e8927fa77c8c29bc4cbc6252c19114df0 after independent source-only acceptance of exactly32 paths by release_review, sorted path/NUL/bytes/NUL SHA2562d59e9fdb66c0321885f8294d59246f366ce5e925dae3f1c03e19cfe7f7e3f59. This acceptance explicitly excludes rendered UI, migration admission/execution, provider configuration, artifacts and release readiness. Native remote readback immediately before commit was unchanged ba0a300143823dbf2897525d0b1b1c15c78f9cd8. Final source build PASS zero warnings/errors. Final affected payment suite60 PASS, after location-pin and CS9107 fixes; prior integrated175 PASS remains compatible for unchanged cases. Combined renderer26 PASS. Review also corrected payment-provider grid accidentally nested in a desktop media query and generalized hosted-processor checkout copy.
+
+Generated forward migration rehearsed with existing isolated_sql owner: retained original nonnull profile identity, accepted null website-owner row, wrote exact migration history receipt; PASS. Normalized SQL SHA256 d4faa91da6f2f8153ac291e5521169464d73bbdbc5b6b6bb5d9f8b0fd35a03d3; /private/tmp/legend-launch-owner-migration.sql and legend-launch-owner-rehearsal.log. This is focused rehearsal, NOT production migration/admission. Earlier rehearsal container-discovery failure occurred before SQL application and was corrected by matching the canonical provider's exact randomized loopback port.
+
+Refreshed synthetic local fixture /private/tmp/legend-store-browser-host built successfully. Fixed fixture middleware order to model origin routing before synthetic public-host projection, and used configured synthetic Founder lifecycle identity; no production auth implementation was bypassed. HTTP session journey PASS: /internal/__synthetic/signin, /internal/settings/payments and /internal/dashboard all200; Payments includes platform-binding control and favicon markup. This is endpoint/HTML evidence only, NOT rendered browser acceptance. Fixtures use isolated disposable SQL, synthetic data and mock payments. Latest neutral checkout-text build requires fixture process restart before new rendered acceptance; existing process session67955 may still run. Browser inventory remains empty, native Chrome timed out; reconnect question pending. No new production app, Worker, configuration, schema or content writes, and no actual payment or refund.
+
+Next: reconnect Chrome, restart current fixture and inspect desktop/mobile banner/payment layouts plus Studio hide/delete/restore and persistence; confirm actual global internal banner controls requested. Prepare single authoritative existing Square credential configuration and existing MerchantPayments webhook/OAuth refs for required app consumers, preserve identities and original subscriptions; no new credential or charge assumed. Complete exact-candidate mandatory checks, migration/config admission and recovery, direct Mac selective uploads, live account binding/confirmation/default + checkout/webhook/receipt verification, then source-only fast-track integration. Source-only task-branch publication via mandatory native session finish is authorized; it is not release approval or fast-track synchronization. No ads-ready claim is supported yet.
+
+
+#### 2026-11-03 PST — Direct Mac release resumed at d06; localhost acceptance refreshed
+
+Native preflight PASS: clean local/remote d06f89ad90039f9b81683610c5d25783917c0072. Actual fast-track69f282796e0a8e183f0e75305cd280b339f01a87 fetched; ancestry incorporation remains before required PR checks. Prior successful production uploads preserved; no new production app/config/schema/content mutation or real charge in this continuation.
+
+Refreshed disposableSQL fixture from reviewed source, restarted original synthetic host through existing isolated_sql owner. Chrome connected. Payment page desktop1728/mobile390 renders provider cards and Founder platform-account control; mobile document width390/scrollWidth390. Studio page visibility persists after reload. Store Remove/Add and page Delete/Restore persist; home deletion remains disabled. Published restored Store renders catalog; Publish Store off + publication returns actualHTTP404 at localhost1444/store; restore + publication returns catalog again. Chrome masks empty404 responses as ERR_BLOCKED_BY_CLIENT, so HTTP status was independently read. Local Store product stock12 saved through actual editor, public product readback12, product/cart/checkout completed with mock gateway/email to Paid49 receiptPF-20261103-0BDECB. Checkout390px has no horizontal overflow. No actual processor/webhook/OIDC proof is implied. Banner control options remain optional clarification; existing reviewed header styling retained pending answer.
+
+Current candidate commerce run41605825883 has1243PASS/3FAIL, exclusively old reviewed-blob pins for Checkout.cshtml, internal.css, storefront.css. Test-only baseline correction preserves hash enforcement and application bytes; focused23testsPASS with explicit GITHUB_WORKSPACE. First local run used a different checkout via shared output path and is not acceptance. Exact pin correction review/preservation and new current-head mandatory CI remain pending.
+
+Read-only production:225registered/232applied, sole pending20261103081639_ScopedMerchantWebsiteOwners.162identity continuations,0merchant authorizations/connections; authorizationClientProfileId remains nonnull; businessFK and continuation purpose constraint enabled/trusted. Old fixed150-count verifier stopped; this was stale data-count expectation, not an admitted schema failure. SQL server actual resource groupMasterApp-Data-RG; DBOnline with earliestRestoreDate2026-10-27T16:01:24.700945+00:00. No migration executed.
+
+Existing enabled MerchantPayments--Square--Production vault fields verified. Protect loads KeyVault directly; Parfait lacks MerchantPayments appsettings. Client/Parfait existing Square credential fingerprints still match; no Square-- billing secrets currently present in vault. Single-authority credential/reference plan, current managed-identity access, provider identity, migration/package admission and live binding/payment verification remain pending. No secret values retained in this record.
+
+Local rapid-action acceptance additionally reproduced lost pending canvas changes when Store enable/remove replaced the canonical draft before the debounced save. Owning updateStore now uses existing save(false) before its request and returns if save fails or newer dirty edits remain. Two executed DOM regressions fail before/four focused Store tests pass after; full Studio suite and rendered rapid-action recheck in progress. This source change invalidates affected package evidence. Both packages under /private/tmp/legend-direct-launch-d06f89a are explicitly SUPERSEDED/NOT-FOR-DEPLOYMENT; no upload occurred. Final source acceptance/commit and fresh packaging remain required.
+
+Further read-only Square verification confirms active configured merchant/location, USD, card processing/automatic transfers; one enabled webhook matches existing configured endpoint with payment.created/payment.updated/refund.created/refund.updated, API2026-05-20. No webhook test/delivery or actual charge claimed. Synthetic order appears Captured4900USD in payment management and public inventory12→11; refund disclosure inspected without submission.
+
+Final local follow-up: full Studio DOM suite425PASS/0FAIL (80.1s), including two regression cases proving pending Store edits survive successful save and Store mutation is blocked on failed save. Updated stale page-list assertions to semantic Delete selection and full Protect Delete/Restore/content-preservation/home-protection/route-inventory checks. Chrome immediate navigation-toggle then RemoveStore retained the navigation value after reload; inverse toggle then AddStore also retained it. Existing four-path source review must be refreshed for final test/checkpoint bytes. No production mutation, migration, configuration write or upload in this follow-up.
+
+### 2026-11-03 — Preserved candidate, approved scoped IAM, premium header follow-up
+
+Independent acceptance269dd32e722fbe61c5a610fcfd8572b0220ec13f613ee9cac19deb10a921024a preserved implementationa5ac35cbd7b7404dd3d02c32103b2451f7304b22 and normal ancestry-only merge76268f2d551205bd9cef5a3de60e4608e72cc6db, exact remote readbackPASS. Both treesce4857cb9ec64cce3635ad709b3e13da0f727e1f. Source-only PR761 targets Legend/fast-track-release; release request remains validate-only, targets[], routingfalse. Fast-track69f282796e0a8e183f0e75305cd280b339f01a87 is contained. No fast-track integration yet.
+
+762 validation: security41673373521 PASS; migration-probe41673373490 PASS with architecture lane still running; commerce41673373780/41673267626 FAIL because isolated MerchantPaymentAdapterChecks did not link newly consumed canonical SquareBillingOptions/BillingEnums. Corrected its project links (no alternate implementation or weakened assertion); actual70adapterchecksPASS. Source modification requires current-head validation after review/preservation.
+
+Founder explicitly approved16scoped permissions: Client4individualSquarebillingsecret reads; Parfait4billing+6merchant-providersecret reads, dataprotection-key wrap/unwrap metadata access, dataprotection-keys container blob access. Existing principals verified, all16grants applied and exactrole/scope/principal readbackPASS. Receipt/private/tmp/legend-direct-launch-76268f2/payment-iam-receipt.json. No credentials rotated, no vault secret or appsetting writes yet. Protect already has vault/key/blob access; no Portal/Client binary refresh demonstrated. Canonicalpaymentplan/private/tmp/legend-direct-launch-76268f2/payment-cutover-plan.json. Prepared local configuration/migration scripts remain unexecuted, require fresh native provider-journal/no-overlap evidence,4writerappsStopped, exact currentchecks/recovery, providersecretidentity prechecks, runtime reference resolution and migration postconditions. Native direct ownership supersession above remains authoritative; no disabledworkflow reactivation/newlock required.
+
+Founder clarified header should use available width and larger premium sizing. Canonical internal.css now removes1320header cap, uses responsive outer gutters, largerbrand/logo and48pxcontrols while retaining compact mobile spacing. Chrome1728 rendered brand moves from204pxinset to44px;390 viewport=scrollWidth390, header65px; drawer and pageappearance controlsPASS in dark/light modes. Existing23presentationpreservationtestsPASS with updated exactCSSpin. Store login itself is the existing Microsoft handoff (local fixture intentionally routes to portal.example.invalid); no authentication flow changed or hostedMicrosoftUI claimed as locally verified.
+
+Independent reviewer accepted header2path manifesteedcb212754781952832753e3c2ad149d7ac3a4c21b013fd0b8b806aa0ecdb8c. Protect explicitly copies internal.css atcsproj161-162, so BOTH Protect and Parfait762packages are now superseded. Website762package remains compatible sha256eae7020dd8821727f5ce2889b001b62216c0087857944e94942bd4d49d9a317b. Prior package integrity/provenance/CMSsource checksPASS, but no application upload occurred. New finalsource review/preservation and affectedpackage refresh pending. SQLreadonly still max20261102160514/count232/0merchantauth/0connections; owner migration remains pending. No app stop/restart, SQLmigration, paymentconfiguration, livebinding, actualcharge/refund or newWorkerwrite occurred.
+
+### 2026-11-03 — Founder expands release scope before deployment
+
+Founder explicitly requires premium main-container/content layout throughout shared Store and Parfait-specific internal pages, plus a canonical system map and reliable autonomous marketing/email/follow-up/order/fulfillment/printing flows, preserving existing working paths. Deployment is HELD for this expanded implementation and acceptance. Printer/carrier must be selectable with recommendations and connection/setup choices, never fixed to one vendor. Existing supported device printing is the initial transport; do not claim packing documents are paid postage or silently authorize new accounts, subscriptions, campaigns, customer messages, hardware installation or label purchases.
+
+Prior accepted header/diagnostic sourced3ce459d16f0d15baf6935a521218960b3569998 is exact-remote-preserved. Independently reviewed packagesProtectfdb455bf14c829a6d9bf48024e651e00f80b51364a0c221fcc3c1a7dc3be6ef2/Parfait28f12372a07b79d948eeb5b9d2eea9d1f786cba01073f16fffa39930b38cb23c and compatibleWebsite762 remain retained, but new affected source invalidates deployment eligibility. No stops/uploads/configuration/migration have occurred; approved16IAMgrants remain the sole production change in this chat.
+
+Canonical system review: ParfaitOrderService owns tenant orders/fulfillment; MerchantCheckoutService owns processor payment/refund evidence; ParfaitCustomerAutomationService owns workflows/candidates/dispatchrecords; hosted dispatcher plus SQLlease owns scheduling; GraphMailService owns Microsoft delivery; shared CommerceManagementController owns scoped actions. Review found successful-email dedupe pruned with displaylogs (180days/500), ambiguoussend retry risk, missing retrybackoff/cap and promotionalconsent/suppression checks, file-store cross-host coordination limits, missing paid/tracking/stale-edit fulfillment rules and packing/label workflow. Preserve protected payments and proven inventory; do not invent stock defect. Required expanded work includes durable dispatch identity, honest provider outcomes, consent-safe promotions, canonical sender/link identity and fulfillment safeguards.
+
+WIP now: shared internal theme/workspace container refinement; tenant-authorized order/packing-slip GET + canonical internalalias/orderscapability, legacyParfait access mapping, shared printableOrder view and printerchooser withLetter/A4 or4x6deviceformats. Browser printing does not mutate order or purchase postage. Current source UNREVIEWED, build/test/render pending. New order/print implementations must receive cross-tenant/capability/regression and rendereddesktop/mobile acceptance before inclusion. Existing one-pending-owner-migration apply script is retained but must be re-admitted against FINAL schema; never execute it after new schema changes without updating/reviewing exact pending set.
+
+### 2026-11-03 — Expanded autonomy implementation in progress (UNREVIEWED; deployment HOLD)
+
+HEAD remains d3ce459d16f0d15baf6935a521218960b3569998; all expanded changes below are uncommitted WIP. No further production mutations beyond the approved16IAM grants. Prior payment/owner-migration apply scripts are NOT admitted for this changed schema. New generated additive migration20261103170724_SharedCommerceAutomationState adds only nullableCommerceBusinessSettings.CustomerAutomationStateJson; Down refuses destructive state loss. Native EF generation succeeded through existingMigrationReleaseProbe startup host with DOTNET_ROLL_FORWARD=LatestMajor; class-library startup attempts failed dependency loading before generation, noSQLapplied.
+
+Canonical system map and current implementation:
+- Products/prices/variants/inventory → existing CommerceProduct/ParfaitProductService; working stock and checkout paths preserved.
+- Cart/checkout → existing StoreCheckoutController and canonical payment owner. Optional unchecked marketing checkbox records explicit store consent only on a newly admitted checkout; receipt permission remains separate. Deprecated contact-only lead endpoint remains410.
+- Payment/capture/refund → existing MerchantCheckoutService/Billing completion; fulfillment cannot overwrite processor evidence. Management now renders processor-owned financial values read-only.
+- Orders/fulfillment → ParfaitOrderService. Required displayed revision, fresh tracked-row reload, serializable relational update, paid-only fulfillment advancement, carrier+tracking required forShipped, pickupFulfilled no inventedShippedUtc. Already-shipped refunded orders may still edit returns/notes.11SQLite regressionsPASS; simultaneous separate-process SQLcontention still pending.
+- Packing/printing → shared authorized order packing view, existing orders capability, no-cache tenant lookup; browser-selected device and Letter/A4 or4x6 format. No postage purchase or hardware integration claimed. Long/multipage/mobile render acceptance pending.
+- Workflow configuration → existing ParfaitCustomerAutomationService now reads/writes one SQLCommerceBusinessSettings JSON column with concurrency token; active per-host file reads/writes removed. Required editor revision and activation watermark prevent stale edits/historical backlog. Legacy files are retained untouched; BOTHhosts must be inventoried/reconciled/imported BEFORE deployment, including surviving successful dispatch identities. No import has run.
+- Delivery transport state → existing MarketingDestinationDelivery, MicrosoftGraph/commerce-email partition, canonicalBusinessOwnerKey and stableworkflow+hashedtrigger identity. Persistclaim before Graph; accepted≠delivered; unknown/expired sends held; only explicit429 retries withbackoff/max3. Display bounds do not prune identities. Claim-time workflow/consent/order/cart/body revalidation added. Losing claim collision handling implemented but actual multi-process SQLproof pending.
+- Promotional permission → existing WebsiteLead.MarketingEmailConsent with explicit commerce opt-in source/copy and per-lead preference token. Purchase/inquiry/analytics permission never substitutes. Anonymous token-scopedGETconfirmation+antiforgeryPOSTwithdrawal updates only samebusiness/email. Malformed evidence fails closed with safe diagnostic. Sender mailing address configured once under canonicalautomationstate; missingaddress holds sends. Shared Graph transport retains configured authenticated sender and resolves canonicalmerchant display/reply inbox.
+- Presentation → owning internal.css palette/container/pageheader declarations refined (darkergraphite/navy, gold, responsive maincontainer, largerheadinghierarchy), no publictenantpalette overrides. Latest full UIacceptance pending.
+- Shipping-provider connection/rates/postage/tracking ingestion and configurable setup recommendations beyond browserprinting remain NOT_IMPLEMENTED; no fixed vendor/account selected, no paid service or credentials created. User explicitly wants recommendations + selectable connections.
+
+Expanded appbuildPASS0warnings/errors (/private/tmp/legend-autonomy-build.log). Focused38testsPASS (/private/tmp/legend-autonomy-tests.log):12automationreliability,11fulfillment,2tenantmail and13checkoutcutover cases. These precede latest read-onlyfinancial UI/claimcollision/displaystats refinements; affected rerunpending. Independent reviewer has given design feedback only, not finalacceptance. Newhostbuild/private/tmp/legend-autonomy-host-build.log inprogress; oldsyntheticlauncherPID55791/children55883,55885,55919,55920 stillserveolderassemblies until controlledrefresh. CurrentSQLfixture remainsdisposable, allprovidersmocked, noactualmessages/charges.
+
+Next: finish concurrentclaim/stale-delete handling and focusedtests; reconcile two-host legacyfiles via read-only work/inventory-automation-files.py (private receipts/tmp), implement reviewed importer ifdataexists; verify optionalconsent+withdrawal+workflowsetup andpacking end-to-end onfreshisolatedhost, allaffecteddesktop/mobile/Parfaitpages; complete selectable shippingconnection/fulfillmentsetup and transactionalstatusupdates; independentexactsource/artifactreview, currentmandatoryCI, fresh2migrationadmission/config/recovery, onlythenauthorizeddirectrelease/liveverification/source-onlyfast-trackintegration. PR761 remains open; fast-track sync pending. Do not deploy retainedd3packages or runoldone-migrationapplyscript against changed schema.
+
+
+#### Shipping-label clarification and reliability follow-up — UNREVIEWED, release HOLD
+
+Zac explicitly clarified that the required print output is the adhesive carrier shipping label on the parcel, including shipment/order references and barcode/QR, not a regular-printer packing slip. Selectable provider and thermal-printer options remain required; do not hardcode one hardware model or tenant/provider account. Existing repository search found no shipping-label/postage integration. Removed the misleading 4x6 packing-label option and hardware recommendation from the packing-slip page; it now honestly prints only the document inside the package. THIS DOES NOT SATISFY SHIPPING LABEL ACCEPTANCE. Required remaining implementation: selectable supported postage connections, ship-from/package measurements, rate selection and explicit purchase, durable purchase reconciliation/no ambiguous retry, original carrier label download/reprint, canonical order tracking updates, appropriate order-reference QR without altering carrier barcode/quiet zones, printer format/setup guidance. No postage provider account, key, purchase or physical printing has been created/performed. Official API references inspected: https://docs.easypost.com/docs/shipments and https://docs.goshippo.com/api-reference/overview. Full API behavior/provider adapter tests still required.
+
+Reliability follow-up: stale workflow deletion now requires displayed revision in shared and legacy controllers; preferences opened through an older valid token reflect latest consent; automation-only Graph request disables SDK retries (MaxRetry=0), leaving durable delivery owner in control. New checkout-preparation callback runs consent/cart state writes in the canonical order preparation transaction before provider invocation; consent joins transaction, withdrawal uses Serializable. Callback failure rolls back order+consent and clears tracked state; response truthfully states no payment started. Independent Astra bounded review found no new blocker in this correction, but DOES NOT grant source/release acceptance. Separate-context SQL contention and uncertain commit reconciliation remain required. Automation Graph injected-HTTP single-request proof remains required.
+
+Focused local tests43PASS/0FAIL (/private/tmp/legend-autonomy-tests-atomic.log): automation reliability16, fulfillment12, tenant mail2, checkout13. Includes legacy null order revision roundtrip, stale delete, old-token/new-opt-in preferences, checkout retry preserving unsubscribe, and injected failure before/after consent with atomic rollback+successful retry. Earlier first follow-up failed compilation only due test property IsUnsubscribed typo; corrected to canonical Unsubscribed then41PASS, followed by43PASS after atomic preparation. Packing-slip source simplification occurred after43PASS and needs rendered check. No final commit/push, expanded migration admission, app upload or fast-track merge. HEAD remains d3ce459d16f0d15baf6935a521218960b3569998, reviewed d06 ancestry preserved.
+
+Read-only legacy automation inventory saved privately at /private/tmp/legend-autonomy-file-inventory/inventory.json. Protect has no legacy automation files; Parfait retained file SHA256cef2dcb5607e4c14fd119ea34d339ffbca78070921ad91d0639ae198567b6211,1181bytes,0workflows/0active/1cartlead/0dispatches. Customer content never printed/committed. Preserve/import that one cart lead under exact tenant after additive migration, revalidate source hash under stopped writers, retain original file. No transfer executed. Approved16IAMgrants remain the only production writes in this continuation.
+
+
+#### 2026-11-03 — Shipping implementation, compact UI, explicit agent roles (WIP; release HOLD)
+
+User renewed full completion request, added compact precise shared modals/buttons/tiles and hamburger-panel bottom, then explicitly requested Astra Light implementation plus6.1Sol Light independent audits, no overlapping writes. Spawned astra_ui_implementation usinggpt-6-astra/low and sol_release_audit usinggpt-6.1-sol/low. Prior release_admission_review nowidle. Root coordinates shipping/backend/release; Astra owns internal.css, Orders/Dashboard/sharedlayout/nav, sharedrevenuehelper/partial/tests/workspacesnapshot/service and onlynewGetRevenuePerformance method inParfaitOrderService. Root owns otherpayment/fulfillmentmethodchanges. Sol read-only. Build ownership serialized: concurrentdotnet builds caused generatedLegendWebsite distcopyfailures; this was diagnosed and serialized rerun35PASS. Do not overlap dotnet/npm/builds because outputshared under/tmp/masterapp andLegend-Website/dist.
+
+New unreviewedshipping: CommerceCore/Shipping/CommerceShippingProvider.cs +CommerceShippingService.cs, CommerceManagementController.Shipping.cs, sharedShipping/OrderShipping views, existingorderslinks andcapabilityaliases. Twoadapteroptions EasyPost/Shippo, ownerselects key/environment/shipfrom, immutableencryptedconnectionversions underexistingprotectedring withshipping-specificpurpose, package dimensions/weight/destinationcountry, providerquotes, quotedrateconfirmation, durableconditionalSQLPurchasePending beforeprovider, original4x6carrierlabelopen/reprint, ordertrackingonlyforlive, manualstatusreconcile. No fixedvendor/account/printer. Testlabelisnotvalidpostage. Noactualaccount/key/postagecreatedorused. EasyPostverifyusesnon-postageparcelobjectmode; Shippoverifykeyprefix+authenticatedcarrierread. LostShipporesponse canbe reconciled withoperatorprovidedexistingtransactionID, serververifiesexactorderreference metadata. DefinitiveERROR mapsRejected and allowsfreshquote retainingPreviousLabels; ambiguousPurchasePending cannotretry. Test→livequote preservespriorTestLabelhistory. Quote-pinnedprovider/environment shownratherthancurrentsettings toprevent mislabeledlivepurchase.
+
+Newadditivegeneratedmigration20261103174446_SharedCommerceShippingState addsnullableCommerceOrders.ShippingLabelStateJson andCommerceBusinessSettings.ShippingConfigurationJson; bothconcurrencytokens. Down refuseshistoryloss. THREEpendingmigrations now(owner+automation+shipping). Oldwork/apply-owner-migration.py assumesonepending andMUSTNOTEXECUTE. NoSQLmigrationhasrun. Needsfinalschemafreshinventory,3migrationrehearsal/admission andlegacyonecartleadtransfer.
+
+Sol found legacySubscriptionPayments financialauthorityomitted fromorderediting: rootnowGetAll/GetOrder/Updateprotectbothmerchantandlegacyprocessorrecords. RootaddedInfrastructure/Commerce/CommerceShippingStatePolicy.cs; pendingpostageblocksfulfillmentstatechanges andnewmerchantrefundclaim underexistingserializabletxn. Shippingconditionalclaim alsoexcludesunresolvedrefunds andfreshchecks paid/unshipped afterreload; externalproviderrefunds muststillreconciletruthfully, neverblockwebhooks. These latestchangesawaittests/review.
+
+Astra firstlayout/revenuepassready: sharedcompacttokens, unboxedordersummary/items, coherentsecondaryactions, boundedmodalscroll, coarsepointer44px, navscrollregion+nonshrinkingbottomutilities/safearea. Sharedrevenuehelper/partial usescanonicalneteligibility andequalrolling30dayordercohorts, labelsincrease/decline/unchanged/no-baseline withgreen/red/orange; alltimerevenuelabeledseparately. Userrequestedperformance, notinventedprofit/targets. SourceawaitsindependentSolreviewandrendereddesktop/mobile.
+
+Evidence: initialshippingappbuildPASS0warnings/errors (/private/tmp/legend-shipping-build.log); first33selectedtestsPASS incl5shipping. Latest35PASS (/private/tmp/legend-shipping-tests-serialized.log) includespinnedmode/test→live, beforelatestrefundcoordination/legacyguards/Rejectedrecoverytests. Existing43focusedautomation/fulfillment/checkoutPASS remainspriorpartial. Astraagentnowownsserializedtest+hostbuildslot, logs/private/tmp/legend-expanded-acceptance-tests.log andlegend-expanded-host-build.log; nootherbuilduntilagentreleases.
+
+Syntheticpreviewlauncher oldPID81512 stoppedcleanly; refreshedlauncherfunctions session63251 runningdisposableSQL+mockpayment/mail/shipping. Fixture/private/tmp/legend-store-browser-host/Program.cs hasmockEasyPost/Shippo options, syntheticrates, noactualprovidertraffic; labelendpoint/__synthetic/label.svg prominentlyNOTVALIDPOSTAGE. LatesthostbuildPASS0errorsbeforeAstraUI/latestbackend; rootmustrestartafternewbuild. Chrome browser3, releaseTab1733673533. Nativeorderpreviewshowedunboxedsummary; finalnewRazor+mobile/footer/shippingformsstillpending. Noactualprintjob, customeremail,charge,postagepurchase,configwrite,appupload,Workerwrite ormerge. Approved16IAMgrantsstillsoleproductionmutation. Remote refreshed unchangedtaskd3ce459d16f0d15baf6935a521218960b3569998,fasttrack69f282796e0a8e183f0e75305cd280b339f01a87. Noexpandedcommit/push/acceptance.
+
+
+#### Expanded release verification follow-up — WIP, NOT DEPLOYED
+
+Astra low implementation/Sol6.1 low independent audit continue in disjoint scopes. Latest148focusedtestsPASS0fail/skip (/private/tmp/legend-expanded-provider-tests.log), including22fakeHTTPshippingadaptercases, staleShippo-transaction regression, wrappedSQLclaimcontention cases. Prior118PASS andlocalhosthostbuildPASS retained. Sol found order-only shippingreference could accept olderRejectedtransaction fornewPendingpurchase; canonicalquote nowunique LEGEND-orderGuid-quoteGuid, exactmetadata check retained, originalpurchase staysheld. Sol reviewed correctedsource and found no newconcreteblocker; this is not finalcommittedcandidate/artifactacceptance.
+
+Rendereddesktop+390x640 acceptancePASS byAstra: Orders actions, Product core/inventory/discount, Automation workflow footer, dashboardrevenue and globalnavigationfooter. Found/fixed receiptbuttonwidth and six-column mobilevariant clipping inowninginternal.css. FinalCSSreloadverified. Screenshots /Users/zacowen/Documents/Codex/2026-11-03/new-chat/outputs/ui-acceptance. Chromeownershipreleased (browser1/tab1733673543). Synthetic hostsession64910 remainsrunninglatest118build; laterbackend148changesnotyetrefreshedinbrowser. No actualcustomer mutations.
+
+Actual separate-processSQLServer probe /private/tmp/legend-commerce-concurrency found EFwraps deadlock1205 inInvalidOperationException→DbUpdateException→SqlException. Canonicaldeliveryclassifier now walksinnerexceptions narrowly, declinesknownclaimcollision withoutretry and propagatesunexpectederrors. RerunPASS: oneCLAIMED/oneHELD, exactlyonedurablereceipt/attempt, noemailsent. ActualSDKRetryHandler mockHTTPprobePASS429/503/202: exactlyoneHTTPrequesteach. ActualSQLshippingracePASS oneBOUGHTsynthetic/oneHELD; financialpredicate translated, oneproviderinvocation, testtrackingisolated. Firstverificationglobincorrectlycounteditsownlogfiles; correctedprobeassertion verifiedexistingonepurchase, noapplicationchange/replay. Evidence /private/tmp/legend-commerce-concurrency/*log.
+
+ActualpublicHTTPpreferencesPASS onlocalhost1444 usingdedicatedsyntheticconsent: GET200no-store/no-referrer, missingCSRFcookiePOST400, validwithdrawalPOST200 andsubsequentGETpersistedunsubscribed, alteredtoken404. Noactualmessagesorrealcustomerconsentchanged. Disposableconnectionfile/private/tmp/legend-store-browser-host/isolated-connection mode600mustremainprivate.
+
+Remainingfulfillmentgaps explicit: original4x6carrierlabelimplemented; customorderQRnotyetimplemented. Astraassignedoptionalcompanion4x6order-reference sticker NOTPOSTAGE, noPII/auth inQR andoriginalcarrierlabeluntouched. Shipmentstatusemail absentfromUpdateOrder; mustextendexistingdurabledeliveryowner/dispatcher withtransactionalordertransition, nosecondworker/directcontrollersend, preservepromotionalconsent. NoQRdependencyortransactionalextensionaccepted yet. Rootpreparingexact3migrationSQLdisposablerehearsal; oldowner-onlyapplyscriptNOTADMITTED. Noexpandedcommit/push/currentCI/migration/configuration/upload/liveverification/fasttracksync. Approved16IAMgrantsremainsoleproductionwrites.
+
+
+#### QR, migration rehearsal and checkout recovery follow-up — release HOLD
+
+QR implemented usinglocalQRCoder1.8.1 (test-onlyZXing.Net0.16.11decoder); separateoptional4x6order-reference adhesive sticker clearlyNOTPOSTAGE, no customerPII/auth inQR, originalcarrierlabelunchanged. Canonicalexistingorderscapability/scopedlookup/no-cache/packingprintJS reused; Protectexistingviewassetglobsincludeit. Focused303PASS0fail/skip (/private/tmp/legend-expanded-qr-tests.log), includesSVGdecode/quietzone/foreignorder/revokedmembership. Sol reviewedQRsource no concreteblocker. Root refreshedhost: oldlauncher92307 stoppedcleanly, currentfunctions67112 runningfreshdisposableSQL/mockproviders withQRhostbuild0warning/error (/private/tmp/legend-expanded-qr-host-build.log).
+
+RootChrome3 synthetic fullshippingjourneyPASS: connectmockEasyPostTest, syntheticshipfrom, dimensions8x6x4in16ozUS, rate5.25ground, confirmedGenerateTestLabel, durableTestLabel/reprintcontrols, separateQRpreview. DesktopQR and390x640nooverflowPASS; imagesoutputs/ui-acceptance/order-reference-sticker-desktop.jpg andmobile.jpg. NativeChromePrintpreviewopenedandshowedONEpage; existinguserprinterEPSONselected bybrowser, nohardwareconfigured/noactualPrintpressed; canceledverified. Actualthermalhardware/4x6driveroutputNOTVERIFIED. Foundshippingpagefullwidthactionbars/alwaysopenemptyre-quoteform; Astra has correctedmarkupusingexistingcompactactionrow andcollapsedtestre-quote; newmarkupneedsfreshhost/render. Singular1unitcorrectionalsoqueued. Currentbrowser3tabs1733673571shipping/1733673576QR; rootbrowserowner.
+
+Exact3migrationgeneratedSQL/private/tmp/legend-expanded-migrations.sql SHA256628219e2bcc65bf4fa9848e3fdbd67787791eb21949ea3cd7bd9b8b46b2a7e77; isolatedrehearsalPASS retainedowneridentity/settings/orders, nullnewcolumn defaults, oldwritercompatibility/newJSONroundtrip (/private/tmp/legend-expanded-rehearsal.log). ThisispreliminarycurrentWIPschemaevidence, notfinalcommittedartifactadmission. Freshproductionreadonly227sourcemigrations/232applied, exact3pending(owner/automation/shipping), unchanged5appdeployjournals (/private/tmp/legend-expanded-provider-current.json), SQLOnline/PITRearliest2026-10-27T18:12:18.716651Z. Noproductionwrites.
+
+Preparedprivateone-timetransfer work/import-legacy-automation.py SHA2567c2c9674e363d5f466e3c0e3fb988c0cbc60d9f42a9ad9614e6581777fb7a8e4; defaultPLAN_ONLYverified. Requiresreviewedcleanexactcandidate,4writersstopped,freshbothhostinventory/hash1181bytes/0workflow0dispatch1cartlead, exactDBbusinessidentity, appliedmigration,existingSQLsettingsrow,null-or-byteidenticalstate, serializabletransaction/readback andexclusiveintentguard; originalfileuntouched, noconsentcreated/noretentioncleanup. Solsourceauditno concreteblocker; NOTEXECUTED, mustbindexactfinalcandidate andexecutionreview.
+
+Solidentifiedlegacycheckoutstrandedprepare: Commitmaydurablysucceed butthrowbeforebilling; IsPaymentProcessingstaysforever andnoreceipt. Astrafixnowusespersistedorder/samekeyonlywhennoSubscriptionPaymentandnomerchantattemptafterreconciliation; actualbillingownerinsertsdurableuniquereceiptBEFOREgateway. Knownuniquecollisionreturns409withoutmarkfailed/clearingprocessing. Focused16checkouttestsPASS (/private/tmp/legend-expanded-legacy-tests.log); Solindependentreviewpending, actualSQLlegacyracepending. Transactionalshipmentnotifications currentlybeingimplemented byAstra inexistingdurabledeliveryowner/worker; nosecondworker/nobackfill/noactualsend. Finalcombinedtests/render/review/commit/CI/admission/deployment/livecheckout/sync remain. Approved16IAMgrants soleproductionchanges.
+
+
+#### Final expanded source verification — candidate freeze, NOT DEPLOYED
+
+Astra low implementation and Sol6.1 low independent source audit completed the expanded shipping/automation/UI scope. Combined315testsPASS (/private/tmp/legend-expanded-shipment-tests.log), strengthened33shipment rollback/stale-receipt testsPASS,34presentation/ownership testsPASS with only two independently accepted presentation pins refreshed. Final address-only shipping36testsPASS (/private/tmp/legend-shipping-address-tests.log): same provider/environment retains protected connection with blank key; changing either requires verified new key; serializable reload/revision check protects save. Sol bounded acceptance receipt /private/tmp/legend-expanded-source-review.json (61paths; digest01e6be42fab981699da1cffacd03b66c39ca7a0a841f96387b6d05b59d59f87d before this checkpoint append). Final committed-candidate acceptance remains pending.
+
+Canonical shipment notifications now enqueue transactionally in ParfaitOrderService through existing automation delivery state/hosted dispatcher/Graph transport. Paid nonsandbox transitions or tracking corrections only; no historical backfill, label-print trigger, promotional consent inference or duplicate worker. Pending superseded events commit before declining stale claims. Injected post-SaveChanges/pre-commit failure rolls back order and notice; fresh-tracker regression proves superseded state. Actual separate-processSQL shipment claim oneCLAIMED/oneHELD/oneattemptPASS; actual hosted worker + SQL lease + durable receipt + GraphSDK fakeHTTP202 accepted exactly oncePASS (/private/tmp/legend-commerce-concurrency/hosted-shipment.log). No real email sent. Actual legacy billing SQL unique-receipt race oneproviderowner/oneheldPASS (/private/tmp/legend-legacy-sql-probe/verification.log), no real charge.
+
+Chrome localhost public mock checkout1444PASS: selected M10 stock, explicit marketing checkbox unchecked/optional, synthetic checkout paid PF-20261103-26D1AC/$49, receipt confirmed, product reload M9. Screenshots outputs/ui-acceptance/checkout-optional-consent.jpg and mocked-checkout-receipt.jpg. Final refreshed management1446 reuses original disposableSQL (launcher67112 remains alive), final host buildPASS. Shipping TestLabel actions now compact single desktop row; empty test re-quote collapsed. Address-only setup saved Suite200 with blank key and same EasyPostTest selected; success and persisted fields verified. Screenshot shipping-compact-desktop.jpg. No real provider credentials/postage/charge/message. Final viewport control requested390x640 but observed1728/no-op; do not claim this final shipping page mobile retest. Prior sharedCSS/modal/navigation mobile acceptance remains valid; physicalthermal printer/4x6driver output still unverified.
+
+Prepared private apply-expanded-migrations.py defaultsPLAN_ONLY, exact3migrationSQLhash628219e2bcc65bf4fa9848e3fdbd67787791eb21949ea3cd7bd9b8b46b2a7e77, exactclean candidate/4stoppedwriters/232history/physicalschema preconditions, atomic exclusive intent before SQL;235history/postconditions after. Sol reviewed atomic intent correction. NOTEXECUTED. Legacy importer/configuration scripts likewise unexecuted. Retained old one-migration apply script and d3 affected packages are not admitted. Approved16IAMgrants remain soleproductionmutations.
+
+Remaining: exact committed acceptance and current mandatoryCI; final artifact/configuration/migration/legacy-transfer/recovery/native-journal admission; selective approved deployment and live checkout verification; source-only fast-track integration/readback. No expanded source commit/push at time of this entry, no stop/restart/upload/migration/configuration/real charge. HEADd3 and d06 ancestry preserved.
+
+
+#### Preserved expanded implementation and release-control correction
+
+Expanded61path source independently accepted and normal native session-finish pushed76f6361e49a033df9275d5d4eb912b2f1024bbbe; exactremote readbackPASS, d06 ancestry retained. Sol verified every committedblob matches manifestddb9148bd8184c52ae7e862aece533562785c8b8c23ac144c11bf87a9009f846. PR761 remains open.76PRsecurity41697045738PASS; commerce41697045761FAIL one stale source assertion (1252PASS/1FAIL); architecture41697045805 was inprogress at this entry. Pushrun success is not PR admission.
+
+Live GitHub ruleset24319290 enforces PRmergeonly, strict current architecture-validation/approved-release-security/build-and-focused-tests, noforcepush/deletion. Fast-track workflow380114158 ACTIVE; directrelease361187664 remainsdisabled_manually. Existing historical trustedToolPromotion request cannot admit application integration. Prior postmerge failclosed source-only receipts remain factual history, but are not substituted for successful current integration.
+
+Astra implemented and Sol independently accepted a minimal explicit sourceIntegration contract in existing release_policy.py/validation-resume.py. It requires exact base/reviewedsource, authenticated currentPR/threeCIreceipts/two-parentmerge/tree, request-onlydelta afterreviewedsource, freshID/Founderauthorization, validate-only/emptytargets/falseflags, unmodified historicalmetadata, and mutualexclusion withtoolpromotion. Malformedmarker failsclosed; publishingexecutionguards rejectintegrationrevisions. Authenticated nonentry proof usesexistingadmissionartifact withdistinctphase and neveradvancesproductionbaseline/tooltrust. No workflowdisabled/newpublisher/newreceiptimporter. Requestfile remains UNCHANGED. Plan: admit/deploy reviewed sourceanchor first throughauthorizednativepath, then separate request-onlyintegrationcommit referencingthatanchor, currentCI andnormalmerge/nonentryreadback. Integrationrevision itself isneverdeploymentcandidate.
+
+Bounded validationfixes: historical Store migrationcontract test nowchecks its exactreviewedsegment and rejects appendingnewerunapprovedentries, then restoresfullcurrentcontractforgenericvalidation. FreshcurrentprobeFAIL reproduced beforefix; correctedprobePASS (/private/tmp/legend-current-schema-contract-fixed.log). Scopedcommerceauthority stale no-CaptureCheckoutLead assertion replaced with required atomicpreparation/optionalconsent authority checks;45scoped/checkout/automationtestsPASS (/private/tmp/legend-scoped-consent-authority-tests.log). Existingpolicy212+fasttrack206testsPASS usingisolatedPython3.13/PyYAMLenvironment. Solsixpathmanifestb10b11d761a437479ac2f8cea7371b70523ce154e5ba32872e03a2f2d6eafc10 (/private/tmp/legend-source-integration-review.json) beforethischeckpointappend. Noapplicationbehaviorchangedafter76.
+
+Privatepaymentrunner work/configure-payment-references.py corrected byAstra andSolacceptedSHA256a84996c2bc809e41967517109b76cc03064465d13b8c69c98455b42d822c4bd1; approvedplanSHA25672d60f4a0737a989578ed21e4392bc92e4da63957ca7bdf37d87e3bb9372c1d0. DefaultPLAN_ONLY, exactcleancandidate/planbinding, freshClientParfaitidentity/grants,4stoppedwriters/nativeproviderjournalchecks beforeeachmutation, exclusiveintentandpendingoperationreceipt, no blindretry. Syntax/syntheticplan/dirtycheckoutrejectionPASS; actualexecutionNOTRUN. Retainedsanitizedinventory proves ParfaitalreadyhasmatchingProtectBlobUri+KeyVaultKeyId, so noadditionalDPsetting needed; freshreadbackstillrequired. NoadditionalIAM/newcredential/rotation.
+
+Finalshippingdesktop andaddressonlysavePASS on1446; attempted390viewport control remained1728/noop, sofinalshippingmobile reteststillpending. NativeChrome state was changing duringuseractivity; do not interfere withunrelatedwork. Earliermodal/footer/mobileCSSproofretained. Noactualcharge/email/postage/physicalprinting. Approved16IAMgrants stillsoleproductioneffects. FinalcurrentCI, exactpackages/config/migration/transfer/nativeadmission, selectivedeployment/livecheckout andfasttracksyncremainopen.
+
+
+#### Final mobile acceptance and current CI fixture follow-up — NOT DEPLOYED
+
+User explicitly approved in-app browser mobile acceptance while retaining Chrome for live verification. Actual390x640 IAB checks on synthetic localhost1446 found the remaining shared680px rule forcing every action to100%width. Astra removed only that obsolete7line rule in owning internal.css; existing natural sizing, wrapping, gaps, maxwidth and coarsepointer sizing retained. Sol accepted CSSblob a38d3a9839eb01ca36643178f232fef4ff201611 for the single presentation pin refresh. Root rendered final Orders actions now3rows instead5, navigation footer2actionsplusSignOut, shipping compactactions/collapsedquote, shipping setup/provider/printer guidance, Product reachablefooter with separated destructiveaction, Workflow compactrightalignedSave and separateLive. All actual390scroll390/nohorizontaloverflow; viewport reset. Evidence outputs/ui-acceptance/order-mobile-actions-final.jpg, navigation-mobile-final.jpg, shipping-compact-mobile.jpg, workflow-mobile-final.jpg. No real customer changes or printjob. Presentation34test pending at this entry.
+
+Exact0f58e7220f390e5a93227f112bd888cdcca8ac64 independentlyaccepted7paths and normal sessionfinishpush/readbackPASS. Native Protect/Parfait packages built and independently inspected from0f, but now SUPERSEDED by finalCSS and MUST NOT DEPLOY. CompatibleWebsite762package remains retained. Required0fPRsecurity41699875636PASS; commerce41699875675FAIL at migration-probe-package.py reviewedmigration suffix check; push commerce41699865601PASS is not PRproof; architecture41699875797 stillinprogress lastread. Sol diagnosed Python historicaltail assumption plus RehearsalFixture historicalTakeLast and genericcurrentoperation allowance; correction must stay fixture-only with exact3newmigration shapes/fullcurrentcoverage and unchanged productionappend authority. Astra assigned boundedimplementation, Sol independentreview; actual owning test-contract disposableSQLentry required afterfix. No retry of failedCI without correction.
+
+No new production effects: approved16IAMgrants remain solemutations. No stop/restart/upload/configuration/migration/legacytransfer/charge/postage/email. Final sourcecommit/currentCI/freshpackages/operationaladmission/deployment/liveverification/sourceIntegrationrequest-only fasttrackmerge remain pending. Preserve0f and all reviewed ancestors includingd06.
+
+
+#### Final compact source preservation — SQL/current CI pending, NOT ADMITTED
+
+Final34presentation/ownership testsPASS0fail/skip (/private/tmp/legend-final-mobile-presentation-tests.log; existingobsoleteTestServerwarning only). Localrequiredlifecycle contractsPASS46migrationhistoryaudit,231lifecycle,117children,190operationevidence; generatedworkflowcheckPASS, lockedartifacttransport51PASS, correctedrelease-modefixture75PASS. Fullvalidationresume760 executes:757PASS/2FAIL/1ERROR underlocalPython3.13; remaining3areexisting canonicalPython3.12ASTfingerprint checks, diagnostic3.12serialization compatibility identified with no product/pin/guardchange. ActualnewCI Python3.12 stillmandatory; do not reportfull760PASS. Retired-originalevidence localattemptstoppedmissingGHenvbeforeAPI; existing0fCIgotpastit, newauthenticatedCIrequired.
+
+0farchitecture41699875797FAIL: staleordinaryreleasepolicydoubles omittednewsource_integration_requested contract (Mocktruthy/SimpleNamespacemissing), plus CRMhostedChromeDriverPOST/session8stimeout beforeanypage/session. Astra fixed onlytestdoubles toexplicitfalse, addedintegrationpublishdenial/noAPI andexactHEAD regressions; Solacceptedtest-validation-resume.py SHA256d17d713d2920c8006657c8c56e5879767216f9a307ba927b5d53a572d039f68a. Productionguardunchanged. CRMsourceunchangedpendingfreshactualLinuxCI; noversion/sandbox/resource failure proven, no assertionweakened.
+
+Astra corrected disposablemigrationfixtures only: explicit3newmigrationfingerprints, exactownerAlterColumn identity, productionunsupportedownerrejection retained, independentnullable/FKchecks, retainedauthorization/order/settings, all3JSONroundtripandoldwritercompatibility. HistoricalStore pendingwindows extendby3; genericpayment-and-successors coversfullcurrent; newexpanded-store-only scenario exercisesexact3pendingproductionboundary. ProductionCandidateContract Current/Verify/Prove and appendauthorityUNCHANGED. Pythonfixture54PASS; SolprebuildsourceCLEAR. Actualowning test-contract running/private/tmp/legend-expanded-fixture-sql.log (session49173); commandrevisionlabels0f but compiledfrozenworkingfiles, so bindexactsourcebytes/committedmanifest afterpreservation, notclaim0fcontainedthisfix. LocalSQLresultPENDING atthisentry. Authorfilesfrozen; sourcepreservationpush maytriggerremoteCIinparallel, notdeploymentadmission.
+
+Privateexistingnativepath runner work/deploy-reviewed-native.py SHA2569dceb1615e61b97a1caf159777ce5bbeba9522f7e39a16f661e3a31205531be2 acceptedSol; syntax/syntheticPLAN_ONLYPASS, executionNOTRUN. Extends existingaznativeupload with reviewedcleanSHA/3exactpackagehashes, allreturned5appjournalterminal checks, exclusivephaseintents/pendingreceipts/exactoneCLIboundnewupload/nootherjournaldrift,4writerstoppedhold, explicitWebsiteactivation, runtimeidentity. RootmustfreshlyadmitnoactiveGitHubpublication/exactpackages/recovery and independentlyreconcileexistingpayment/migration/legacyreceipts beforeupload/restart. No newlock/workflowreactivation/publicationauthority.
+
+Freshnativefetchreadback unchangedfasttrack69f282796e0a8e183f0e75305cd280b339f01a87 and task0f58e7220f390e5a93227f112bd888cdcca8ac64 beforethisnewcommit; PR761open. Afterfinalsourceanchor deployment/liveverification, onlyrequestJSONmaychange forsourceIntegrationcandidate: removehistoricaltop-leveltrustedToolPromotion entirely, preserveallnonmutablemetadata, freshID/Founderauthorization, sourceRevisionfinalanchor/baseRevisionfreshfasttrack, validate-only/targets[]/routingfalse/preservefalse. Do NOT appendcheckpointbetweenanchorandrequest-onlycandidate; retainprivateoperationalreceipts and finalproof there until integration, preservingexactsourceanchor. No newproductioneffects beyondapproved16IAMgrants.
+
+
+#### Exact preservation and SQL count-fixture correction
+
+Independentlyaccepted12pathmanifestcaec28b6d38fc5645154e371f6c0d8467ce810db4147d9e1d59a17cda8ce9756 committed71e939e68a2e7ad5adc5c93265bb3e186ebd1989 parent0f; Solverifiedallcommittedblobs. Notyetpushed atthisentry. ActualSQLfirstgenericpayment scenario migrated and reachedverify, thenFAILoldglobal2sampleorder assertion afternewexpandedfixture correctlyaddedthirdorder (RehearsalFixture.cs512). Astraauditedallcount/Singleconsumers and correctedonlythis3lineassertion: explicitexpectedtotal3whenexpanded, original2checked excludingexactExpandedBusiness; separateexpandedproof protectsnewrow. SolboundedsourceacceptanceCLEAR. FullowningSQLrerunstartingincludingfinalparameterizedquery; nofullSQLPASS/currentCI/admissionclaimed. Committed71isrecoverablehistoryandremainsancestorofcorrection. FinalcurrentCIcanruninparallel afterexactsourcepreservation; mandatorySQLmustPASSbeforedeployment.
+
+
+#### Bounded SQL readiness and exact-three baseline proof — final source freeze
+
+Normal sessionfinish preserved exactremotea40aa916b9e385251dc92ac7d266e3f56d846272 with71ancestry. Requireda40security41705162919PASS; commerce41705162652FAIL exact-three precondition PHYSICAL_SCHEMA_DRIFT atCandidateContract.cs138, same localdiagnosis below; architecture41705162635 stillrunningatthisentry. Pushcommerce41705154691PASSnotPRproof. NativeProtect/Parfaita40buildsandindependentZIP/revision/assembly/views/finalCSS/path/configheuristicauditPASS, but packagesnowSUPERSEDED byfinaltoolcorrection andnotfordeployment. Website762 compatibleartifactunchanged. No appbehaviorchangedafteracceptedfinalCSS.
+
+FullowningSQLretry twicehitSELECT1perattemptTimeoutExpired10s beforefixture, although intendedstartupwindow90s. Dockerresponding/existingcontainers~3.1of7.65GiB/disk366GiBfree; noblindmigrationretryorunknowncontainercleanup. Canonicalisolated_sql now catchesONLYreadonlyreadinessTimeoutExpired andcontinueswithperattemptmin10/remaining withinoriginal90sabsolute deadline/finallycleanup. Meaningfultimeout→ready/deadline/cleanup tests added;56PythonPASS. Solreviewedexacttwofiles, no productionauthoritychange.
+
+Usingfinalcompiledprivatefixture andcorrectedhelper: actualbroadpayment-and-successors SQLPASS. Exactexpanded-store-only initiallyFAIL becauseEnsureCreated lacks twomigration-owneddefaults alreadyappliedinproduction (CRM AssociationVersion/Store CanManageCrm); existingbaselineFinishStoreBaseline/CRMdefaultcondition ranonlywhenhistoricalStorepending. Astraauditedreconstructionconditions andchangedONLY FinishStoreBaseline tostore||expanded andCRMdefault to(store||expanded)&&!crm; PrepareStoreBaseline staysstore-only toavoidrecreatingpremembershipconstraint. Solacceptedexactfixturehashba7224b15b22b273882c1b54e78e9c6286bf49685c4d570409124eebcbe2cb2e. Rehearsal-onlypublishPASS0warnings. Actualcorrectedexpanded-store-only3pendingSQLPASS (/private/tmp/legend-expanded-fixture-runtime-corrected.log); remaining10historicalscenarios running. Broadsuccessreuse valid: twochangedconditionsfollowidenticalbranchforbroadstore+crm, noC#application/schema change. Final12terminalscenarioPASS stillmandatorybeforedeployment; no releaseadmissionclaimed.
+
+Freshproductionreadonly:5apps/all10returnedjournals terminal/unsettled[]/activeoperationsunchanged; SQL227registered/232history/exactsame3pending; correctMasterAppDbOnline/PITRearliest2026-10-27T19:47:48.779085Z. No runtime/configuration/schema/legacytransfer/upload/restart/payment/postage/email write. Approved16IAMgrants remainonlyproductioneffects. FinalcurrentCI/packagebinding/independentoperationaladmission thenexistingnativecontrolledcutover/livejourneys/source-onlyfasttrackintegration remain. Preserveallreviewedancestors. Afterthisfinalsourceanchor, keepoperationalreceipts private forrequest-onlyintegrationcontract; do notappendcheckpointbetweenanchorandrequest-onlycandidate.
+
+## 2026-11-03 — isolated native Work and CRM completion
+
+Founder scope: complete iOS/Android local builds/runs; separate Work from personal
+notifications; surface assigned Business Client/entity CRM records; provide a scoped
+paid-order fulfillment queue using the website backend. No production publication
+or App Store/Play upload has been performed for this mobile change. Active Store
+release checkout and its deployment ownership remain separate.
+
+Task checkout: `.worktrees/mobile-readiness-audit-20261103`; task branch
+`isolation/mobile-workspace-completion-20261103`; canonical/base at preflight:
+`69f282796e0a8e183f0e75305cd280b339f01a87`. Session preflight passed with exact remote
+readback and no unpublished or dirty source. Root checkout was preserved at
+`6ee4dd95e40ab83ec5fbb23774e95ec76b38d069`.
+
+Implemented: existing recipient notification ledger now projects personal/work
+channels and signals channel-contract support. Existing APNs/FCM transports carry
+the channel and route taps through native navigation owners. iOS conversation taps
+retain their opaque destination and route from any mounted tab. Native Home adds
+one Work entry; its order queue reads CommerceOrders and rechecks canonical
+business membership/order capability. Fulfillment shares CommerceOrderFulfillment
+with the website, preserves financial evidence, and rejects stale native saves.
+Exact server timestamps round-trip as opaque strings on both platforms. The existing
+notification worker also stages paid-order projections with deterministic per-order,
+per-recipient IDs and the existing push outbox; its order scan is bounded to50
+source rows/tick with a volatile fair-scan offset. No new table, migration, inbox,
+checkout engine, authentication authority or background timer was introduced.
+
+Assigned CRM lists no longer depend on social-directory subscription entitlement;
+AgentClients and ClientRecordClassification remain authoritative. Entity labels use
+BusinessIdentityProjection in list/detail; cards show phone and linked business
+rather than exposing email at first glance. Personal account read state/badges use
+the existing server ledger; social viewed state and device planner remain separate
+existing concerns. Dual-role test now isolates its cache/biometric fixture.
+
+Implementation commit: `a70dc51c8cdd446ca789cb7b99f092b2fc739484`.
+Final stable-source validation PASS:201iOS unit tests;99Android unit tests and
+successful debug build (all50Gradle tasks rerun);50focused backend tests. Backend
+coverage includes shared fulfillment validation, SQLite relational fresh/stale
+fractional timestamp saves, unauthorized membership, work filtering before limits,
+and concurrent real-engine producer deduplication (one notification/one outbox).
+Original APNs/FCM and shared commerce ownership contracts passed. Scope-specific
+logs: `/private/tmp/legend-mobile-ios-final3.log`,
+`/private/tmp/legend-mobile-android-final3.log`,
+`/private/tmp/legend-mobile-backend-final3.log`.
+Initial incremental Infrastructure reuse was proven stale by its portable-PDB
+source checksum; forced no-incremental rebuild succeeded and the checksum then
+matched. Source ownership tests require GITHUB_WORKSPACE=this isolated checkout.
+Independent review accepted the exact36-file implementation for source preservation,
+manifest SHA256 `296e4d51e3a03a0f60a8681eee82d1c210d7a3a3a4b6d68c1eb623fa7f5187ce`,
+after independently reading the final successful test logs. This does not grant
+Store integration, deployment or live acceptance. Work uses a channel filter in
+the SAME NotificationEngine query before sorting/Take, so personal traffic cannot
+hide older work records; native work snapshots are read projections of that ledger.
+
+Rendered evidence: Xcode loaded this task branch; iPhone17Pro simulator launched
+the signed-in Home shell and Work modal (Notifications/Orders). Founder explicitly
+authorized official Gradle/adb operation of the existing Pixel10Pro emulator after
+Studio native control repeatedly timed out. Debug APK installed successfully on
+emulator-5554; APK SHA256 `f02753609f5f31bda82bcfe185bb024249f46a04a093977fc83f7430362dcf40`;
+path `Legend-Android/app/build/outputs/apk/debug/app-debug.apk`; final am start reported Status:ok, COLD launch8433ms. Signed-in Home and
+third Work button/modal rendered. The old live backend lacks the new endpoint and
+channel contract; native UI now distinguishes temporary unavailability from an
+empty work inbox. This does NOT verify updated authenticated Work/order persistence.
+No real order, payment or customer message was changed in mobile verification.
+No signed AAB/archive, Play/AppStore upload or production deployment occurred.
+
+Integration/release hold: the separate active Store checkout is now
+`71e939e68a2e7ad5adc5c93265bb3e186ebd1989` and changes the SAME
+CommerceCore/Services/ParfaitOrderService.cs. It introduces shipping-label state,
+unresolved label-purchase protection, serializable/revision checks, expanded
+processor evidence and further order effects. This mobile branch has NOT copied,
+merged, deployed or overwritten that work. Shared validation now preserves the
+known Shipped tracking requirement,120/160carrier/tracking bounds and fully-refunded
+advancement prohibition. Before backend publication or fast-track integration,
+reconcile the Store ancestry/content and preserve its shipping-label/model,
+transaction/concurrency, financial-authority and downstream-effect protections in
+the native transport. Source-only preservation against69f is not compatibility or
+production acceptance against71e939. This checkpoint is prepared for session finish; exact remote preservation is established only by its terminal receipt/readback.
+SQL Server provider behavior, real push delivery, completed order/editor acceptance,
+backend release admission/publication and fast-track integration remain open.
+
+Artifact provenance note: native debug validation/builds ran against the stable
+reviewed working tree before implementation commit; their content matches the
+accepted manifest, but diagnostic Git metadata can retain69f with localChanges=true.
+These are local test artifacts, not exact-commit production/archive packages.
+
+## 2026-11-03 — native inbox styling and Founder Engineering separation
+
+Founder requested canonical native styling, icon-only Today's Activity, a separate
+Founder Engineering modal, read/check and clear controls, and red unopened counts
+on every Home inbox entry. Continued the SAME isolated mobile branch after clean
+mandatory session preflight against accepted/preserved
+`9ed97f74b340e63343304558b8c141624a8230f1`. Remote fast-track remained
+`69f282796e0a8e183f0e75305cd280b339f01a87` at the read-only head check. Existing
+Store overlap/integration/backend-release hold above remains in force.
+
+Implementation: `517902880b62015b6800a28c7b2a68256e217993`. Independent read-only
+review accepted exact15-path manifest SHA256
+`821d18403933d9b8e511c88f22fdeccc31fcf66835489abae56d2833dc503308` after reading
+the final green logs. Acceptance covers source commit/preservation only.
+
+The existing NotificationEngine/recipient ledger owns Engineering channel filtering,
+full unread totals and per-notice soft dismissal. Personal activity totals exclude
+conversation notices, so Home does not duplicate Messages' badge. Filters precede
+Take; counts cover the full scoped unread ledger, not just the latest visible rows.
+Engineering query/dismiss endpoints enforce Founder identity; engine dismissal also
+matches recipient+participant+Engineering kind. A checkmark marks a notice read;
+Clear notification soft-clears that notice and reconciles the existing global badge.
+It never deletes audit evidence, approves a release, or resolves an open work item.
+Existing server action authority still removes resolved work from open actions.
+No new ledger/table, migration, engineering state machine or notification worker.
+
+Both native Home rows use compact canonical navy icon controls with red numeric
+badges (99+ display for larger totals). Today's Activity uses the existing scoped
+local viewed-ID storage for device planner entries. Personal viewed state cannot
+acknowledge Engineering actions. Founder capability controls the Engineering entry;
+backend Founder checks remain authoritative. Work and Engineering snapshots query
+the same notification API with server channel filters. Engineering push taps route
+to its own modal, including consume-once iOS navigation. Work iOS uses existing
+Next sheet header, typography, canvas and close control instead of default List
+chrome. Existing approved design tokens remain the color/style authority.
+
+Final validation PASS:203iOS tests;100Android tests (zero failed/error/skipped) and
+debug build;41backend tests. Logs:
+`/private/tmp/legend-mobile-inbox-ios-final2.log`,
+`/private/tmp/legend-mobile-inbox-android-final2.log`,
+`/private/tmp/legend-mobile-inbox-backend-final.log`.
+Backend regression proves personal102/activity101 with a chat notice, Work counts
+before list limiting, recipient/channel isolation, idempotent Engineering dismissal
+and preserved audit row. Relational evidence uses SQLite, not production SQL Server.
+Native regressions cover full aggregate totals independent of visible rows,
+Engineering push consume-once separation and personal activity exclusion.
+`git diff --check` passed. Initial sandbox build cache/IPC restrictions were handled
+through approved native tool escalation; the lingering failed test process was stopped.
+
+Rendered acceptance: Xcode ran this task project on iPhone17Pro; compact Home row
+and red42 Engineering badge visibly rendered. Separate Engineering modal shows
+existing canonical open actions; Work modal now shows compact Next header/close,
+segmented Notifications/Orders and honest unsupported-server state. Android final
+APK installed/launched on emulator-5554 through Founder-authorized Gradle/adb;
+Home's four icon controls and separate Engineering modal visibly rendered.
+Screenshots: `/private/tmp/legend-mobile-inbox-android-home.png` and
+`/private/tmp/legend-mobile-inbox-android-engineering.png`. Intermittent simulator
+accessibility/capture failures recovered through refreshed bindings/direct authorized
+Android screenshots; no alternate iOS UI automation was used.
+
+APK SHA256 `fdb070a7782c0e514eab777e726dc1cbb0cc3d87dfc44da8b5725fa6e2bcd839` at
+`Legend-Android/app/build/outputs/apk/debug/app-debug.apk`; adb reported Status:ok,
+COLD launch30315ms. Debug artifacts were built before implementation commit from
+the stable accepted source; diagnostic Git metadata may retain9ed97 with local changes.
+They are local debug artifacts, not exact-commit signed production packages.
+
+Remaining: live server lacks channel/control contract, so Engineering notice controls
+are explicitly unavailable and Work data remains unavailable. No real engineering
+notice was cleared, work item resolved, release approved, order changed, payment
+made, backend deployed, archive/AAB published or Store checkout modified. Local
+SQLite read/dismiss behavior is proven; authenticated deployed persistence and actual
+push delivery still require the reconciled backend release and live acceptance.
+Fast-track integration remains held for the earlier Store order protections. Mandatory
+session finish will establish source preservation only through exact remote readback;
+this checkpoint does not claim publication or fast-track synchronization.
+
+## 2026-11-03 — isolated Store/native backend reconciliation
+
+Founder authorized reconciliation of Store `5a659556da639cbaedbfb1352d23e7b23857c229`
+and mobile `aed1e50f6e4b964b29603f2df6e729bd4633b520` in the separate
+`.worktrees/store-mobile-reconciliation-20261103` checkout and
+`isolation/store-mobile-reconciliation-20261103` branch. Normal merge preserves both
+histories. The active scoped Store release checkout was not modified. Canonical
+session preflight passed after a normal accepted-baseline branch bootstrap; remote
+fast-track readback remained `69f282796e0a8e183f0e75305cd280b339f01a87`.
+
+Native fulfillment now calls the existing ParfaitOrderService transactional owner.
+Its fulfillment-only entry reloads current state under the same serializable
+transaction, checks the exact revision, rejects unresolved shipping purchases and
+payment/return review states, and copies financial/admin values inside that
+transaction. The old native ExecuteUpdate mutation is removed. Merchant and legacy
+SubscriptionPayment authority, shipping state, pickup Fulfilled without invented
+ShippedUtc, and atomic shipment-notice enqueue are preserved. Shared fulfillment
+validation/mutation is consumed inside this transaction; existing checkout/payment
+status consumers remain unchanged.
+
+Portal references the existing CommerceCore assembly and registers only the order
+service. The canonical Portal MVC registration excludes CommerceCore controllers;
+no commerce worker or public storefront controller is activated there. Existing
+native Work/Engineering/CRM and push-channel changes retain the mobile branch's
+accepted source. No native app archive/publication was performed.
+
+Automatic Work order push requires explicit `Notifications:StoreOrderPushStartUtc`
+(Azure `Notifications__StoreOrderPushStartUtc`). Unset/empty disables automatic
+order push while Work Orders remains available. Invalid/non-UTC values fail options
+validation. The existing worker filters canonical PaidUtc at or after that boundary,
+with no current-time/CreatedUtc fallback, new timer, ledger or tenant hardcoding.
+Recipient membership/capability checks and deterministic notification/outbox IDs
+remain authoritative. Activation requires an explicit reviewed runtime value;
+none was written during this reconciliation.
+
+Validation PASS:81 focused native/notification/CRM/fulfillment/shipping/shipment and
+CommerceCore ownership checks, zero failures/skips; log
+`/private/tmp/legend-store-mobile-acceptance.log`. Corrected real route assertions
+passed against SQLite and disposable loopback SQL Server using the same final
+HTTP fixture: native GET/PUT authorization, tenant scope, fractional revision/stale
+409, validation400/notfound404, label purchase claim without UpdatedUtc change,
+legacy payment record preservation and exactly one durable shipment notice.
+Portal ControllerFeature contains no CommerceCore controllers; actual
+`/store/checkout` and `/commerce/manage/payments` return404. Logs:
+`/private/tmp/legend-mobile-http-final-routes.log` and
+`/private/tmp/legend-mobile-sql-http-final-routes.log` (explicit SqlServer PASS, exit0).
+No real provider, charge, postage, email or push was invoked. Existing unrelated
+obsolete TestServer/nullability test warnings remain. Native203iOS/100Android
+validation from the unchanged mobile source is retained, not relabeled as new builds.
+
+Concurrent Store release facts supplied by its owner: all five apps Running;
+Protect/Parfait verified live at exact5a659 above, Website retained
+`76268f2d551205bd9cef5a3de60e4608e72cc6db`. Exact three SQL migrations applied,
+history235/postconditions passed. Legacy1181byte Parfait transfer readback verified
+zero workflows/dispatches and one cart lead. Four existing payment vault values
+retained without rotation; two app settings reconciled and all14 Square references
+resolved. Existing uploads/restarts have original durable receipts. Private evidence:
+`work/release-evidence-5a659556d/native-runtime-verification.json`,
+`payment-runtime-references.json`, and `work/native-deployment-receipts/upload-intent.json`.
+Founder Payments GET works, Square available with no default binding. Automatic
+review rejected platform-binding consent; specific approval remained pending at this
+checkpoint. No binding, charge, refund, email or postage was performed.
+
+This reconciliation is LOCAL PRETEST PASS, not combined deployment/live acceptance
+or fast-track synchronization. Independent exact-source review and mandatory session
+finish must establish final candidate/source preservation. Root owns subsequent
+normal fast-forward of the existing PR761 branch, current-head CI, affected four
+.NET backend packages, release admission, selective publication/live verification,
+and later sourceIntegration request. No release request was edited here. Existing
+Store deployment receipts must not be replayed. Native actual push delivery and
+updated-backend device persistence remain explicit post-release checks.
+
+
+## November 3 continuation: embedded checkout and canonical Store controls
+
+The preserved combined base is `0754318c2aeb591502c5535182121a42e89017ef` on
+`isolation/store-mobile-reconciliation-20261103` and the existing scoped release
+branch. It preserves both reviewed Store and mobile histories. The additions below
+are being reviewed on that base; they are not a production deployment receipt.
+
+Founder explicitly approved the existing Square account/location binding as the
+Store default. That binding is active. Founder completed the live $1 test order
+PF-20261103-678C36; read-only reconciliation confirms Store Paid, attempt Captured,
+Square COMPLETED, amount/location/order matching. Preserve it: no replay, refund,
+credential rotation or replacement binding. The three migrations remain applied
+(history235), and the prior transfer/configuration/upload receipts remain completed.
+
+Embedded Square now uses the existing checkout form and canonical merchant attempt,
+with immutable connection revision validation, ephemeral token handling, stable
+provider idempotency, and reconciliation before any new charge. Definitive declines
+project through the existing serializable completion owner; captured evidence wins.
+New attempt insertion atomically checks payable order state. Cancelled/returned or
+otherwise nonpayable prepared orders cannot start a new payment. Recognized claim
+contention and lost commit acknowledgements preserve the same durable intent.
+Unknown payment results offer status checking, including after page reload, without
+requiring the current cart or another token. Existing legacy receipts retain their
+payment authority and completed orders continue to their receipts.
+
+Browser cart intent is the sole quantity authority. A versioned envelope retains
+quantity lineage, command identities and checkout bindings; Web Locks serialize
+mutations across tabs. Server Add validates current product/stock/price and returns
+an accepted delta rather than maintaining a competing quantity accumulator. Paid
+receipts consume only bound units. Same-SKU replacement/new purchases and old receipt
+visits preserve newer cart items. Missing locks/storage fail before payment effects.
+The compact default-selected marketing preference can be unchecked; prior unsubscribe
+remains authoritative and is not silently reversed by a later checkout.
+
+Product, cart, checkout and receipt presentation use shared Store tokens and the
+canonical Website editor theme. Readable foregrounds derive from the supported opaque
+hex palette; broader authored CSS expressions retain authored foregrounds without an
+unproven contrast guarantee. Compact desktop/mobile cart layout respects hidden rows.
+The existing Orders service supports tenant-scoped order number, name, formatted or
+partial phone, and email search. Queue results filter independently of full-store
+revenue/fulfillment metrics, and existing order detail/tracking controls are retained.
+
+Existing page publication and navigation flags remain the sole visibility authority.
+Editor labels distinguish hiding a navigation link from unpublishing a page. Neither
+operation deletes Store/catalog data. Hidden Stores block new shopping while narrow
+retained-transaction resolution validates tenant, order, unique attempt and processor
+record. Historical paid receipt links retain the existing order-number contract with
+actual captured/refunded processor evidence; this read-only evidence is not payment
+capture authority. Unsubscribe links retain their separate scoped-token authority.
+Legacy original-Parfait draft-theme behavior is unchanged by this bounded release.
+
+Validation so far: 300 combined tests PASS, zero failures/skips; targeted claim fault
+checks PASS. Real disposable SQL Server plus mocked Square HTTP tests prove concurrent
+and repeated claims, prepared-order recovery, declines, lost-response GET reconciliation
+and all four search fields, with exactly five provider order/payment calls for five
+attempts. No real charge, mail, postage or printer action occurred in these tests.
+Rendered localhost confirms embedded payment through Paid receipt, repeat Add quantity1,
+old-receipt/new-cart preservation, cross-tab cleanup, decline/reload recovery, mobile
+and desktop presentation, all search modes, empty search/clear, unchanged metrics and
+order modal access. Hidden-Store HTTP/retained-route/presentation checks passed 30/30.
+Canonical editor theme save/reload and page unpublish/save/reload/restore passed in
+the disposable same-origin fixture; the content fingerprint remained unchanged.
+This proves editor persistence, not a publication-worker run; route admission is
+covered separately by the HTTP tests. The local test theme was restored.
+The presentation preservation pins record these reviewed changes explicitly.
+
+The canonical owner map now admits the preserved mobile backend/native paths without
+weakening unknown-path admission. The new shared CMS edit also owns Website+Protect,
+so final release scope is five targets: Portal, Client, Protect, Parfait and Website.
+Prepared direct-Mac runners retain stop-four-writers/upload-five/restart-five sequencing,
+exact artifact/source binding, no-replay journals and explicit Portal Work push cutoff.
+Their source review is preparation only; no new package or provider action is recorded.
+
+Remaining gates: exact complete source review and normal preservation; current required CI; five exact-candidate packages and
+artifact review; fresh schema/prior-effect/publisher/mutex admission; direct Azure
+publication with reviewed Work push activation; live revision and embedded-checkout
+verification; mandatory request-only sourceIntegration and verified fast-track ancestry.
+Production remains at the previously recorded successful revisions until those gates
+are satisfied. Physical printer/postage integration, actual native push delivery and
+real email delivery are not claimed by mock coverage. Do not replay prior migration,
+transfer, binding or deployment intents while continuing.

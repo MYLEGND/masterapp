@@ -8,6 +8,7 @@
         isScopedCommerceManager
             ? Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, scopedPath, commerceManagerTicket, scopedPath == "/commerce/manage/products" ? "GET" : "POST")
             : internalPath;
+    var emailSettingsAction = CommerceAction("/internal/automations/email-settings", "/commerce/manage/automations/email-settings");
     var workflowAction = CommerceAction("/internal/automations/workflows", "/commerce/manage/automations/workflows");
     var workflowDeleteAction = CommerceAction("/internal/automations/workflows/delete", "/commerce/manage/automations/workflows/delete");
     var managerStoreName = (ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext)?.StoreName ?? "Parfait";
@@ -43,9 +44,22 @@
         <div class="@alertClass">@automationStatus</div>
     }
 
+    <section class="pf-module-card">
+        <h2>Email readiness</h2>
+        <p role="status">@Model.EmailReadinessMessage</p>
+        <p>Promotions go only to customers who explicitly opt in to this store. Every email includes an unsubscribe link. Order receipts remain separate.</p>
+        <p>New and reactivated workflows apply to future activity. Accepted messages are not proof of inbox delivery; uncertain attempts are held for review.</p>
+        <form method="post" action="@emailSettingsAction">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ExpectedUpdatedTicks" value="@Model.SettingsUpdatedTicks" />
+            <label>Sender mailing address<textarea class="form-control" name="PostalAddress" maxlength="800" rows="3" required>@Model.EmailPostalAddress</textarea></label>
+            <p>Use the business mailing address customers should see in promotional emails. Sending stays on hold until this is provided.</p>
+            <button type="submit" class="pf-action">Save email settings</button>
+        </form>
+    </section>
     <section class="pf-command-rail">
         <article class="pf-rail-card is-success pf-span-3">
-            <div class="pf-rail-label">Live Workflows</div>
+            <div class="pf-rail-label">Enabled workflows</div>
             <strong class="pf-rail-value">@Model.ActiveWorkflowCount</strong>
             <div class="pf-rail-grid">
                 <div>
@@ -91,11 +105,11 @@
 
         <article class="pf-rail-card is-danger pf-span-3">
             <div class="pf-rail-label">Attention</div>
-            <strong class="pf-rail-value">@Model.Activity.Count(activity => string.Equals(activity.Status, "Failed", StringComparison.OrdinalIgnoreCase))</strong>
+            <strong class="pf-rail-value">@Model.Activity.Count(activity => activity.Status is "Failed" or "Rejected" or "Uncertain")</strong>
             <div class="pf-rail-grid">
                 <div>
-                    <span>Failed Sends</span>
-                    <strong>@Model.Activity.Count(activity => string.Equals(activity.Status, "Failed", StringComparison.OrdinalIgnoreCase))</strong>
+                    <span>Needs review</span>
+                    <strong>@Model.Activity.Count(activity => activity.Status is "Failed" or "Rejected" or "Uncertain")</strong>
                 </div>
                 <div>
                     <span>Last Activity</span>
@@ -350,6 +364,7 @@
                 <form method="post" action="@workflowAction" class="pf-automation-form">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="Id" value="@workflow.Id" />
+                    <input type="hidden" name="ExpectedUpdatedTicks" value="@workflow.UpdatedTicks" />
 
                     <div class="pf-modal-header">
                         <div>

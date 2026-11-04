@@ -27,6 +27,7 @@ public sealed class CommerceOrder
 
     public string? SquarePaymentId { get; set; }
     public string? SquareError { get; set; }
+    public string? ShippingLabelStateJson { get; set; }
     public string? TrackingCarrier { get; set; }
     public string? TrackingNumber { get; set; }
     public string? AdminNotes { get; set; }

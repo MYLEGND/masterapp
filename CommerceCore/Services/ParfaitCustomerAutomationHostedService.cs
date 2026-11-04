@@ -33,9 +33,11 @@ public sealed class ParfaitCustomerAutomationHostedService : BackgroundService
                 var dueDispatches = automations.GetDueDispatchCandidatesForAllBusinesses();
                 foreach (var candidate in dueDispatches)
                 {
+                    if (!automations.TryBeginDispatch(candidate)) continue;
                     try
                     {
                         await mail.SendAutomationEmailAsync(
+                            candidate.CommerceBusinessId,
                             candidate.ToEmail,
                             candidate.Subject,
                             candidate.HtmlBody,
@@ -43,15 +45,15 @@ public sealed class ParfaitCustomerAutomationHostedService : BackgroundService
 
                         automations.MarkDispatchSent(candidate);
                     }
-                    catch (Exception ex)
+                    catch (Microsoft.Kiota.Abstractions.ApiException ex) when (ex.ResponseStatusCode is >= 400 and < 500 and not 408)
                     {
-                        _logger.LogWarning(
-                            ex,
-                            "Automation email failed. Workflow:{WorkflowName} Recipient:{RecipientEmail}",
-                            candidate.WorkflowName,
-                            candidate.ToEmail);
-
-                        automations.MarkDispatchFailed(candidate, ex.Message);
+                        automations.MarkDispatchRejected(candidate, ex.ResponseStatusCode);
+                        _logger.LogWarning("Automation request rejected. Delivery:{DeliveryId} Status:{Status}", candidate.DeliveryId, ex.ResponseStatusCode);
+                    }
+                    catch (Exception)
+                    {
+                        automations.MarkDispatchFailed(candidate, "Outcome unknown");
+                        _logger.LogWarning("Automation outcome requires review. Delivery:{DeliveryId}", candidate.DeliveryId);
                     }
                 }
                 }

@@ -365,7 +365,7 @@ public static class WebsiteContentSanitizer
             "displaySize h1Size h2Size h3Size bodySize smallSize bodyLineHeight sectionSpace contentGap contentMaxWidth wideMaxWidth " +
             "narrowMaxWidth gutter cardRadius buttonRadius inputRadius surfaceElevated surfaceMuted shadowSoft shadowStrong navHeight " +
             "motionFastMs motionStandardMs motionSlowMs isSystem mode direction gapPx columns minItemWidthPx wrap animations " +
-            "trigger effect durationMs delayMs distancePx easing once showInNavigation parentPath isDeleted collectionId field itemKeyField routePattern " +
+            "trigger effect durationMs delayMs distancePx easing once showInNavigation parentPath isDeleted isPublished collectionId field itemKeyField routePattern " +
             "eventName deliveryMode oncePerSession matchingFields submitCapability steps controls calculations results controlKeys visibleWhen " +
             "helpText placeholder required defaultValue min max step maxLength options contactRole includeInNotification action value " +
             "targetStep expression format op ref values map")
@@ -1202,7 +1202,7 @@ public static class WebsiteContentSanitizer
         if (source.ShowInNavigation && !source.IsDeleted && string.IsNullOrWhiteSpace(label))
             label = DefaultNavigationLabel(pagePath, pageTitle);
         if (label?.Length > 120) label = label[..120];
-        return new WebsitePageNavigation { Label = label, ShowInNavigation = source.ShowInNavigation, ParentPath = parent, Order = Math.Clamp(source.Order, -10000, 10000), IsDeleted = source.IsDeleted };
+        return new WebsitePageNavigation { Label = label, ShowInNavigation = source.ShowInNavigation, IsPublished = source.IsPublished, ParentPath = parent, Order = Math.Clamp(source.Order, -10000, 10000), IsDeleted = source.IsDeleted };
     }
 
     private static string DefaultNavigationLabel(string pagePath, string? pageTitle)

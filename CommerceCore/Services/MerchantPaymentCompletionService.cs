@@ -66,8 +66,22 @@ public sealed class MerchantPaymentCompletionService(
             db.ChangeTracker.Clear();
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             var attempt = await ReadOwnerAsync(attemptId, legacyBusiness, ct);
-            if (attempt.State != "Captured") return;
+            if (attempt.State is not ("Captured" or "Failed")) return;
             var entity = await db.CommerceOrders.SingleAsync(x => x.Id == attempt.CommerceOrderId && x.CommerceBusinessId == attempt.CommerceBusinessId, ct);
+            if (attempt.State == "Failed")
+            {
+                // The existing payment owner/serializable transaction arbitrates terminal projection.
+                // Captured truth and its inventory receipt always win over a late decline observation.
+                if (legacyBusiness is null && entity.PaidUtc is null && string.IsNullOrWhiteSpace(entity.PaymentReference)
+                    && string.IsNullOrWhiteSpace(entity.SquarePaymentId) && (entity.PaymentStatus == "Pending" || entity.PaymentStatus == "Failed")
+                    && !await db.CommercePaymentAttempts.AnyAsync(x => x.CommerceOrderId == entity.Id && (x.State == "Captured" || x.RefundedMinor > 0), ct)
+                    && !await db.SubscriptionPayments.AnyAsync(x => x.CommerceOrderId == entity.Id && (x.CommerceCaptureVerifiedUtc != null || x.Status == SubscriptionPaymentStatus.Completed || x.Status == SubscriptionPaymentStatus.PartiallyRefunded || x.Status == SubscriptionPaymentStatus.Refunded), ct)
+                    && (await FindEffectAsync(attemptId, null, "OrderAndInventory", ct))?.State != "Completed"
+                    && entity.PaymentStatus != "Failed")
+                    orders.MarkPaymentFailed(attempt.CommerceBusinessId, entity.OrderNumber, "Card declined. No payment was taken.");
+                await tx.CommitAsync(ct);
+                return;
+            }
             if (attempt.AmountMinor != entity.TotalCents || !string.Equals(attempt.Currency, "USD", StringComparison.OrdinalIgnoreCase)
                 || attempt.RefundedMinor < 0 || attempt.RefundedMinor > entity.TotalCents
                 || string.IsNullOrWhiteSpace(attempt.PaymentReference))

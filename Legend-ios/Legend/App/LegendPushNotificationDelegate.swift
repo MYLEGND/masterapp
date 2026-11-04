@@ -41,10 +41,42 @@ extension Notification.Name {
 
 enum LegendPushNotificationNavigation {
     private static let pendingKey = "legend.push.pending-notifications"
+    private static let engineeringKey = "legend.push.pending-engineering"
+    private static let workKey = "legend.push.pending-work"
+    private static let conversationKey = "legend.push.pending-conversation"
 
-    static func requestNotifications() {
+    static func requestConversation(_ id: UUID) {
+        UserDefaults.standard.set(id.uuidString, forKey: conversationKey)
+        UserDefaults.standard.removeObject(forKey: pendingKey)
+        NotificationCenter.default.post(name: .legendOpenNotifications, object: nil)
+    }
+
+    static func consumePendingConversation() -> UUID? {
+        let value = UserDefaults.standard.string(forKey: conversationKey).flatMap(UUID.init(uuidString:))
+        UserDefaults.standard.removeObject(forKey: conversationKey)
+        return value
+    }
+
+    static func requestNotifications(work: Bool = false, engineering: Bool = false) {
+        UserDefaults.standard.set(engineering, forKey: engineeringKey)
+        UserDefaults.standard.set(work, forKey: workKey)
+        UserDefaults.standard.removeObject(forKey: conversationKey)
         UserDefaults.standard.set(true, forKey: pendingKey)
         NotificationCenter.default.post(name: .legendOpenNotifications, object: nil)
+    }
+
+    static func consumePendingEngineering() -> Bool {
+        guard UserDefaults.standard.bool(forKey: pendingKey), UserDefaults.standard.bool(forKey: engineeringKey) else { return false }
+        UserDefaults.standard.removeObject(forKey: engineeringKey)
+        UserDefaults.standard.removeObject(forKey: pendingKey)
+        return true
+    }
+
+    static func consumePendingWork() -> Bool {
+        guard UserDefaults.standard.bool(forKey: pendingKey), UserDefaults.standard.bool(forKey: workKey) else { return false }
+        UserDefaults.standard.removeObject(forKey: workKey)
+        UserDefaults.standard.removeObject(forKey: pendingKey)
+        return true
     }
 
     static func consumePendingNotifications() -> Bool {
@@ -121,8 +153,10 @@ final class LegendPushNotificationDelegate: NSObject, UIApplicationDelegate, UNU
             .trimmingCharacters(in: .whitespacesAndNewlines)
         // Conversation pushes keep their existing message navigation authority.
         // Every other server notification opens the one native Notifications center.
-        if conversationID?.isEmpty != false {
-            LegendPushNotificationNavigation.requestNotifications()
+        if let conversationID, let id = UUID(uuidString: conversationID) {
+            LegendPushNotificationNavigation.requestConversation(id)
+        } else {
+            LegendPushNotificationNavigation.requestNotifications(work: payload["channel"] as? String == "work", engineering: payload["channel"] as? String == "engineering" || payload["kind"] as? String == "Engineering")
         }
     }
 

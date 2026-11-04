@@ -203,7 +203,7 @@ public sealed partial class InternalModulesController : BusinessAnalyticsControl
         "Purchase, payment, and fulfillment tracking for the Parfait store.",
         3,
         3)]
-    public IActionResult Orders()
+    public IActionResult Orders(string? search = null)
     {
         var orders = _orders.GetAllOrders().ToList();
         var paidOrders = orders
@@ -214,6 +214,8 @@ public sealed partial class InternalModulesController : BusinessAnalyticsControl
         return View(new ParfaitOrderAdminViewModel
         {
             Orders = orders,
+            SearchQuery = search?.Trim() ?? "",
+            SearchResults = string.IsNullOrWhiteSpace(search) ? orders : _orders.SearchOrders(search).ToList(),
             PaidOrderCount = paidOrders.Count(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)),
             PendingOrderCount = orders.Count(order => string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase)),
             FailedOrderCount = orders.Count(order => string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase)),
@@ -225,13 +227,22 @@ public sealed partial class InternalModulesController : BusinessAnalyticsControl
         });
     }
 
+    [HttpGet("commerce/orders/packing-slip")]
+    [ParfaitInternalPageAccess("/internal/commerce/orders")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public IActionResult PackingSlip(string orderNumber)
+    {
+        var order = _orders.GetOrder(orderNumber);
+        return order is null ? NotFound() : View("~/Views/InternalModules/PackingSlip.cshtml", order);
+    }
+
     [HttpPost("commerce/orders/update")]
     [ValidateAntiForgeryToken]
     public IActionResult UpdateOrder(ParfaitOrderAdminUpdateRequest request)
     {
-        if (!_orders.UpdateOrder(request))
+        if (!_orders.UpdateOrder(_orders.GetDefaultBusinessId(), request, out var error))
         {
-            TempData["OrderStatus"] = "Order could not be updated.";
+            TempData["OrderStatus"] = error;
             return RedirectToAction(nameof(Orders));
         }
 
@@ -277,6 +288,25 @@ public sealed partial class InternalModulesController : BusinessAnalyticsControl
         return View(_automations.GetWorkspaceViewModel());
     }
 
+    [HttpPost("automations/email-settings")]
+    [ValidateAntiForgeryToken]
+    [ParfaitInternalPageAccess("/internal/automations")]
+    public IActionResult SaveAutomationEmailSettings(CommerceAutomationEmailSettingsInput input)
+    {
+        try
+        {
+            _automations.SaveEmailSettings(_orders.GetDefaultBusinessId(), input);
+            TempData["AutomationStatus"] = "Email settings saved.";
+            TempData["AutomationStatusTone"] = "success";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["AutomationStatus"] = ex.Message;
+            TempData["AutomationStatusTone"] = "danger";
+        }
+        return RedirectToAction(nameof(Automations));
+    }
+
     [HttpPost("automations/workflows")]
     [ValidateAntiForgeryToken]
     public IActionResult SaveAutomationWorkflow(ParfaitAutomationWorkflowEditorInput input)
@@ -288,19 +318,35 @@ public sealed partial class InternalModulesController : BusinessAnalyticsControl
             return RedirectToAction(nameof(Automations));
         }
 
-        _automations.SaveWorkflow(input);
-        TempData["AutomationStatus"] = "Automation saved.";
-        TempData["AutomationStatusTone"] = "success";
+        try
+        {
+            _automations.SaveWorkflow(input);
+            TempData["AutomationStatus"] = "Automation saved.";
+            TempData["AutomationStatusTone"] = "success";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["AutomationStatus"] = ex.Message;
+            TempData["AutomationStatusTone"] = "danger";
+        }
         return RedirectToAction(nameof(Automations));
     }
 
     [HttpPost("automations/workflows/delete")]
     [ValidateAntiForgeryToken]
-    public IActionResult DeleteAutomationWorkflow(Guid id)
+    public IActionResult DeleteAutomationWorkflow(Guid id, long expectedUpdatedTicks)
     {
-        _automations.DeleteWorkflow(id);
-        TempData["AutomationStatus"] = "Automation deleted.";
-        TempData["AutomationStatusTone"] = "success";
+        try
+        {
+            _automations.DeleteWorkflow(id, expectedUpdatedTicks);
+            TempData["AutomationStatus"] = "Automation deleted.";
+            TempData["AutomationStatusTone"] = "success";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["AutomationStatus"] = ex.Message;
+            TempData["AutomationStatusTone"] = "danger";
+        }
         return RedirectToAction(nameof(Automations));
     }
 

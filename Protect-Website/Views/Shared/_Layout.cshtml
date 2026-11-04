@@ -72,12 +72,13 @@
         }
         if (compiledPublication is null)
         {
-            Context.Response.StatusCode = 503;
+            var unpublishedRoute = Context.Response.StatusCode == 404;
+            Context.Response.StatusCode = unpublishedRoute ? 404 : 503;
             Context.Response.Headers.CacheControl = "no-store";
-            Context.Response.Headers.RetryAfter = "30";
+            if (!unpublishedRoute) Context.Response.Headers.RetryAfter = "30";
             IgnoreBody();
             IgnoreSection("Scripts");
-            <p role="status">Published website temporarily unavailable. Please try again.</p>
+            <p role="status">@(unpublishedRoute ? "This page is not published." : "Published website temporarily unavailable. Please try again.")</p>
             return;
         }
     }

@@ -1,0 +1,22 @@
+@model ParfaitApp.Models.CommerceEmailPreferencesViewModel
+@{ Layout = null; }
+<!doctype html>
+<html lang="en" data-commerce-theme="legend"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="referrer" content="no-referrer" /><meta name="robots" content="noindex,nofollow" />
+<title>Email preferences · @Model.StoreName</title>
+<link rel="stylesheet" href="~/css/internal.css" asp-append-version="true" />
+</head><body><div class="pf-page-shell"><main class="pf-shell">
+<h1>@Model.StoreName</h1><h2>Email preferences</h2>
+@if (Model.Unsubscribed) {
+<p>You’re unsubscribed from this store’s promotional emails.</p><p>Order confirmations and essential order updates remain available.</p>
+} else {
+<p>Stop product news, offers, and cart reminders from this store. This does not cancel your orders.</p>
+<form method="post" action="/store/email-preferences">
+@Html.AntiForgeryToken()
+<input type="hidden" name="businessId" value="@Model.BusinessId" />
+<input type="hidden" name="leadId" value="@Model.LeadId" />
+<input type="hidden" name="token" value="@Model.Token" />
+<button type="submit" class="pf-action">Unsubscribe</button>
+</form>
+}
+</main></div></body></html>

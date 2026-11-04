@@ -1,0 +1,13 @@
+.order-reference-label { width: 4in; min-height: 6in; margin: 0 auto; padding: .2in; background: #fff; color: #000; text-align: center; overflow-wrap: anywhere; }
+.order-reference-label header { margin-bottom: .08in; }
+.order-reference-label .store-name { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+.order-reference-label h1 { font-size: 22px; margin-bottom: 6px; }
+.order-reference-label h2 { font-size: 20px; margin: .1in 0; text-transform: none; letter-spacing: 0; }
+.not-postage { display: block; font-size: 15px; letter-spacing: .12em; }
+.order-reference-qr { width: 2.6in; height: 2.6in; margin: auto; }
+.order-reference-qr svg { display: block; width: 100%; height: 100%; }
+.order-reference-label .reference-value { font: 11px/1.4 monospace; margin-top: .12in; }
+.order-reference-label footer { margin-top: .12in; font-size: 12px; }
+@media screen and (max-width: 420px) { body { padding: 8px; } .order-reference-label { width: 100%; padding: 16px; } .order-reference-qr { max-width: 100%; height: auto; aspect-ratio: 1; } }
+@page { size: 4in 6in; margin: 0; }
+@media print { .order-reference-label { width: 4in; min-height: 6in; margin: 0; break-inside: avoid; } }

@@ -336,7 +336,12 @@ public class WebsitePlatformController : ControllerBase
                 .ExecuteUpdateAsync(updates => updates.SetProperty(version => version.CompiledPagesJson, compiledPages), cancellationToken);
         }
         using var compiled = JsonDocument.Parse(compiledPages);
-        if (!compiled.RootElement.GetProperty("pages").TryGetProperty(route, out var page)) return null;
+        if (!compiled.RootElement.GetProperty("pages").TryGetProperty(route, out var page))
+        {
+            // A healthy publication intentionally omits hidden or deleted routes.
+            Response.StatusCode = StatusCodes.Status404NotFound;
+            return null;
+        }
         string Value(string name) => page.GetProperty(name).GetString() ?? "";
         string? Optional(string name) => page.GetProperty(name).ValueKind == JsonValueKind.Null ? null : Value(name);
         using var embedded = JsonDocument.Parse(Value("payload"));

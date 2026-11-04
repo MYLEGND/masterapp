@@ -1,0 +1,15 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #17202d; background: #edf0f4; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px; }
+.print-controls { max-width: 900px; margin: 0 auto 24px; padding: 24px; background: var(--pf-bg); color: var(--pf-text); border-top: 3px solid var(--pf-gold); border-radius: 12px; display: flex; flex-wrap: wrap; align-items: end; gap: 20px; }
+.print-controls > div, .print-controls details { flex-basis: 100%; }
+h1,p { margin: 0 0 10px; } h1 { font-size: 28px; } .eyebrow { font-size: 12px; letter-spacing: .14em; color: var(--pf-gold); }
+label { display: grid; gap: 8px; } select,button { font: inherit; min-height: 44px; padding: 10px 14px; border: 1px solid #a9b2be; border-radius: 8px; }
+button { background: var(--pf-gold); color: var(--pf-bg); border: 0; font-weight: 700; cursor: pointer; } summary { cursor: pointer; padding-block: 8px; } details p { max-width: 75ch; line-height: 1.6; }
+.packing-document { overflow-wrap: anywhere; max-width: 820px; margin: auto; padding: 32px; background: white; border: 1px solid #d1d6df; }
+.packing-document header { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid #182234; padding-bottom: 16px; }
+.store-name { font-size: 24px; } h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .08em; } address { font-style: normal; line-height: 1.6; }
+.ship-to { padding-block: 16px; } table { width: 100%; border-collapse: collapse; } th,td { padding: 12px 6px; border-bottom: 1px solid #c7cdd5; text-align: left; overflow-wrap: anywhere; } thead { display: table-header-group; } tr { break-inside: avoid; } footer { margin-top: 24px; font-size: 13px; } .check-box { display: inline-block; width: 18px; height: 18px; border: 1px solid #111; } .payment-hold { margin-top: 16px; border: 2px solid #8e2020; padding: 10px; font-weight: bold; }
+@media (max-width: 600px) { body { padding: 12px; } .packing-document { padding: 16px; } .print-controls { padding: 16px; } }
+@page { margin: 12mm; }
+@media print { :root,body { background: white; } body { padding: 0; } .print-controls { display: none; } .packing-document { max-width: none; padding: 0; margin: 0; border: 0; } }

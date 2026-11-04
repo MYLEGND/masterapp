@@ -275,6 +275,7 @@ public sealed class WebsitePageNavigation
 {
     public string? Label { get; set; }
     public bool ShowInNavigation { get; set; } = true;
+    public bool IsPublished { get; set; } = true;
     public string? ParentPath { get; set; }
     public int Order { get; set; }
     public bool IsDeleted { get; set; }

@@ -126,6 +126,7 @@ internal static partial class RehearsalFixture
         await using var db = new MasterAppDbContext(options);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(120));
         var contract = CandidateContract.Current(db);
+        ValidateExpandedFixture(db, contract);
         var requestedCount = Environment.GetEnvironmentVariable("LEGEND_REHEARSAL_PENDING_COUNT");
         if (requestedCount is "store-all" or "store-crm-provisioning-membership" or "store-provisioning-membership" or "store-membership" or "crm-store" ||
             requestedCount?.EndsWith("-crm-store", StringComparison.Ordinal) == true)
@@ -133,8 +134,9 @@ internal static partial class RehearsalFixture
             var expected = new[] { CanonicalPaymentMigration, CandidateContract.TrainingMigration, ManagementMigration,
                 CandidateContract.BrowserMigration, CandidateContract.DiagnosticsMigration, CandidateContract.CrmMigration }
                 .Concat(CandidateContract.StoreMigrations).ToArray();
-            if (!contract.Migrations.TakeLast(10).Select(m => m.Id).SequenceEqual(expected) ||
-                !contract.Migrations.TakeLast(4).All(CandidateContract.ExactStoreEntry))
+            var historicalStart = Array.FindIndex(contract.Migrations, m => m.Id == CanonicalPaymentMigration);
+            if (historicalStart < 0 || !contract.Migrations.Skip(historicalStart).Take(10).Select(m => m.Id).SequenceEqual(expected) ||
+                !contract.Migrations.Skip(historicalStart + 6).Take(4).All(CandidateContract.ExactStoreEntry))
                 throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
             requestedCount = requestedCount switch {
                 "store-all" => "4", "store-crm-provisioning-membership" => "3", "store-provisioning-membership" => "2", "store-membership" => "1",
@@ -142,7 +144,9 @@ internal static partial class RehearsalFixture
                 "management-browser-diagnostics-crm-store" => "8", "training-management-browser-diagnostics-crm-store" => "9",
                 "canonical-payment-training-management-browser-diagnostics-crm-store" => "10",
                 _ => throw new ProbeObservationFailure("INPUT_UNAVAILABLE") };
+            requestedCount = (int.Parse(requestedCount) + contract.Migrations.Count(m => ExpandedMigrations.Contains(m.Id))).ToString();
         }
+        if (requestedCount == "expanded-store-only") requestedCount = "3";
         if (requestedCount == "payment-and-successors")
             requestedCount = contract.Migrations.SkipWhile(m => m.Id != "20261011064911_AddBusinessScopedMerchantPayments").Count().ToString();
         if (requestedCount == "canonical-payment-only")
@@ -199,6 +203,7 @@ internal static partial class RehearsalFixture
         // that existing rows and constraints survive a migration.
         const string paymentMigration = "20261011064911_AddBusinessScopedMerchantPayments";
         const string retentionMigration = "20261011120000_AddWebsiteSnapshotRetirement";
+        var expanded = pending.Any(m => ExpandedMigrations.Contains(m.Id));
         var payments = pending.Any(m => m.Id == paymentMigration);
         var retention = pending.Any(m => m.Id == retentionMigration);
         var browser = pending.Any(m => m.Id == CandidateContract.BrowserMigration);
@@ -209,7 +214,8 @@ internal static partial class RehearsalFixture
         var receptionist = pending.Any(m => m.Id == ReceptionistMigration);
         var training = pending.Any(m => m.Id == CandidateContract.TrainingMigration);
         var canonicalPayments = pending.Any(m => m.Id == CanonicalPaymentMigration);
-        if (pending.Length != count || pending.Any(m => !m.Supported ||
+        if (pending.Length != count || pending.Any(m => (!m.Supported && !IsExpandedFixture(m)) ||
+            (ExpandedMigrations.Contains(m.Id) && !IsExpandedFixture(m)) ||
             (m.Id == retentionMigration && (m.Columns.Length != 1 || m.Tables.Length != 0 ||
                 m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 || m.Columns[0] is not {
                     Schema: "dbo", Table: "WebsiteContentVersion", Name: "SnapshotRetiredUtc",
@@ -222,7 +228,7 @@ internal static partial class RehearsalFixture
             (m.Id == ManagementMigration && !IsManagementFixture(m)) ||
             (m.Id == CanonicalPaymentMigration && !IsCanonicalPaymentFixture(m)) ||
             (m.Id == CandidateContract.TrainingMigration && !IsTrainingFixture(m)) ||
-            (!CandidateContract.IsStoreMigration(m.Id) && m.Id != CandidateContract.CrmMigration && m.Id != CandidateContract.DiagnosticsMigration && m.Id != CandidateContract.BrowserMigration && m.Id != ManagementMigration && m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration && m.Id != CandidateContract.TrainingMigration &&
+            (!ExpandedMigrations.Contains(m.Id) && !CandidateContract.IsStoreMigration(m.Id) && m.Id != CandidateContract.CrmMigration && m.Id != CandidateContract.DiagnosticsMigration && m.Id != CandidateContract.BrowserMigration && m.Id != ManagementMigration && m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration && m.Id != CandidateContract.TrainingMigration &&
             (m.Tables.Length != 0 || m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 ||
             m.Columns.Any(c => c.Schema != "dbo" || c.Table != "MobileProfileSettings")))))
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
@@ -236,6 +242,7 @@ internal static partial class RehearsalFixture
             db.MobileProfileSettings.Add(new Domain.Entities.MobileProfileSettings {
                 ProfileId = Guid.NewGuid(), ParticipantType = "Agent", Bio = "synthetic migration fixture" });
             if (store) SeedStoreData(db, retention);
+            if (expanded) SeedExpandedFixture(db, payments);
             if (crm) await SeedCrmData(db, timeout.Token);
             if (diagnostics) db.AddRange(DiagnosticRows());
             if (receptionist || management || browser) db.AddRange(MarketingRows());
@@ -297,8 +304,9 @@ internal static partial class RehearsalFixture
                     Schema = c.Schema, Table = c.Table, Name = c.Name }))).ToArray();
             foreach (var command in db.GetService<IMigrationsSqlGenerator>().Generate(reverse))
                 await db.Database.ExecuteSqlRawAsync(command.CommandText, timeout.Token);
-            if (store) await FinishStoreBaseline(db, pending, timeout.Token);
-            if (store && !crm) await db.Database.ExecuteSqlRawAsync(
+            if (expanded && !payments) await db.Database.ExecuteSqlRawAsync("ALTER TABLE dbo.CommerceMerchantAuthorizations ALTER COLUMN ClientProfileId uniqueidentifier NOT NULL", timeout.Token);
+            if (store || expanded) await FinishStoreBaseline(db, pending, timeout.Token);
+            if ((store || expanded) && !crm) await db.Database.ExecuteSqlRawAsync(
                 "ALTER TABLE dbo.WebsiteLeadIntakeLinks ADD CONSTRAINT DF_Rehearsal_AssociationVersion DEFAULT ('00000000-0000-0000-0000-000000000000') FOR AssociationVersion", timeout.Token);
             if (browser && !receptionist) await db.Database.ExecuteSqlRawAsync("""
                 ALTER TABLE dbo.ReceptionistCalls ALTER COLUMN ProviderSessionId nvarchar(200) COLLATE Latin1_General_100_BIN2 NOT NULL;
@@ -333,17 +341,17 @@ internal static partial class RehearsalFixture
         }
         else if (operation == "precondition")
         {
-            if (!payments && !receptionist && !canonicalPayments && !training && !management && !browser && !diagnostics && !crm && !store) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist && !canonicalPayments && !training && !management && !browser && !diagnostics && !crm && !store && !expanded) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             await VerifyCatalogBatchProtocol(db, timeout.Token);
             var applied = (await db.Database.GetAppliedMigrationsAsync(timeout.Token)).ToArray();
-            await CandidateContract.Verify(db, contract, applied, timeout.Token);
+            await VerifyFixtureContract(db, contract, applied, timeout.Token);
             if (store) await StorePreconditionDrift(db, contract, applied, pending, timeout.Token);
             if (crm) await CrmDrift(db, contract, applied, false, timeout.Token);
             if (diagnostics)
             {
                 await using var transaction = await db.Database.BeginTransactionAsync(timeout.Token);
                 await db.Database.ExecuteSqlRawAsync("ALTER TABLE dbo.RuntimeDiagnosticIncidents ADD PerformanceEvidenceJson nvarchar(max) NULL", timeout.Token);
-                try { await CandidateContract.Verify(db, contract, applied, timeout.Token); throw new InvalidOperationException("Unrecorded diagnostic column accepted"); }
+                try { await VerifyFixtureContract(db, contract, applied, timeout.Token); throw new InvalidOperationException("Unrecorded diagnostic column accepted"); }
                 catch (ProbeObservationFailure error) when (error.Message == "PHYSICAL_SCHEMA_DRIFT") { }
                 await transaction.RollbackAsync(timeout.Token);
             }
@@ -357,7 +365,7 @@ internal static partial class RehearsalFixture
                 {
                     await using var transaction = await db.Database.BeginTransactionAsync(timeout.Token);
                     await db.Database.ExecuteSqlRawAsync(change, timeout.Token);
-                    try { await CandidateContract.Verify(db, contract, applied, timeout.Token); throw new InvalidOperationException("Invalid predecessor index accepted"); }
+                    try { await VerifyFixtureContract(db, contract, applied, timeout.Token); throw new InvalidOperationException("Invalid predecessor index accepted"); }
                     catch (ProbeObservationFailure error) when (error.Message == "PHYSICAL_SCHEMA_DRIFT") { }
                     await transaction.RollbackAsync(timeout.Token);
                 }
@@ -370,7 +378,7 @@ internal static partial class RehearsalFixture
                     timeout.Token);
                 try
                 {
-                    await CandidateContract.Verify(db, contract, applied, timeout.Token);
+                    await VerifyFixtureContract(db, contract, applied, timeout.Token);
                     throw new InvalidOperationException("Duplicate checkout identity was accepted");
                 }
                 catch (ProbeObservationFailure error) when (error.Message == "MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW") { }
@@ -384,7 +392,7 @@ internal static partial class RehearsalFixture
         }
         else if (operation == "adversarial")
         {
-            if (!payments && !receptionist && !canonicalPayments && !training && !management && !browser && !diagnostics && !crm && !store) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist && !canonicalPayments && !training && !management && !browser && !diagnostics && !crm && !store && !expanded) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             var applied = db.Database.GetMigrations().ToArray();
             var mutations = payments ? new[] {
                 "ALTER INDEX [IX_CommercePaymentReceipts_Provider_Environment_AccountId_EventId] ON [dbo].[CommercePaymentReceipts] DISABLE",
@@ -403,6 +411,13 @@ internal static partial class RehearsalFixture
                 "ALTER TABLE dbo.RuntimeDiagnosticIncidents ALTER COLUMN PerformanceEvidenceJson nvarchar(2048) NULL",
                 "UPDATE dbo.RuntimeDiagnosticIncidents SET PerformanceEvidenceJson = '{{}}'; ALTER TABLE dbo.RuntimeDiagnosticIncidents ALTER COLUMN PerformanceEvidenceJson nvarchar(max) NOT NULL",
                 "ALTER TABLE dbo.RuntimeDiagnosticIncidents ADD DEFAULT ('{{}}') FOR PerformanceEvidenceJson"
+            }).ToArray();
+            if (expanded) mutations = mutations.Concat(new[] {
+                "ALTER TABLE dbo.CommerceMerchantAuthorizations ALTER COLUMN ClientProfileId uniqueidentifier NOT NULL",
+                "ALTER TABLE dbo.CommerceMerchantAuthorizations NOCHECK CONSTRAINT FK_CommerceMerchantAuthorizations_CommerceBusinesses_CommerceBusinessId",
+                "ALTER TABLE dbo.CommerceBusinessSettings ALTER COLUMN CustomerAutomationStateJson nvarchar(2048) NULL",
+                "ALTER TABLE dbo.CommerceBusinessSettings ALTER COLUMN ShippingConfigurationJson nvarchar(2048) NULL",
+                "ALTER TABLE dbo.CommerceOrders ALTER COLUMN ShippingLabelStateJson nvarchar(2048) NULL"
             }).ToArray();
             if (store) mutations = mutations.Concat(StoreDrift()).ToArray();
             if (browser) mutations = mutations.Concat(BrowserDrift()).ToArray();
@@ -429,13 +444,13 @@ internal static partial class RehearsalFixture
                 await db.Database.ExecuteSqlRawAsync(mutation, timeout.Token);
                 try
                 {
-                    await CandidateContract.Verify(db, contract, applied, timeout.Token);
+                    await VerifyFixtureContract(db, contract, applied, timeout.Token);
                     throw new InvalidOperationException("Schema drift was accepted");
                 }
                 catch (ProbeObservationFailure error) when (error.Message == "PHYSICAL_SCHEMA_DRIFT") { }
                 await transaction.RollbackAsync(timeout.Token);
             }
-            await CandidateContract.Verify(db, contract, applied, timeout.Token);
+            await VerifyFixtureContract(db, contract, applied, timeout.Token);
         }
         else if (operation == "verify")
         {
@@ -459,6 +474,7 @@ internal static partial class RehearsalFixture
                 await CrmDrift(db, contract, db.Database.GetMigrations().ToArray(), true, timeout.Token);
             }
             if (store) await VerifyStoreData(db, pending, timeout.Token);
+            if (expanded) await VerifyExpandedData(db, payments, timeout.Token);
             if (diagnostics) await VerifyDiagnosticsData(db, timeout.Token);
             if (canonicalPayments) await VerifyCanonicalPaymentData(db, timeout.Token);
             if ((management || browser) && !receptionist) await VerifyManagementPredecessor(db, sql.InitialCatalog, timeout.Token);
@@ -488,15 +504,16 @@ internal static partial class RehearsalFixture
             if (management) await VerifyManagementData(db, timeout.Token);
             if (payments)
             {
-                var orders = await db.CommerceOrders.AsNoTracking().OrderBy(o => o.OrderNumber).ToArrayAsync(timeout.Token);
-                if (orders.Length != 2 || orders.Select(o => o.CommerceBusinessId).Distinct().Count() != 2 ||
+                var allOrders = await db.CommerceOrders.AsNoTracking().OrderBy(o => o.OrderNumber).ToArrayAsync(timeout.Token);
+                var orders = expanded ? allOrders.Where(o => o.CommerceBusinessId != ExpandedBusiness).ToArray() : allOrders;
+                if (allOrders.Length != (expanded ? 3 : 2) || orders.Length != 2 || orders.Select(o => o.CommerceBusinessId).Distinct().Count() != 2 ||
                     orders.Any(o => o.CheckoutAttemptId != "synthetic-shared-attempt" || o.TotalCents != 1234 ||
                         o.SquarePaymentId != "synthetic-legacy-payment" || o.PaymentProvider is not null ||
                         o.PaymentReference is not null || o.PaymentEnvironment is not null))
                     throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
             }
             if (training) await VerifyTrainingData(db, timeout.Token);
-            await CandidateContract.Verify(db, contract, db.Database.GetMigrations().ToArray(), timeout.Token);
+            await VerifyFixtureContract(db, contract, db.Database.GetMigrations().ToArray(), timeout.Token);
             foreach (var column in pending.SelectMany(m => m.Columns).Where(c => c.Table == "MobileProfileSettings"))
             {
                 await using var command = db.Database.GetDbConnection().CreateCommand();
@@ -591,7 +608,7 @@ internal static partial class RehearsalFixture
             if (!rejected) throw new InvalidOperationException("Canonical payment constraint was not enforced");
             await transaction.RollbackAsync(cancellation);
         }
-        await CandidateContract.Verify(db, CandidateContract.Current(db), db.Database.GetMigrations().ToArray(), cancellation);
+        await VerifyFixtureContract(db, CandidateContract.Current(db), db.Database.GetMigrations().ToArray(), cancellation);
     }
 
     private static Domain.Entities.MarketingConnection[] MarketingRows() => new[]

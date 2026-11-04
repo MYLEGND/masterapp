@@ -171,6 +171,8 @@ public sealed class WebsiteLeadAppNotificationWorker(
     IServiceScopeFactory scopes,
     ILogger<WebsiteLeadAppNotificationWorker> logger) : BackgroundService
 {
+    private int orderScanOffset;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
@@ -181,6 +183,8 @@ public sealed class WebsiteLeadAppNotificationWorker(
                 using var scope = scopes.CreateScope();
                 await scope.ServiceProvider.GetRequiredService<WebsiteLeadAppNotificationService>()
                     .DeliverPendingAsync(stoppingToken);
+                orderScanOffset = await scope.ServiceProvider.GetRequiredService<Infrastructure.Commerce.CommerceOrderAppNotificationService>()
+                    .DeliverPendingAsync(stoppingToken, orderScanOffset);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -188,7 +192,7 @@ public sealed class WebsiteLeadAppNotificationWorker(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Website lead app notification projection failed; persisted leads remain retryable.");
+                logger.LogError(ex, "Work app notification projection failed; persisted source records remain retryable.");
             }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));

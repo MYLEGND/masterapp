@@ -1,5 +1,9 @@
 ﻿@inject Microsoft.AspNetCore.Mvc.ViewFeatures.IFileVersionProvider WebsiteFileVersions
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment WebsiteEnvironment
 @{
+    var scriptAssetPath = WebsiteEnvironment.WebRootFileProvider.GetFileInfo("store-assets/js/storefront.js").Exists
+        ? "/store-assets/js/storefront.js" : "/js/storefront.js";
+    var versionedScript = WebsiteFileVersions.AddFileVersionToPath(Context.Request.PathBase, scriptAssetPath);
     var bodyClass = ViewData["BodyClass"] as string ?? "";
     var contentContainerClass = ViewData["ContentContainerClass"] as string ?? "container";
     var layoutContentClass = ViewData["LayoutContentClass"] as string ?? "";
@@ -18,8 +22,17 @@
     var muted = theme?.Muted;
     var font = theme?.FontFamily;
     var radius = theme?.BorderRadius;
-    var commerceStyle = commerce is null ? "" : string.Join(";", new[]
+    var onAccent = ParfaitApp.Services.CommerceThemeContrast.Foreground(primary, secondary, "#6f4b3b");
+    var onSecondary = ParfaitApp.Services.CommerceThemeContrast.Foreground(secondary, surface, "#1f120d");
+    var commerceStyle = string.Join(";", new[]
     {
+        string.IsNullOrWhiteSpace(theme?.SurfaceElevated) ? null : $"--sp-theme-surface-elevated:{theme.SurfaceElevated}",
+        string.IsNullOrWhiteSpace(theme?.SurfaceMuted) ? null : $"--sp-theme-surface-muted:{theme.SurfaceMuted}",
+        string.IsNullOrWhiteSpace(theme?.BorderColor) ? null : $"--sp-theme-border:{theme.BorderColor}",
+        $"--sp-theme-on-elevated:{ParfaitApp.Services.CommerceThemeContrast.Foreground(theme?.SurfaceElevated ?? surface, text, "#ffffff")}",
+        $"--sp-theme-on-accent:{onAccent}",
+        $"--sp-theme-on-secondary:{onSecondary}",
+        $"--sp-theme-on-primary:{onSecondary}",
         string.IsNullOrWhiteSpace(primary) ? null : $"--sp-theme-primary:{primary}",
         string.IsNullOrWhiteSpace(secondary) ? null : $"--sp-theme-secondary:{secondary}",
         string.IsNullOrWhiteSpace(surface) ? null : $"--sp-theme-surface:{surface}",
@@ -175,7 +188,7 @@
         cartStorageKey = commerce?.CartStorageKey ?? "parfaitCart",
         isParfait = commerce?.IsParfait ?? true
     }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));</script>
-<script src="@(storefrontAssetRoot + "/js/storefront.js")"></script>
+<script src="@(storefrontAssetRoot + "/js/storefront.js" + versionedScript[scriptAssetPath.Length..])"></script>
 <script>
     (function () {
         const nav = document.querySelector('.navbar');

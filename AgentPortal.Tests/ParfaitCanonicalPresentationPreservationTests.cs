@@ -18,33 +18,30 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     [Theory]
     [InlineData("Views/Home/Terms.cshtml", "4de5260fa3f13dcb01c6a2398e6ffd214bfffc73")]
     [InlineData("Views/Home/Privacy.cshtml", "97c9060926b2d10f796ff274691b1a25ef2a7484")]
-    // Reviewed runtime-only change: version the inquiry module's child dependency;
-    // the layout, styles and authored presentation remain unchanged.
-    [InlineData("Views/Shared/_Layout.cshtml", "cd6992a223ce15675a287899cbe9fa3bb2946ec3")]
-    [InlineData("Views/Shared/_ScopedWebsiteStoreLayout.cshtml", "029fc02fd970ef15d9f6a0cfced6e509fb65620a")]
+    // Reviewed shared theme contrast and versioned canonical Store assets.
+    [InlineData("Views/Shared/_Layout.cshtml", "ea54109636c07955c556649803c7bb154973320c")]
+    [InlineData("Views/Shared/_ScopedWebsiteStoreLayout.cshtml", "9317cf5cac56399cdb577eb331203a04c3487fb2")]
     [InlineData("Views/Home/Index.cshtml", "9abd970701d5f915d6f0431255869c68e479aed4")]
     // Reviewed Razor invocation and neutral no-photo presentation preserve real images.
     // Both authored stores and the original Parfait layout
     // render _CatalogCards; the original catalog loop is pinned separately below.
     [InlineData("Views/Store/Index.cshtml", "78af8fa9ae2a6584b3a5aae2b60bcd7be40a3e15")]
-    // Reviewed script-only fix: failed or malformed quotes preserve cart state.
-    [InlineData("Views/Store/Cart.cshtml", "cf1a1eb2a7229700b146b83ef558e8d8ed89ac96")]
-    [InlineData("Views/Store/Product.cshtml", "dbc104981c030c42a61153a83e5b3e995781fd78")]
-    // Reviewed payment-flow changes only: hosted-provider handoff retains the
-    // original form/layout and legacy Square wording; cart clearing waits for
-    // server-confirmed payment on success. All other visual pins stay unchanged.
-    // Reviewed canonical inquiry correction: explicit consent replaces silent autosave.
-    [InlineData("Views/Store/Checkout.cshtml", "c17f1ce21aac9ff68fe376227f5b941d1229cd59")]
-    [InlineData("Views/Store/Success.cshtml", "c065e8d011b6fc8e74d6293aaf0496244915d75d")]
+    // Reviewed compact product/cart presentation and atomic browser cart ownership.
+    [InlineData("Views/Store/Cart.cshtml", "b06dd5da8539e472687541d666a6a80a54458d16")]
+    [InlineData("Views/Store/Product.cshtml", "f1cc07935aa5fb282e8889c8a7d21361764b874b")]
+    // Reviewed embedded payment, same-intent recovery, compact receipt and optional
+    // default-selected marketing preference; prior unsubscribe remains authoritative.
+    [InlineData("Views/Store/Checkout.cshtml", "78c4ec8e0a7b1daf459e61147bc583a47c8dcaa6")]
+    [InlineData("Views/Store/Success.cshtml", "17f18291cb88b855ce3d520999292ae8e1aa1985")]
     [InlineData("wwwroot/css/site.css", "10f00e83c8e9b8a9e7428efebe01a40a0072903d")]
     [InlineData("wwwroot/css/home.css", "00f32a42b0f2f1ea1324c6f8897abe91a130ec94")]
-    // Founder-requested canonical public journey refinement:
-    // compact catalog and management components; scoped palette retains Parfait identity.
-    // Authored presentation remains authoritative. All other visual pins are unchanged.
-    [InlineData("wwwroot/css/storefront.css", "cdfdf0cf7e43d93466691be05392257bacc263b5")]
-    // Founder-requested compact internal geometry; single shell authority, page-only light mode and right navigation retained.
-    [InlineData("wwwroot/css/internal.css", "7f8b866876190ea65b9603d5e3bb35c4c4039eb2")]
-    [InlineData("wwwroot/js/storefront.js", "ee0256aa52937cc25831c54b80141b768be72e96")]
+    // Reviewed responsive Store hierarchy and canonical editor theme tokens;
+    // hidden summary rows and original Parfait identity remain preserved.
+    [InlineData("wwwroot/css/storefront.css", "733c53d4feef8cb4de9c0bd29587f2830022de7c")]
+    // Reviewed be032 refines internal header typography and responsive payment-provider cards.
+    // Reviewed shared premium compact layout; single shell, page-only light mode and right navigation remain intact.
+    [InlineData("wwwroot/css/internal.css", "a38d3a9839eb01ca36643178f232fef4ff201611")]
+    [InlineData("wwwroot/js/storefront.js", "fe8a36a50964b16547aa674d5918d7c480dfe123")]
     // Reviewed internal health behavior: unavailable identity evidence must not render as zero.
     // CommerceCoreOwnershipContractTests covers the payload; public design assets remain pinned.
     [InlineData("wwwroot/images/favicon/parfait-logo.png", "805aa941827b0bcdeab370d118bec2d297c2e317")]

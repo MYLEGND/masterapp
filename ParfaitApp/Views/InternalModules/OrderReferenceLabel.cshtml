@@ -1,0 +1,24 @@
+@model Legend.Commerce.Shipping.CommerceOrderReferenceLabel
+@{ Layout = null; }
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Order-reference sticker · @Model.OrderNumber</title>
+<link rel="stylesheet" href="~/css/internal.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/store-assets/css/packing-slip.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/store-assets/css/order-reference-label.css" asp-append-version="true" />
+</head><body>
+<section class="print-controls" aria-label="Printing setup">
+    <div><p class="eyebrow">ORDER REFERENCE</p><h1>Companion QR sticker</h1><p>Separate from your carrier shipping label. This sticker is not postage.</p></div>
+    <button type="button" id="packing-print">Print 4 × 6 sticker</button>
+    <p>Select your thermal printer and 4 × 6 paper. Print at 100% / actual size, with browser headers and footers off. Place beside the carrier label; never cover its barcode.</p>
+</section>
+<main class="order-reference-label">
+    <header><p class="store-name">@Model.StoreName</p><h1>Order reference</h1><strong class="not-postage">NOT POSTAGE</strong></header>
+    <div class="order-reference-qr" aria-label="QR code containing this shipment’s order reference">@Html.Raw(Model.QrSvg)</div>
+    <h2>@Model.OrderNumber</h2>
+    <p>@Model.UnitCount @(Model.UnitCount == 1 ? "unit" : "units") · Ordered @Model.OrderCreatedUtc.ToString("yyyy-MM-dd") UTC</p>
+    <p class="reference-value">@Model.Reference</p>
+    <footer>Internal reference only. A carrier shipping label is required.</footer>
+</main>
+<script src="~/store-assets/js/packing-slip.js" asp-append-version="true" defer></script>
+</body></html>

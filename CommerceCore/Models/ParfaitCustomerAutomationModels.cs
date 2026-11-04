@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace ParfaitApp.Models;
 
@@ -53,6 +54,7 @@ public sealed class ParfaitAutomationWorkflowRecord
     public string CtaUrl { get; set; } = "";
     public string DiscountCode { get; set; } = "";
     public bool IsActive { get; set; } = true;
+    public DateTime? EligibleFromUtc { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }
@@ -80,6 +82,7 @@ public sealed class ParfaitAutomationCartLeadRecord
 
 public sealed class ParfaitAutomationDispatchLogRecord
 {
+    public CommerceShipmentNotice? Shipment { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid WorkflowId { get; set; }
     public string WorkflowName { get; set; } = "";
@@ -97,9 +100,13 @@ public sealed class ParfaitAutomationDispatchLogRecord
 
 public sealed class ParfaitAutomationStoreRecord
 {
+    [JsonIgnore]
+    public string? PersistenceJson { get; set; }
+    public string EmailPostalAddress { get; set; } = "";
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public List<ParfaitAutomationWorkflowRecord> Workflows { get; set; } = [];
     public List<ParfaitAutomationCartLeadRecord> CartLeads { get; set; } = [];
+    [JsonIgnore]
     public List<ParfaitAutomationDispatchLogRecord> Dispatches { get; set; } = [];
 }
 
@@ -119,6 +126,7 @@ public sealed class ParfaitAutomationDiscountOptionViewModel
 
 public sealed class ParfaitAutomationWorkflowCardViewModel
 {
+    public long UpdatedTicks { get; init; }
     public required Guid Id { get; init; }
     public string Name { get; init; } = "";
     public string TriggerType { get; init; } = ParfaitAutomationTriggerTypes.PostPurchase;
@@ -180,6 +188,7 @@ public sealed class ParfaitAutomationDispatchActivityViewModel
 
 public sealed class ParfaitAutomationWorkflowEditorInput
 {
+    public long? ExpectedUpdatedTicks { get; set; }
     public Guid? Id { get; set; }
 
     [Required]
@@ -221,6 +230,9 @@ public sealed class ParfaitAutomationWorkflowEditorInput
 
 public sealed class ParfaitAutomationWorkspaceViewModel
 {
+    public string EmailReadinessMessage { get; init; } = "";
+    public string EmailPostalAddress { get; init; } = "";
+    public long SettingsUpdatedTicks { get; init; }
     public List<ParfaitAutomationWorkflowCardViewModel> Workflows { get; init; } = [];
     public List<ParfaitAutomationCustomerViewModel> Customers { get; init; } = [];
     public List<ParfaitAutomationDispatchActivityViewModel> Activity { get; init; } = [];
@@ -234,6 +246,10 @@ public sealed class ParfaitAutomationWorkspaceViewModel
 
 public sealed class ParfaitAutomationDispatchCandidate
 {
+    public CommerceShipmentNotice? Shipment { get; init; }
+    public long WorkflowUpdatedTicks { get; init; }
+    public Guid? DeliveryId { get; set; }
+    public string? DeliveryClaimToken { get; set; }
     public required Guid CommerceBusinessId { get; init; }
     public required Guid WorkflowId { get; init; }
     public required string WorkflowName { get; init; }
@@ -246,3 +262,14 @@ public sealed class ParfaitAutomationDispatchCandidate
     public string? OrderNumber { get; init; }
     public string? CheckoutAttemptId { get; init; }
 }
+
+public sealed record CommerceEmailPreferencesViewModel(Guid BusinessId, Guid LeadId, string Token, string StoreName, bool Unsubscribed);
+public sealed class CommerceAutomationEmailSettingsInput
+{
+    public long? ExpectedUpdatedTicks { get; set; }
+    [StringLength(800)]
+    public string? PostalAddress { get; set; }
+}
+
+public sealed record CommerceShipmentNotice(Guid OrderId, string Status, string? Carrier, string? Tracking,
+    string Email, string FirstName, bool TrackingCorrection);

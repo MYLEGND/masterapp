@@ -103,6 +103,8 @@ struct LegendApplicationShell: View {
     @State private var pendingMessageConversationID: UUID?
     @State private var accountNavigationPath: [LegendAccountNavigationRoute] = []
     @State private var isPresentingLegendFounderAi = false
+    @State private var workNotificationsOpen = false
+    @State private var engineeringNotificationsOpen = false
 
     init(
         currentSession: MobileSession,
@@ -146,8 +148,36 @@ struct LegendApplicationShell: View {
         .onReceive(NotificationCenter.default.publisher(for: .legendPreferredLanguageDidChange)) { _ in
             Task { await messages.refreshLanguagePresentation() }
         }
+        .sheet(isPresented: $engineeringNotificationsOpen) {
+            LegendInAppNotificationsSheet(activity: activity, currentIdentity: currentSession.actor.identity, social: social, engineeringOnly: true, notificationStore: bootstrap.stores.notifications)
+        }
+        .sheet(isPresented: $workNotificationsOpen) {
+            LegendWorkNotificationsSheet(store: bootstrap.stores.notifications) { id in
+                workNotificationsOpen = false
+                pendingMessageConversationID = id
+                selectedTab = .messages
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .legendOpenNotifications)) { _ in
+            routePendingPush()
+        }
         .task {
+            routePendingPush()
             await account.loadLifecycle()
+        }
+    }
+
+    private func routePendingPush() {
+        if let conversationID = LegendPushNotificationNavigation.consumePendingConversation() {
+            pendingMessageConversationID = conversationID
+            selectedTab = .messages
+        } else if LegendPushNotificationNavigation.consumePendingEngineering() {
+            if currentSession.capabilities.contains("founder") { engineeringNotificationsOpen = true }
+        } else if LegendPushNotificationNavigation.consumePendingWork() {
+            workNotificationsOpen = true
+        } else if LegendPushNotificationNavigation.consumePendingNotifications() {
+            selectedTab = .home
+            scrollChrome.requestHomeAction(.notifications)
         }
     }
 
@@ -245,7 +275,8 @@ struct LegendApplicationShell: View {
                     activity: activity,
                     bootstrap: bootstrap,
                     selectedTab: $selectedTab,
-                    pendingMessageConversationID: $pendingMessageConversationID
+                    pendingMessageConversationID: $pendingMessageConversationID,
+                    openWork: { workNotificationsOpen = true }
                 )
             }
             .task {
@@ -1431,6 +1462,9 @@ private struct LegendHomeView: View {
     @ObservedObject private var activity: LegendDailyActivityStore
     @ObservedObject private var bootstrap: LegendApplicationBootstrapCoordinator
     @State private var presentedScripture: MobileDailyScripture? = nil
+    @State private var engineeringOpen = false
+    let openWork: () -> Void
+    @ObservedObject private var notifications: MobileNotificationStore
 
     init(
         currentSession: MobileSession,
@@ -1440,9 +1474,11 @@ private struct LegendHomeView: View {
         activity: LegendDailyActivityStore,
         bootstrap: LegendApplicationBootstrapCoordinator,
         selectedTab: Binding<LegendAppTab>,
-        pendingMessageConversationID: Binding<UUID?>
+        pendingMessageConversationID: Binding<UUID?>,
+        openWork: @escaping () -> Void
     ) {
         self.currentSession = currentSession
+        self.openWork = openWork
         _selectedTab = selectedTab
         _pendingMessageConversationID = pendingMessageConversationID
         _store = ObservedObject(wrappedValue: store)
@@ -1450,6 +1486,7 @@ private struct LegendHomeView: View {
         _messages = ObservedObject(wrappedValue: messages)
         _activity = ObservedObject(wrappedValue: activity)
         _bootstrap = ObservedObject(wrappedValue: bootstrap)
+        _notifications = ObservedObject(wrappedValue: bootstrap.stores.notifications)
         _presentedScripture = State(initialValue: nil)
     }
 
@@ -1479,6 +1516,9 @@ private struct LegendHomeView: View {
             }
         }
         .legendNextPageBackground()
+        .sheet(isPresented: $engineeringOpen) {
+            LegendInAppNotificationsSheet(activity: activity, currentIdentity: currentSession.actor.identity, social: social, engineeringOnly: true, notificationStore: notifications)
+        }
         .sheet(item: $presentedScripture) { scripture in
             DailyScriptureSheet(scripture: scripture)
         }
@@ -1507,36 +1547,19 @@ private struct LegendHomeView: View {
                 ) {
                     homeHero(home)
                     HStack(spacing: LegendNextSpacing.xs) {
-                        LegendTodayActivitySummaryPill(activity: activity) {
+                        LegendHomeInboxButton(symbol: "checklist", title: LegendLocalized("Today's Activity"), count: activity.plannerUnopenedCount) {
                             scrollChrome.requestHomeAction(.todayActivity)
                         }
-                        .frame(maxWidth: .infinity)
-
-                        Button {
+                        LegendHomeInboxButton(symbol: "briefcase", title: LegendLocalized("Work notifications"), count: notifications.unreadCount(channel: "work"), action: openWork)
+                        LegendHomeInboxButton(symbol: "heart", title: LegendLocalized("Notifications"), count: activity.unreadBadgeCount) {
                             scrollChrome.requestHomeAction(.notifications)
-                        } label: {
-                            ZStack(alignment: .topTrailing) {
-                                Image(systemName: "heart")
-
-                                if activity.unreadBadgeCount > 0 {
-                                    Text("\(min(activity.unreadBadgeCount, 99))")
-                                        .font(.caption2.weight(.bold))
-                                        .foregroundStyle(.white)
-                                        .padding(5)
-                                        .background(
-                                            LegendNextColor.danger,
-                                            in: Circle()
-                                        )
-                                        .offset(x: 4, y: -4)
-                                }
+                        }
+                        if currentSession.capabilities.contains("founder") {
+                            LegendHomeInboxButton(symbol: "wrench.and.screwdriver", title: LegendLocalized("Engineering notifications"), count: notifications.unreadCount(channel: "engineering")) {
+                                engineeringOpen = true
                             }
                         }
-                        .buttonStyle(
-                            LegendNextIconButtonStyle(tone: .navy)
-                        )
-                        .accessibilityLabel(
-                            LegendLocalized("Open notifications, {value1} recent interactions", context: "accessibility copy", arguments: ["value1": String(describing: (activity.unreadBadgeCount))])
-                        )
+                        Spacer(minLength: 0)
                     }
                 }
             }
@@ -2300,7 +2323,7 @@ private struct LegendAgentClientsView: View {
                 LegendNextSectionHeader(
                     eyebrow: LegendLocalized("CRM"),
                     title: LegendLocalized(showArchive ? "Archived clients" : "Client CRM"),
-                    detail: LegendLocalized("{value1} records", arguments: ["value1": String(describing: clients.filter { ($0.archived ?? false) == showArchive && legendCrmMatchesSearch(search, values: [$0.displayName, $0.email, $0.phone]) }.count)])
+                    detail: LegendLocalized("{value1} records", arguments: ["value1": String(describing: clients.filter { ($0.archived ?? false) == showArchive && legendCrmMatchesSearch(search, values: [$0.displayName, $0.entityName, $0.email, $0.phone]) }.count)])
                 )
 
                 HStack(spacing: LegendNextSpacing.sm) {
@@ -2318,16 +2341,16 @@ private struct LegendAgentClientsView: View {
                     Text(LegendLocalized("Active")).tag(false)
                     Text(LegendLocalized("Archive / Deleted")).tag(true)
                 }.pickerStyle(.segmented)
-                if clients.filter({ ($0.archived ?? false) == showArchive && legendCrmMatchesSearch(search, values: [$0.displayName, $0.email, $0.phone]) }).isEmpty {
+                if clients.filter({ ($0.archived ?? false) == showArchive && legendCrmMatchesSearch(search, values: [$0.displayName, $0.entityName, $0.email, $0.phone]) }).isEmpty {
                     LegendNextEmptyState(
                         title: LegendLocalized(!search.isEmpty ? "No matching clients" : showArchive ? "Archive is empty" : "No active client members"),
                         message: LegendLocalized(showArchive ? "Deleted and archived records will appear here." : "Client and Business Client records with active shared-app access will appear here."),
                         systemImage: "person.2")
                 } else {
-                    ForEach(clients.filter { ($0.archived ?? false) == showArchive && legendCrmMatchesSearch(search, values: [$0.displayName, $0.email, $0.phone]) }) { client in
+                    ForEach(clients.filter { ($0.archived ?? false) == showArchive && legendCrmMatchesSearch(search, values: [$0.displayName, $0.entityName, $0.email, $0.phone]) }) { client in
                         LegendContactCard(
                             displayName: client.displayName,
-                            subtitle: client.email,
+                            subtitle: [client.entityName, client.phone].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
                             detail: client.archived == true ? LegendLocalized("Archived / Deleted") : (client.crmStatus.caseInsensitiveCompare("Active") == .orderedSame ? nil : client.crmStatus),
                             onOpen: { selectedRecord = LegendCrmDestination(kind: "clients", recordId: client.profileID.uuidString) },
                             avatar: {
@@ -11825,7 +11848,8 @@ private struct LegendAgentCrmRecordView: View {
                 VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
                     if let record {
                         LegendNextSectionHeader(eyebrow: LegendLocalized(record.kind == "Client" ? "Client account" : "Lead record"),
-                            title: record.displayName, detail: legendCrmLabel(record.stage))
+                            title: record.entityName ?? record.displayName, detail: legendCrmLabel(record.stage))
+                        if record.entityName != nil { Text(record.displayName).font(LegendNextTypography.supporting) }
                         if record.archived == true {
                             Text(LegendLocalized("Archived / Deleted · Read only"))
                             if record.canRestore == true, let profileID = record.profileId {
@@ -12079,5 +12103,144 @@ private struct LegendCrmSearchField: View {
             .background(.white, in: RoundedRectangle(cornerRadius: LegendNextRadius.control))
             .overlay(RoundedRectangle(cornerRadius: LegendNextRadius.control).strokeBorder(LegendNextColor.gold.opacity(0.35), lineWidth: 1))
             .tint(LegendNextColor.textPrimary)
+    }
+}
+
+/// Work is a channel of the same server ledger; opening a row acknowledges that
+/// exact recipient-scoped notification, never the unrelated personal channel.
+private struct LegendWorkNotificationsSheet: View {
+    @ObservedObject var store: MobileNotificationStore
+    let openConversation: (UUID) -> Void
+    @State private var showsOrders = false
+    @State private var selectedOrder: MobileWorkOrder?
+    @Environment(\.dismiss) private var dismiss
+
+    private var items: [MobileNotificationItem] {
+        store.workSnapshot?.notifications.filter { $0.channel == "work" } ?? []
+    }
+
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                    LegendNextSheetHeader(eyebrow: LegendLocalized("Your business"), title: LegendLocalized("Work"), detail: LegendLocalized("Notifications and orders to fulfill."), dismiss: { dismiss() })
+                Picker(LegendLocalized("Work"), selection: $showsOrders) {
+                    Text(LegendLocalized("Notifications")).tag(false)
+                    Text(LegendLocalized("Orders")).tag(true)
+                }.pickerStyle(.segmented)
+                if showsOrders {
+                    if let failure = store.workFailure {
+                        Text(failure).foregroundStyle(LegendNextColor.danger)
+                        Button(LegendLocalized("Retry")) { Task { await store.loadWorkOrders() } }
+                    }
+                    if store.isLoadingWork { ProgressView() }
+                    else if store.workOrders.isEmpty && store.workFailure == nil {
+                        Text(LegendLocalized("No orders awaiting fulfillment."))
+                    }
+                    ForEach(store.workOrders) { order in
+                        Button { selectedOrder = order } label: {
+                            VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                                Text(order.orderNumber).font(LegendNextTypography.cardTitle)
+                                Text(order.businessName ?? "").font(.caption)
+                                Text("\(order.items.reduce(0) { $0 + $1.quantity }) items · \(order.fulfillmentStatus)")
+                                    .font(LegendNextTypography.supporting)
+                            }
+                        }.buttonStyle(.plain)
+                    }
+                } else {
+                if store.workSnapshot != nil && store.workSnapshot?.workChannelsVersion != 1 {
+                    Text(LegendLocalized("Work notifications are temporarily unavailable. Please retry later."))
+                }
+                if store.workNotificationsFailed {
+                    Text(LegendLocalized("Notifications could not be refreshed."))
+                    Button(LegendLocalized("Retry")) { Task { await store.loadWorkNotifications() } }
+                }
+                if store.isLoadingWorkNotifications && store.workSnapshot == nil {
+                    ProgressView()
+                } else if items.isEmpty && !store.workNotificationsFailed && store.workSnapshot?.workChannelsVersion == 1 {
+                    Text(LegendLocalized("No work notifications yet."))
+                        .foregroundStyle(LegendNextColor.textSecondary)
+                }
+                ForEach(items) { item in
+                    Button {
+                        Task {
+                            await store.markRead(item.id)
+                            if let id = item.conversationID { openConversation(id) }
+                        }
+                    } label: {
+                        HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+                            Image(systemName: item.isRead ? "briefcase" : "circle.fill")
+                                .foregroundStyle(LegendNextColor.goldBright)
+                            VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
+                                Text(item.title).font(LegendNextTypography.cardTitle)
+                                Text(item.detail).font(LegendNextTypography.supporting)
+                                    .foregroundStyle(LegendNextColor.textSecondary)
+                                Text(item.occurredUTC, style: .relative).font(.caption)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                }
+            }
+                .padding(LegendNextSpacing.md)
+            }
+            .scrollContentBackground(.hidden)
+            .background(LegendNextCanvas())
+            .font(LegendNextTypography.supporting)
+            .tint(LegendNextColor.gold)
+            .toolbar(.hidden, for: .navigationBar)
+            .refreshable { await store.loadWorkNotifications(); await store.loadWorkOrders() }
+            .task { await store.loadWorkNotifications(); await store.loadWorkOrders() }
+            .sheet(item: $selectedOrder) { order in LegendWorkOrderEditor(order: order, store: store) }
+        }
+    }
+}
+
+private struct LegendWorkOrderEditor: View {
+    let order: MobileWorkOrder
+    @ObservedObject var store: MobileNotificationStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var status: String
+    @State private var carrier: String
+    @State private var tracking: String
+
+    init(order: MobileWorkOrder, store: MobileNotificationStore) {
+        self.order = order
+        self.store = store
+        _status = State(initialValue: order.fulfillmentStatus)
+        _carrier = State(initialValue: order.trackingCarrier ?? "")
+        _tracking = State(initialValue: order.trackingNumber ?? "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(order.businessName ?? "") {
+                    Text(order.orderNumber).font(.headline)
+                    ForEach(Array(order.items.enumerated()), id: \.offset) { _, line in
+                        Text("\(line.quantity) × \(line.productName) · \(line.size)")
+                    }
+                }
+                Section(LegendLocalized("Ship to")) {
+                    Text("\(order.firstName) \(order.lastName)")
+                    Text([order.addressLine1, order.addressLine2, "\(order.city), \(order.state) \(order.postalCode)"].compactMap { $0 }.joined(separator: "\n"))
+                }
+                Section(LegendLocalized("Fulfillment")) {
+                    Picker(LegendLocalized("Status"), selection: $status) {
+                        ForEach(order.allowedStatuses, id: \.self) { Text(LegendLocalized($0)).tag($0) }
+                    }
+                    TextField(LegendLocalized("Carrier"), text: $carrier)
+                    TextField(LegendLocalized("Tracking number"), text: $tracking).textInputAutocapitalization(.never)
+                    if let failure = store.workFailure { Text(failure).foregroundStyle(LegendNextColor.danger) }
+                    Button(LegendLocalized("Save fulfillment")) {
+                        Task { if await store.fulfill(order, status: status, carrier: carrier, tracking: tracking) { dismiss() } }
+                    }.disabled(store.savingOrderID != nil)
+                }
+            }
+            .navigationTitle(LegendLocalized("Order"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(LegendLocalized("Close")) { dismiss() } } }
+        }
     }
 }

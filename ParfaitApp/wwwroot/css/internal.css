@@ -2,9 +2,9 @@
    components, forms and analytics share these same semantic roles. */
 :root {
     color-scheme: dark;
-    --pf-base-rgb: 9, 18, 31;
-    --pf-raised-rgb: 20, 33, 50;
-    --pf-accent-rgb: 213, 181, 119;
+    --pf-base-rgb: 7, 13, 23;
+    --pf-raised-rgb: 18, 29, 44;
+    --pf-accent-rgb: 190, 153, 83;
     --pf-text-rgb: 237, 241, 246;
     --pf-muted-rgb: 166, 180, 198;
     --pf-cocoa-rgb: var(--pf-accent-rgb);
@@ -41,7 +41,7 @@
     --pf-info-text: #97c2f7;
     --pf-warning-bg: rgba(224, 177, 89, .10);
     --pf-warning-line: rgba(224, 177, 89, .3);
-    --pf-warning-text: #e7c381;
+    --pf-warning-text: #f2b273;
     --pf-danger-bg: rgba(240, 118, 126, .10);
     --pf-danger-line: rgba(240, 118, 126, .3);
     --pf-danger-text: #f4a0a6;
@@ -57,6 +57,12 @@
     --pf-nav-surface-strong: var(--pf-surface);
     --pf-nav-text: var(--pf-text);
     --pf-nav-muted: var(--pf-text-muted);
+    --pf-control-height: 36px;
+    --pf-control-padding: 7px 12px;
+    --pf-panel-padding: 12px;
+    --pf-modal-padding: 12px 16px;
+    --pf-content-gap: 12px;
+    --pf-notes-height: 72px;
     --pf-radius-sm: 8px;
     --pf-radius-md: 12px;
     --pf-radius-lg: 16px;
@@ -121,9 +127,9 @@
 }
 
 :root[data-commerce-theme="parfait"] {
-    --pf-base-rgb: 24, 18, 15;
-    --pf-raised-rgb: 43, 33, 27;
-    --pf-accent-rgb: 217, 177, 122;
+    --pf-base-rgb: 15, 13, 12;
+    --pf-raised-rgb: 31, 26, 23;
+    --pf-accent-rgb: 194, 152, 83;
     --pf-text-rgb: 247, 240, 232;
     --pf-muted-rgb: 190, 173, 157;
 }
@@ -376,19 +382,25 @@ html {
 /* === PARFAIT ACTIVE INTERNAL PAGE SHELL START === */
 .pf-page-shell {
     width: 100%;
-    padding: 14px 20px 24px;
+    padding: 24px clamp(16px, 2.5vw, 48px) 40px;
 }
 
 .pf-shell {
-    width: min(100%, 1320px);
+    width: min(100%, 1560px);
     margin: 0 auto;
+    padding: clamp(16px, 2vw, 28px);
+    border: 1px solid var(--pf-line-strong);
+    border-top-color: var(--pf-line-bold);
+    border-radius: var(--pf-radius-lg);
+    background: var(--pf-bg);
+    box-shadow: var(--pf-shadow-hero);
     display: grid;
-    gap: 12px;
+    gap: 20px;
 }
 
 .pf-shell > .pf-command-page {
     display: grid;
-    gap: 12px;
+    gap: 20px;
 }
 
 .pf-shell > .pf-command-page > header {
@@ -416,7 +428,7 @@ html {
 .pf-header-card {
     position: relative;
     overflow: hidden;
-    padding: 0 clamp(1rem, 2vw, 1.45rem);
+    padding: 0 clamp(1.25rem, 2.5vw, 3rem);
     border: 1px solid var(--pf-nav-line);
     border-top: 0;
     border-bottom-left-radius: 0;
@@ -435,9 +447,9 @@ html {
 }
 
 .pf-header-inner {
-    width: min(100%, 1320px);
+    width: 100%;
     margin: 0 auto;
-    padding: 10px 0;
+    padding: 14px 0;
 }
 
 .pf-header-main {
@@ -451,7 +463,7 @@ html {
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 0.72rem;
+    gap: 1rem;
 }
 
 .pf-page-mode {
@@ -460,15 +472,15 @@ html {
 }
 
 .pf-page-mode select {
-    min-height: 36px;
-    max-width: 112px;
-    padding: .35rem .5rem;
+    min-height: 48px;
+    max-width: 132px;
+    padding: .5rem .75rem;
     border: 1px solid var(--pf-line);
     border-radius: var(--pf-radius-sm);
     background: var(--pf-surface);
     color: var(--pf-text);
     font: inherit;
-    font-size: .8rem;
+    font-size: .9rem;
 }
 
 .pf-brandmark {
@@ -481,8 +493,8 @@ html {
 }
 
 .pf-brand-emblem {
-    width: 44px;
-    height: 44px;
+    width: 52px;
+    height: 52px;
     flex: 0 0 auto;
     display: grid;
     place-items: center;
@@ -511,11 +523,9 @@ html {
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--pf-nav-text);
-    font-size: clamp(1.34rem, 1.95vw, 1.68rem);
+    font-size: clamp(1.125rem, 1.7vw, 1.75rem);
     font-weight: 800;
-    font-style: italic;
-    font-stretch: 112%;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.045em;
     line-height: 1;
     text-transform: uppercase;
 }
@@ -1196,7 +1206,7 @@ html {
 }
 
 .pf-automation-form-grid textarea.form-control {
-    min-height: 148px;
+    min-height: calc(var(--pf-notes-height) + 24px);
 }
 
 .pf-automation-form-meta {
@@ -1223,7 +1233,7 @@ html {
 
 .pf-internal-body .form-control,
 .pf-internal-body .form-select {
-    min-height: 42px;
+    min-height: var(--pf-control-height);
     border: 1.3px solid var(--pf-line-strong);
     border-radius: var(--pf-radius-sm);
     background: var(--pf-surface);
@@ -1233,7 +1243,7 @@ html {
 }
 
 .pf-internal-body textarea.form-control {
-    min-height: 132px;
+    min-height: var(--pf-notes-height);
     resize: vertical;
 }
 
@@ -1475,7 +1485,7 @@ html {
 
 .pf-variant-row {
     display: grid;
-    grid-template-columns: minmax(76px, 0.72fr) minmax(84px, 0.76fr) minmax(98px, 0.84fr) auto minmax(104px, auto) auto;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 110px), 1fr));
     gap: 0.45rem;
     align-items: center;
     padding: 0.68rem;
@@ -1487,7 +1497,7 @@ html {
 
 .pf-discount-row {
     display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.85fr) minmax(0, 0.8fr) minmax(0, 0.9fr) auto auto;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 110px), 1fr));
     gap: 0.55rem;
     align-items: center;
     padding: 0.72rem;
@@ -1892,6 +1902,7 @@ html {
 
 .pf-order-detail-list strong {
     display: block;
+    overflow-wrap: anywhere;
     margin-top: 0.18rem;
     color: var(--pf-text);
     font-size: 0.98rem;
@@ -2280,7 +2291,7 @@ html {
     justify-content: space-between;
     gap: 18px;
     align-items: start;
-    padding: 18px 22px;
+    padding: var(--pf-modal-padding);
     border-bottom: 1px solid var(--pf-line);
     background: var(--pf-surface);
 }
@@ -2288,29 +2299,36 @@ html {
 .pf-order-modal-head h2 {
     margin: 4px 0 0;
     color: var(--pf-text);
-    font-size: clamp(1.45rem, 2.6vw, 2.25rem);
+    font-size: clamp(1.25rem, 2vw, 1.65rem);
     font-weight: 800;
     letter-spacing: -.035em;
 }
 
 .pf-order-modal-body {
     display: grid;
-    gap: 14px;
-    padding: 18px;
+    gap: var(--pf-content-gap);
+    padding: var(--pf-modal-padding);
 }
 
 .pf-order-modal-summary {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
+    gap: var(--pf-content-gap);
+    padding-bottom: var(--pf-content-gap);
+    border-bottom: 1px solid var(--pf-line);
 }
 
-.pf-order-modal-summary article,
+.pf-order-modal-summary article {
+    padding: 0;
+    min-width: 0;
+}
+
+
 .pf-order-detail-panel {
-    border: 1px solid var(--pf-line);
-    border-radius: var(--pf-radius-md);
-    background: var(--pf-surface);
-    padding: 15px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
 }
 
 .pf-order-modal-summary span,
@@ -2320,9 +2338,9 @@ html {
 
 .pf-order-modal-summary strong {
     display: block;
-    margin-top: 6px;
+    margin-top: 3px;
     color: var(--pf-text);
-    font-size: 1.35rem;
+    font-size: 1rem;
     font-weight: 800;
 }
 
@@ -2351,6 +2369,7 @@ html {
 
 .pf-order-detail-list strong {
     display: block;
+    overflow-wrap: anywhere;
     margin-top: 3px;
     color: var(--pf-text);
     font-weight: 850;
@@ -2368,10 +2387,9 @@ html {
     grid-template-columns: 54px minmax(0, 1fr) auto;
     gap: 10px;
     align-items: center;
-    padding: 10px;
-    border: 1px solid var(--pf-line);
-    border-radius: 14px;
-    background: var(--pf-surface);
+    padding: 10px 0;
+    border-bottom: 1px solid var(--pf-line);
+    background: transparent;
 }
 
 .pf-order-items img,
@@ -2429,9 +2447,26 @@ html {
     color: var(--pf-text);
 }
 
+.pf-order-secondary-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding-block: var(--pf-content-gap);
+}
+
+.pf-order-secondary-actions > * {
+    flex: 1 1 auto;
+}
+
+.pf-order-receipt-form > button {
+    flex: 1 1 auto;
+}
+
 .pf-order-actions,
 .pf-order-receipt-form {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
     gap: 10px;
     margin: 0;
@@ -2505,7 +2540,7 @@ html {
 .pf-modal-dialog {
     width: 100%;
     max-width: min(1340px, calc(100vw - 40px));
-    max-height: calc(100vh - 48px);
+    max-height: calc(100dvh - 48px);
     display: flex;
 }
 
@@ -2536,11 +2571,12 @@ html {
 }
 
 .pf-modal-header {
+    flex: 0 0 auto;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 1rem;
-    padding: 18px 22px;
+    padding: var(--pf-modal-padding);
     border-bottom: 1px solid var(--pf-line);
 }
 
@@ -2558,15 +2594,17 @@ html {
 
 .pf-modal-body {
     flex: 1 1 auto;
+    min-height: 0;
     overflow: auto;
-    padding: 20px 22px;
+    padding: var(--pf-modal-padding);
 }
 
 .pf-modal-footer {
+    flex: 0 0 auto;
     display: flex;
     justify-content: flex-end;
     gap: 0.7rem;
-    padding: 12px 16px 16px;
+    padding: var(--pf-modal-padding);
     border-top: 1px solid var(--pf-line);
 }
 
@@ -2581,10 +2619,6 @@ html {
 .pf-modal-body section,
 .pf-modal-body article {
     border-radius: var(--pf-radius-md);
-}
-
-.pf-modal-body textarea {
-    min-height: 110px;
 }
 
 .pf-media-panel,
@@ -3195,7 +3229,11 @@ html {
     }
 
     .pf-page-shell {
-        padding-inline: 12px;
+        padding-inline: 8px;
+    }
+
+    .pf-shell {
+        padding: 12px;
     }
 
     .pf-header-card {
@@ -3271,20 +3309,31 @@ html {
     }
 
     .pf-header-inner {
-        padding: 13px 0 15px;
+        padding: 8px 0;
+    }
+
+    .pf-header-left {
+        gap: .625rem;
+    }
+
+    .pf-page-mode select {
+        min-height: 44px;
+        max-width: 104px;
+        padding: .4rem .5rem;
+        font-size: .8rem;
     }
 
     .pf-brand-emblem {
         width: 44px;
         height: 44px;
-        border-radius: 14px;
+        border-radius: 10px;
     }
 
     .pf-modal-dialog,
     .pf-modal-xl,
     .pf-modal-lg {
         width: 100%;
-        max-height: calc(100vh - 24px);
+        max-height: calc(100dvh - 24px);
     }
 
     .pf-product-modal,
@@ -3304,6 +3353,18 @@ html {
 .pf-internal-main,
 main.pf-internal-main {
     background: var(--pf-page);
+}
+
+.pf-payment-provider-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+    gap: 12px;
+    align-items: start;
+}
+
+.pf-payment-provider-grid form {
+    display: grid;
+    gap: 12px;
 }
 
 /* Smart grids */
@@ -3453,6 +3514,11 @@ main.pf-internal-main {
     min-height: 40px;
 }
 
+/* Compact controls retain touch-size targets on coarse pointers. */
+@media (pointer: coarse) {
+    :root { --pf-control-height: 44px; }
+}
+
 /* Buttons: compact, visible, row-smart */
 .pf-command-board-actions,
 .pf-commerce-panel-head > div:last-child,
@@ -3479,11 +3545,13 @@ button.pf-secondary-action,
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 38px;
+    min-height: var(--pf-control-height);
     width: auto;
-    white-space: nowrap;
-    border-radius: 999px;
-    padding: 9px 15px;
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
+    border-radius: var(--pf-radius-sm);
+    padding: var(--pf-control-padding);
     font-weight: 800;
     line-height: 1;
     text-decoration: none;
@@ -3586,13 +3654,6 @@ button.pf-secondary-action,
     .pf-modal-grid {
         grid-template-columns: 1fr;
     }
-
-    .pf-action,
-    .pf-secondary-action,
-    button.pf-action,
-    button.pf-secondary-action {
-        width: 100%;
-    }
 }
 
 /* === PARFAIT CLEAN GLOBAL INTERNAL UI SYSTEM END === */
@@ -3602,8 +3663,8 @@ button.pf-secondary-action,
 
 .pf-menu-button {
     flex-shrink: 0;
-    width: 46px;
-    height: 46px;
+    width: 48px;
+    height: 48px;
     border-radius: var(--pf-radius-md);
     border: 1px solid var(--pf-line);
     background: var(--pf-surface);
@@ -3650,10 +3711,10 @@ button.pf-secondary-action,
     justify-content: space-between;
     gap: 1rem;
     min-width: 0;
-    padding: .8rem 1rem;
+    padding: clamp(18px, 2vw, 28px);
     border: 1px solid var(--pf-line);
     border-radius: var(--pf-radius-md);
-    background: var(--pf-surface);
+    background: linear-gradient(115deg, rgba(var(--pf-accent-rgb), .08), transparent 60%), var(--pf-bg);
     box-shadow: none;
     color: var(--pf-text);
 }
@@ -3672,10 +3733,10 @@ button.pf-secondary-action,
 .pf-dashboard-head h1 {
     margin: 0;
     color: var(--pf-text);
-    font-size: clamp(1.25rem, 2vw, 1.55rem);
+    font-size: clamp(1.65rem, 2.4vw, 2.25rem);
     font-weight: 800;
-    letter-spacing: -.045em;
-    line-height: 1;
+    letter-spacing: -.035em;
+    line-height: 1.12;
 }
 
 .pf-command-text,
@@ -3685,7 +3746,7 @@ button.pf-secondary-action,
     max-width: 68ch;
     margin: .45rem 0 0;
     color: var(--pf-text-muted);
-    font-size: .875rem;
+    font-size: .95rem;
     font-weight: 600;
     line-height: 1.45;
 }
@@ -3779,6 +3840,7 @@ button.pf-secondary-action,
 }
 
 .pf-sidebar-head {
+    flex: 0 0 auto;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -3822,7 +3884,9 @@ button.pf-secondary-action,
 }
 
 .pf-nav {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    overscroll-behavior: contain;
     overflow-y: auto;
     padding: 18px 16px;
 }
@@ -3868,9 +3932,12 @@ button.pf-secondary-action,
 }
 
 .pf-sidebar-footer {
-    padding: 16px;
+    flex: 0 0 auto;
+    display: grid;
+    gap: 10px;
+    padding: 14px 16px max(14px, env(safe-area-inset-bottom));
     border-top: 1px solid var(--pf-line);
-    background: rgba(0, 0, 0, .6);
+    background: var(--pf-nav-bg);
 }
 
 .pf-sidebar-utility-grid {
@@ -3926,7 +3993,7 @@ button.pf-secondary-action,
     }
 
     .pf-sidebar-utility-grid {
-        grid-template-columns: 1fr;
+        gap: 8px;
     }
 }
 
@@ -3941,14 +4008,6 @@ button.pf-secondary-action,
     gap: 12px;
 }
 
-.pf-dashboard-command .pf-secondary-action {
-    min-height: 36px;
-    padding: 8px 13px;
-    border: 1px solid var(--pf-line);
-    background: var(--pf-surface);
-    color: var(--pf-text);
-    box-shadow: none;
-}
 
 .pf-dashboard-command .pf-secondary-action:hover {
     border-color: var(--pf-line);
@@ -4400,3 +4459,15 @@ button.pf-secondary-action,
     }
 }
 /* === PARFAIT BUSINESS PLATFORM CONSOLE END === */
+
+/* Revenue direction always includes a textual label and a stated comparison. */
+.pf-revenue-performance {
+    display: block;
+    margin-top: 8px;
+    font-size: .8rem;
+    font-weight: 800;
+    line-height: 1.4;
+}
+.pf-revenue-performance.is-success { color: var(--pf-success-text); }
+.pf-revenue-performance.is-warning { color: var(--pf-warning-text); }
+.pf-revenue-performance.is-danger { color: var(--pf-danger-text); }

@@ -65,7 +65,7 @@ internal static partial class RehearsalFixture
                 catch (SqlException error) when (error.Number == 51000) { refused = true; }
                 if (!refused || before != await BrowserDownSnapshot(db, ct))
                     throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-                await CandidateContract.Verify(db, CandidateContract.Current(db), db.Database.GetMigrations().ToArray(), ct);
+                await VerifyFixtureContract(db, CandidateContract.Current(db), db.Database.GetMigrations().ToArray(), ct);
             }
             finally { await transaction.RollbackToSavepointAsync("browser_down", ct); }
         }

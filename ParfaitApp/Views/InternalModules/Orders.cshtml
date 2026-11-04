@@ -1,3 +1,4 @@
+@inject ParfaitApp.Services.ParfaitOrderService RevenueOrders
 @model ParfaitApp.Models.ParfaitOrderAdminViewModel
 @using ParfaitApp.Models
 @{
@@ -9,9 +10,19 @@
         isScopedCommerceManager
             ? Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, scopedPath, commerceManagerTicket, scopedPath == "/commerce/manage/products" ? "GET" : "POST")
             : internalPath;
+    var displayedOrders = Model.SearchResults ?? Model.Orders;
+    var ordersUrl = isScopedCommerceManager
+        ? Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/orders", commerceManagerTicket, "GET")
+        : "/internal/commerce/orders";
     var productsUrl = CommerceAction("/internal/commerce/products", "/commerce/manage/products");
     var orderUpdateAction = CommerceAction("/internal/commerce/orders/update", "/commerce/manage/order");
     var orderReceiptAction = CommerceAction("/internal/commerce/orders/receipt", "/commerce/manage/order/receipt");
+    var packingSlipUrl = isScopedCommerceManager
+        ? Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/order/packing-slip", commerceManagerTicket, "GET")
+        : "/internal/commerce/orders/packing-slip";
+
+    var shippingSetupUrl = Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/shipping", commerceManagerTicket, "GET");
+    var shippingOrderUrl = Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/order/shipping", commerceManagerTicket, "GET");
 
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
     static string MoneyField(int cents) => cents <= 0 ? "" : (cents / 100m).ToString("0.00");
@@ -20,6 +31,7 @@
     static string FulfillmentTone(ParfaitOrderRecord order) => string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase) ? "success" : string.Equals(order.FulfillmentStatus, "Shipped", StringComparison.OrdinalIgnoreCase) ? "info" : string.Equals(order.FulfillmentStatus, "Cancelled", StringComparison.OrdinalIgnoreCase) ? "danger" : "warning";
     static string ReturnTone(ParfaitOrderRecord order) => string.Equals(order.ReturnStatus, "None", StringComparison.OrdinalIgnoreCase) ? "muted" : string.Equals(order.ReturnStatus, "Refunded", StringComparison.OrdinalIgnoreCase) ? "info" : string.Equals(order.ReturnStatus, "Closed", StringComparison.OrdinalIgnoreCase) ? "success" : "warning";
 
+    var revenuePerformance = RevenueOrders.GetRevenuePerformance(Model.Orders, DateTime.UtcNow);
     var activeQueueTone = Model.OpenFulfillmentCount > 0 ? "warning" : "success";
     var returnQueueTone = Model.ReturnQueueCount > 0 ? "warning" : "info";
     var shippedCount = Model.Orders.Count(order => string.Equals(order.FulfillmentStatus, "Shipped", StringComparison.OrdinalIgnoreCase));
@@ -35,6 +47,7 @@
         </div>
         <div class="pf-orders-head-actions">
             <a class="pf-secondary-action" href="@productsUrl">Products</a>
+            <a class="pf-secondary-action" href="@shippingSetupUrl">Shipping setup</a>
             @if (!isScopedCommerceManager) { <a class="pf-secondary-action" href="/internal/analytics">Analytics</a> }
         </div>
     </header>
@@ -46,10 +59,22 @@
 
     <section class="pf-orders-kpis">
         <article class="pf-orders-kpi"><span>Orders</span><strong>@Model.Orders.Count</strong><small>@Model.PaidOrderCount paid · @Model.PendingOrderCount pending</small></article>
-        <article class="pf-orders-kpi"><span>Revenue after refunds</span><strong>@Money(Model.RevenueCents)</strong><small>@Money(Model.AverageOrderValueCents) average · @Model.RefundedOrderCount refunded</small></article>
+        <article class="pf-orders-kpi"><span>Revenue after refunds · all time</span><strong>@Money(Model.RevenueCents)</strong><small>@Money(Model.AverageOrderValueCents) average · @Model.RefundedOrderCount refunded</small><partial name="_RevenuePerformance" model="revenuePerformance" /></article>
         <article class="pf-orders-kpi is-@activeQueueTone"><span>Fulfillment</span><strong>@Model.OpenFulfillmentCount</strong><small>@shippedCount shipped · @fulfilledCount fulfilled</small></article>
         <article class="pf-orders-kpi is-@returnQueueTone"><span>Returns</span><strong>@Model.ReturnQueueCount</strong><small>@Model.FailedOrderCount failed payments</small></article>
     </section>
+
+    <form method="get" action="@ordersUrl" class="d-flex flex-wrap align-items-end gap-2" role="search">
+        @if (isScopedCommerceManager && !Context.Items.ContainsKey("LegendStoreSession") && !string.IsNullOrWhiteSpace(commerceManagerTicket))
+        { <input type="hidden" name="ticket" value="@commerceManagerTicket" /> }
+        @if (!string.IsNullOrWhiteSpace(Context.Request.Query["businessKey"].ToString()))
+        { <input type="hidden" name="businessKey" value="@Context.Request.Query["businessKey"]" /> }
+        <label class="flex-grow-1" for="orderSearch">Find an order
+            <input class="form-control" id="orderSearch" type="search" name="search" value="@Model.SearchQuery" placeholder="Order number, name, phone or email" />
+        </label>
+        <button type="submit" class="pf-secondary-action">Search</button>
+        @if (!string.IsNullOrEmpty(Model.SearchQuery)) { <a class="pf-secondary-action" href="@ordersUrl">Clear</a> }
+    </form>
 
     <section class="pf-orders-surface">
         <div class="pf-orders-surface-head">
@@ -57,17 +82,17 @@
                 <h2>Order Queue</h2>
                 <p>Click any order to inspect, update, resend receipt, or review line items.</p>
             </div>
-            <span>@Model.Orders.Count orders</span>
+            <span>@displayedOrders.Count of @Model.Orders.Count orders</span>
         </div>
 
-        @if (Model.Orders.Count == 0)
+        @if (displayedOrders.Count == 0)
         {
-            <div class="text-muted">No orders yet.</div>
+            <div class="text-muted">@(string.IsNullOrEmpty(Model.SearchQuery) ? "No orders yet." : "No orders match your search.")</div>
         }
         else
         {
             <div class="pf-orders-list">
-                @foreach (var order in Model.Orders)
+                @foreach (var order in displayedOrders)
                 {
                     var modalId = $"orderModal{order.OrderNumber}";
                     var primaryItem = order.Items.FirstOrDefault();
@@ -131,7 +156,7 @@
     </section>
 </section>
 
-@foreach (var order in Model.Orders)
+@foreach (var order in displayedOrders)
 {
     var modalId = $"orderModal{order.OrderNumber}";
 
@@ -190,17 +215,24 @@
                             <div class="pf-order-panel-head"><h3>Workflow</h3></div>
 
                             <form method="post" action="@orderUpdateAction" class="pf-order-form" data-pf-order-form>
+                                <input type="hidden" name="ExpectedUpdatedTicks" value="@(order.UpdatedUtc?.Ticks ?? 0)" />
                                 @Html.AntiForgeryToken()
                                 <input type="hidden" name="OrderNumber" value="@order.OrderNumber" />
 
                                 <div class="pf-order-form-grid">
                                     <label>Payment
+                                        @if (order.PaymentManagedByProcessor) {
+                                            <input class="form-control" value="@order.PaymentStatus" readonly aria-label="Processor payment status" />
+                                            <input type="hidden" name="PaymentStatus" value="@order.PaymentStatus" />
+                                            <small>Manage payment and refunds in Payments.</small>
+                                        } else {
                                         <select class="form-select" name="PaymentStatus">
                                             <option value="Pending" selected="@string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase)">Pending</option>
                                             <option value="Paid" selected="@string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)">Paid</option>
                                             <option value="Failed" selected="@string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase)">Failed</option>
                                             <option value="Refunded" selected="@string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase)">Refunded</option>
                                         </select>
+                                        }
                                     </label>
 
                                     <label>Fulfillment
@@ -228,13 +260,13 @@
                                     </label>
 
                                     <label>Refunded Amount
-                                        <input class="form-control pf-money-display" type="number" min="0" step="0.01" value="@MoneyField(order.RefundedCents)" />
+                                        <input class="form-control pf-money-display" readonly="@order.PaymentManagedByProcessor" type="number" min="0" step="0.01" value="@MoneyField(order.RefundedCents)" />
                                         <input type="hidden" name="RefundedCents" value="@order.RefundedCents" class="pf-money-hidden" />
                                     </label>
 
-                                    <label>Carrier <input class="form-control" name="TrackingCarrier" value="@order.TrackingCarrier" /></label>
-                                    <label>Tracking <input class="form-control" name="TrackingNumber" value="@order.TrackingNumber" /></label>
-                                    <label class="pf-full">Admin Notes <textarea class="form-control" name="AdminNotes" rows="3">@order.AdminNotes</textarea></label>
+                                    <label>Carrier <input class="form-control" name="TrackingCarrier" maxlength="120" value="@order.TrackingCarrier" /></label>
+                                    <label>Tracking <input class="form-control" name="TrackingNumber" maxlength="160" value="@order.TrackingNumber" /></label>
+                                    <label class="pf-full">Admin Notes <textarea class="form-control" name="AdminNotes" rows="3" maxlength="2000">@order.AdminNotes</textarea></label>
                                 </div>
 
                                 <div class="pf-order-actions">
@@ -243,11 +275,16 @@
                                 </div>
                             </form>
 
+                            <div class="pf-order-secondary-actions">
                             <form method="post" action="@orderReceiptAction" class="pf-order-receipt-form">
                                 @Html.AntiForgeryToken()
                                 <input type="hidden" name="orderNumber" value="@order.OrderNumber" />
                                 <button type="submit" class="pf-secondary-action">Resend Receipt</button>
                             </form>
+
+                            <a class="pf-secondary-action" target="_blank" rel="noopener" href="@Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(packingSlipUrl, "orderNumber", order.OrderNumber)">Packing slip</a>
+                            <a class="pf-secondary-action" href="@Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(shippingOrderUrl, "orderNumber", order.OrderNumber)">Shipping label</a>
+                            </div>
 
                             <div class="pf-order-detail-list">
                                 <div><span>Payment Reference</span><strong>@(string.IsNullOrWhiteSpace(order.PaymentReferenceId) ? "Not captured" : order.PaymentReferenceId)</strong></div>

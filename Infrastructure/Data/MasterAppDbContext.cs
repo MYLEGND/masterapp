@@ -766,6 +766,8 @@ public class MasterAppDbContext : DbContext
         modelBuilder.Entity<CommerceBusinessSettings>(e =>
         {
             e.HasKey(x => x.Id);
+            e.Property(x => x.ShippingConfigurationJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT").IsConcurrencyToken();
+            e.Property(x => x.CustomerAutomationStateJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT").IsConcurrencyToken();
             e.Property(x => x.GlobalDiscountCode).HasMaxLength(80);
             e.Property(x => x.GlobalDiscountType).IsRequired().HasMaxLength(40);
             e.Property(x => x.TaxPercent).HasPrecision(9, 4);
@@ -902,6 +904,7 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<CommerceOrder>(e =>
         {
+            e.Property(x => x.ShippingLabelStateJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT").IsConcurrencyToken();
             e.HasKey(x => x.Id);
             e.Property(x => x.OrderNumber).IsRequired().HasMaxLength(80);
             e.Property(x => x.Status).IsRequired().HasMaxLength(40);

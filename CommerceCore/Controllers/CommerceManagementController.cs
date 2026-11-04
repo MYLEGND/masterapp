@@ -47,11 +47,13 @@ public sealed partial class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         var actor = tickets.TryUnprotect(ticket);
-        if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        if (store is null || actor is null || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        var profileId = actor.ActorClientProfileId;
         if (environment is not ("Production" or "Sandbox")) return BadRequest();
         ApplyManagementViewData(store, ticket, "payments");
         var service = HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>();
         var model = await service.ListAsync(store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail, environment, ct);
+        ViewData["CanUsePlatformPaymentAccount"] = await service.CanUsePlatformAccountAsync(store.CommerceBusinessId, actor.ActorUserId, ct);
         var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
         ViewData["MerchantPayments"] = await (from attempt in db.CommercePaymentAttempts.AsNoTracking()
             join order in db.CommerceOrders.AsNoTracking() on attempt.CommerceOrderId equals order.Id
@@ -71,7 +73,8 @@ public sealed partial class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         var actor = tickets.TryUnprotect(ticket);
-        if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        if (store is null || actor is null || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        var profileId = actor.ActorClientProfileId;
         if (environment is not ("Production" or "Sandbox")) return BadRequest();
         await HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>().ListAsync(
             store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail, environment, ct);
@@ -102,7 +105,8 @@ public sealed partial class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         var actor = tickets.TryUnprotect(ticket);
-        if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        if (store is null || actor is null || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        var profileId = actor.ActorClientProfileId;
         if (!confirmRefund || amountMinor <= 0 || !Guid.TryParseExact(requestKey, "N", out _) || environment is not ("Production" or "Sandbox")) return BadRequest();
         await HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>().ListAsync(
             store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail, environment, ct);
@@ -134,11 +138,18 @@ public sealed partial class CommerceManagementController(
         if (!authorizeSharing) return BadRequest("Authorize sharing account details with your payment processor to continue.");
         var store = await ResolveAsync(ticket, ct);
         var actor = tickets.TryUnprotect(ticket);
-        if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        if (store is null || actor is null || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        var profileId = actor.ActorClientProfileId;
         if (environment is not ("Production" or "Sandbox")) return BadRequest();
         var callback = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/commerce/manage/payments/callback";
         try
         {
+            if (provider == "PlatformBilling")
+            {
+                await HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>()
+                    .BindPlatformAccountAsync(store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail, environment, ct);
+                return ManagerRedirect(nameof(Payments), new { ticket, environment });
+            }
             var redirect = await HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>()
                 .BeginAsync(store.CommerceBusinessId, profileId, actor.ActorUserId, actor.ActorEmail,
                     provider, environment, callback, await ProviderContinuationAsync(ticket, "settings", 10, ct), ct);
@@ -156,7 +167,8 @@ public sealed partial class CommerceManagementController(
         if (!authorizeSharing) return BadRequest("Authorize sharing account details with your payment processor to continue.");
         var store = await ResolveAsync(ticket, ct);
         var actor = tickets.TryUnprotect(ticket);
-        if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        if (store is null || actor is null || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        var profileId = actor.ActorClientProfileId;
         var callback = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/commerce/manage/payments/callback";
         try
         {
@@ -180,7 +192,8 @@ public sealed partial class CommerceManagementController(
             var continuation = await ResolveProviderContinuationAsync(ticket, "settings", "/internal/settings/payments", ct);
             var store = continuation?.Store ?? await ResolveAsync(ticket, ct);
             var actor = continuation?.Actor ?? tickets.TryUnprotect(ticket);
-            if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+            if (store is null || actor is null || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        var profileId = actor.ActorClientProfileId;
             if (!string.IsNullOrEmpty(error))
                 return BadRequest("Provider authorization was not completed. Return to Payments to try again.");
             await service.CompleteAsync(store.CommerceBusinessId, profileId, actor.ActorUserId,
@@ -206,7 +219,8 @@ public sealed partial class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         var actor = tickets.TryUnprotect(ticket);
-        if (store is null || actor?.ActorClientProfileId is not Guid profileId || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        if (store is null || actor is null || string.IsNullOrWhiteSpace(actor.ActorUserId)) return Unauthorized();
+        var profileId = actor.ActorClientProfileId;
         if (environment is not ("Production" or "Sandbox")) return BadRequest();
         var service = HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>();
         try
@@ -389,6 +403,8 @@ public sealed partial class CommerceManagementController(
         if (store is null) return Unauthorized();
 
         ApplyManagementViewData(store, ticket, "dashboard");
+        ViewData["PaymentConfigured"] = await HttpContext.RequestServices.GetRequiredService<MerchantConnectionService>()
+            .IsCheckoutConfiguredAsync(store.CommerceBusinessId, configuration["MerchantPayments:CheckoutEnvironment"] ?? "Production", ct);
         return View("~/Views/Dashboard/Index.cshtml", await workspace.GetSnapshotAsync(
             store.CommerceBusinessId,
             ResolveAnalyticsScope(store),
@@ -564,7 +580,7 @@ public sealed partial class CommerceManagementController(
     [HttpGet("orders")]
     public async Task<IActionResult> Orders(
         [FromQuery] string ticket,
-        CancellationToken ct = default)
+        CancellationToken ct = default, [FromQuery] string? search = null)
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
@@ -579,6 +595,8 @@ public sealed partial class CommerceManagementController(
         return View("~/Views/InternalModules/Orders.cshtml", new ParfaitOrderAdminViewModel
         {
             Orders = scopedOrders,
+            SearchQuery = search?.Trim() ?? "",
+            SearchResults = string.IsNullOrWhiteSpace(search) ? scopedOrders : orders.SearchOrders(store.CommerceBusinessId, search).ToList(),
             PaidOrderCount = paidOrders.Count(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)),
             PendingOrderCount = scopedOrders.Count(order => string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase)),
             FailedOrderCount = scopedOrders.Count(order => string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase)),
@@ -799,6 +817,18 @@ public sealed partial class CommerceManagementController(
         return ManagerRedirect(nameof(Products), new { ticket });
     }
 
+    [HttpGet("order/packing-slip")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PackingSlip(string ticket, string orderNumber, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        var order = orders.GetOrder(store.CommerceBusinessId, orderNumber);
+        if (order is null) return NotFound();
+        ApplyManagementViewData(store, ticket, "orders");
+        return View("~/Views/InternalModules/PackingSlip.cshtml", order);
+    }
+
     [HttpPost("order")]
     public async Task<IActionResult> UpdateOrder(
         string ticket,
@@ -807,8 +837,11 @@ public sealed partial class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        if (!orders.UpdateOrder(store.CommerceBusinessId, request))
-            return NotFound();
+        if (!orders.UpdateOrder(store.CommerceBusinessId, request, out var error))
+        {
+            TempData["OrderStatus"] = error;
+            return ManagerRedirect(nameof(Orders), new { ticket });
+        }
         TempData["OrderStatus"] = $"Order {request.OrderNumber} updated.";
         return ManagerRedirect(nameof(Orders), new { ticket });
     }
@@ -837,6 +870,25 @@ public sealed partial class CommerceManagementController(
         return ManagerRedirect(nameof(Orders), new { ticket });
     }
 
+    [HttpPost("automations/email-settings")]
+    public async Task<IActionResult> SaveAutomationEmailSettings(string ticket, [FromForm] CommerceAutomationEmailSettingsInput input, CancellationToken ct = default)
+    {
+        var store = await ResolveAsync(ticket, ct);
+        if (store is null) return Unauthorized();
+        try
+        {
+            automations.SaveEmailSettings(store.CommerceBusinessId, input);
+            TempData["AutomationStatus"] = "Email settings saved.";
+            TempData["AutomationStatusTone"] = "success";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["AutomationStatus"] = ex.Message;
+            TempData["AutomationStatusTone"] = "danger";
+        }
+        return ManagerRedirect(nameof(Automations), new { ticket });
+    }
+
     [HttpPost("automations/workflows")]
     public async Task<IActionResult> SaveAutomationWorkflow(
         string ticket,
@@ -845,9 +897,18 @@ public sealed partial class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        automations.SaveWorkflow(store.CommerceBusinessId, input);
-        TempData["AutomationStatus"] = "Automation saved.";
-        TempData["AutomationStatusTone"] = "success";
+        try
+        {
+            if (!ModelState.IsValid) throw new InvalidOperationException("Complete the required workflow details.");
+            automations.SaveWorkflow(store.CommerceBusinessId, input);
+            TempData["AutomationStatus"] = "Automation saved.";
+            TempData["AutomationStatusTone"] = "success";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["AutomationStatus"] = ex.Message;
+            TempData["AutomationStatusTone"] = "danger";
+        }
         return ManagerRedirect(nameof(Automations), new { ticket });
     }
 
@@ -855,13 +916,22 @@ public sealed partial class CommerceManagementController(
     public async Task<IActionResult> DeleteAutomationWorkflow(
         string ticket,
         [FromForm] Guid id,
+        [FromForm] long expectedUpdatedTicks,
         CancellationToken ct = default)
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        automations.DeleteWorkflow(store.CommerceBusinessId, id);
-        TempData["AutomationStatus"] = "Automation deleted.";
-        TempData["AutomationStatusTone"] = "success";
+        try
+        {
+            automations.DeleteWorkflow(store.CommerceBusinessId, id, expectedUpdatedTicks);
+            TempData["AutomationStatus"] = "Automation deleted.";
+            TempData["AutomationStatusTone"] = "success";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["AutomationStatus"] = ex.Message;
+            TempData["AutomationStatusTone"] = "danger";
+        }
         return ManagerRedirect(nameof(Automations), new { ticket });
     }
 

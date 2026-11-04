@@ -27,16 +27,18 @@ public sealed class MobileNotificationsController : MobileApiControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> List([FromQuery] int? take, CancellationToken cancellationToken)
+    public async Task<IActionResult> List([FromQuery] int? take, CancellationToken cancellationToken, [FromQuery] string? channel = null)
     {
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null)
             return resolved.Error;
 
-        var snapshot = await _notifications.GetSnapshotAsync(
-            resolved.Actor!.Actor,
-            take ?? 50,
-            cancellationToken);
+        if (channel is not (null or "work" or "personal" or "engineering"))
+            return Error(400, "mobile_notification_channel_invalid", "Choose a supported notification channel.");
+        if (channel == "engineering" && !AgentPortal.Security.FounderGuard.IsFounder(User)) return Forbid();
+        var snapshot = channel == null
+            ? await _notifications.GetSnapshotAsync(resolved.Actor!.Actor, take ?? 50, cancellationToken)
+            : await _notifications.GetChannelSnapshotAsync(resolved.Actor!.Actor, take ?? 50, channel, cancellationToken);
         return Ok(ToResponse(snapshot));
     }
 
@@ -84,6 +86,17 @@ public sealed class MobileNotificationsController : MobileApiControllerBase
             badge.UnreadCount,
             badge.Revision,
             badge.UpdatedUtc));
+    }
+
+    [HttpDelete("engineering/{notificationId:guid}")]
+    [AgentPortal.Security.FounderOnly]
+    public async Task<IActionResult> DismissEngineering(Guid notificationId, CancellationToken cancellationToken)
+    {
+        if (!AgentPortal.Security.FounderGuard.IsFounder(User)) return Forbid();
+        var resolved = await ResolveActorAsync(cancellationToken);
+        if (resolved.Error is not null) return resolved.Error;
+        await _notifications.DismissEngineeringNotificationAsync(resolved.Actor!.Actor, notificationId, cancellationToken);
+        return NoContent();
     }
 
     [HttpPost("clear-badges")]
@@ -309,7 +322,7 @@ public sealed class MobileNotificationsController : MobileApiControllerBase
             notification.ConversationId,
             notification.OccurredUtc,
             notification.IsRead,
-            notification.IsCleared)).ToArray());
+            notification.IsCleared)).ToArray()) { ChannelUnreadCounts = snapshot.ChannelUnreadCounts };
 }
 
 public sealed record MobileNotificationUnreadCountDto(
@@ -325,11 +338,19 @@ public sealed record MobileNotificationDto(
     Guid? ConversationId,
     DateTime OccurredUtc,
     bool IsRead,
-    bool IsCleared);
+    bool IsCleared)
+{
+    public string Channel => NotificationChannel.ForKind(Kind);
+}
 
 public sealed record MobileNotificationSnapshotDto(
     MobileNotificationUnreadCountDto Badge,
-    IReadOnlyList<MobileNotificationDto> Notifications);
+    IReadOnlyList<MobileNotificationDto> Notifications)
+{
+    public int WorkChannelsVersion => 1;
+    public int EngineeringChannelsVersion => 1;
+    public IReadOnlyDictionary<string, int> ChannelUnreadCounts { get; init; } = new Dictionary<string, int>();
+}
 
 public sealed record MobileApnsDeviceRegistrationRequest(
     string? DeviceToken,

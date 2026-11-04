@@ -546,7 +546,7 @@ public sealed partial class CommerceManagementCapabilityPolicyTests
                 .AddSingleton(new MerchantConnectionService(Db, protection, Array.Empty<IMerchantPaymentGateway>(), configuration)).BuildServiceProvider();
             var stores = Stores = new CommerceStoreContextService(Db, new CommerceBusinessScopeResolver(Db), null!, new WebsiteDomainService(Db, Mock.Of<System.Net.Http.IHttpClientFactory>(), configuration), configuration);
             Meta = new(configuration, Mock.Of<System.Net.Http.IHttpClientFactory>(), protection, Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.Analytics.MarketingMetaAdsOAuthService>.Instance);
-            Controller = new(Tickets, configuration, stores, new ParfaitProductService(null!, Db), null!, null!, null!, null!, null!, Meta, null!, null!)
+            Controller = new(Tickets, configuration, stores, new ParfaitProductService(null!, Db), new ParfaitOrderService(Db), null!, null!, null!, null!, Meta, null!, null!)
             { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = services } } };
             Controller.Url = Mock.Of<IUrlHelper>();
             Controller.HttpContext.Request.Method = "GET";

@@ -24,17 +24,20 @@ public class GraphMailService : IGraphMailService
         _db = db;
     }
 
-    private (string StoreName, string? OrdersInbox, bool IsParfait) ResolveMerchant(ParfaitOrderRecord order)
+    private (string StoreName, string? OrdersInbox, bool IsParfait) ResolveMerchant(ParfaitOrderRecord order) =>
+        ResolveBusinessMerchant(order.CommerceBusinessId);
+
+    private (string StoreName, string? OrdersInbox, bool IsParfait) ResolveBusinessMerchant(Guid businessId)
     {
         // Production orders must resolve the original SQL tenant, not a default
         // "Shop Parfait" label or a globally configured orders inbox.
-        if (order.CommerceBusinessId == Guid.Empty)
+        if (businessId == Guid.Empty)
             throw new InvalidOperationException("Order commerce business identity is required for mail delivery.");
         if (_db is null)
             throw new InvalidOperationException("Canonical commerce business authority is unavailable.");
 
         var merchant = _db.CommerceBusinesses.AsNoTracking().SingleOrDefault(x =>
-            x.Id == order.CommerceBusinessId && x.IsActive && x.Status == "Active")
+            x.Id == businessId && x.IsActive && x.Status == "Active")
             ?? throw new InvalidOperationException("Order business is unavailable.");
 
         var isParfait = string.Equals(merchant.Key, "parfait", StringComparison.OrdinalIgnoreCase);
@@ -179,14 +182,16 @@ $@"
         await SendMailAsync(graph, senderUpn, inboxes, $"[{siteName}] New paid order {order.OrderNumber}", html, ct);
     }
 
-    public async Task SendAutomationEmailAsync(string toEmail, string subject, string htmlBody, CancellationToken ct = default)
+    public async Task SendAutomationEmailAsync(Guid businessId, string toEmail, string subject, string htmlBody, CancellationToken ct = default)
     {
         var senderUpn = ResolveSenderUpn();
         if (string.IsNullOrWhiteSpace(senderUpn))
             throw new InvalidOperationException("Missing SenderUpn/Contact:SenderEmail config.");
 
         var graph = BuildClient();
-        await SendMailAsync(graph, senderUpn, [toEmail.Trim()], subject.Trim(), htmlBody, ct);
+        var merchant = ResolveBusinessMerchant(businessId);
+        await SendMailAsync(graph, senderUpn, [toEmail.Trim()], subject.Trim(), htmlBody, ct,
+            merchant.StoreName, merchant.OrdersInbox, disableAutomaticRetries: true);
     }
 
     public async Task SendParfaitTeamInviteAsync(
@@ -297,11 +302,20 @@ $@"
         IReadOnlyCollection<string> recipients,
         string subject,
         string htmlBody,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? senderName = null,
+        string? replyTo = null,
+        bool disableAutomaticRetries = false)
     {
         var msg = new Message
         {
             Subject = subject,
+            From = string.IsNullOrWhiteSpace(senderName) ? null : new Recipient {
+                EmailAddress = new EmailAddress { Address = senderUpn, Name = senderName }
+            },
+            ReplyTo = string.IsNullOrWhiteSpace(replyTo) ? null : [new Recipient {
+                EmailAddress = new EmailAddress { Address = replyTo }
+            }],
             Body = new ItemBody
             {
                 ContentType = BodyType.Html,
@@ -322,6 +336,11 @@ $@"
             SaveToSentItems = true
         };
 
-        await graph.Users[senderUpn].SendMail.PostAsync(body, cancellationToken: ct);
+        await graph.Users[senderUpn].SendMail.PostAsync(body, request =>
+        {
+            // The durable commerce receipt owns retry decisions for this non-idempotent send.
+            if (disableAutomaticRetries)
+                request.Options.Add(new Microsoft.Kiota.Http.HttpClientLibrary.Middleware.Options.RetryHandlerOption { MaxRetry = 0 });
+        }, cancellationToken: ct);
     }
 }

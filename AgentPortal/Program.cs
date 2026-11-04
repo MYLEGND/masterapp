@@ -75,7 +75,8 @@ builder.Services
         options.Filters.Add<AgentAccountLifecycleAuthorizeFilter>();
     })
     .AddMicrosoftIdentityUI()
-    .AddApplicationPart(typeof(MessagingHub).Assembly);
+    .AddApplicationPart(typeof(MessagingHub).Assembly)
+    .AddMobileCommerceAuthority();
 
 // ✅ REQUIRED: Identity UI endpoints are Razor Pages
 builder.Services.AddRazorPages().AddMicrosoftIdentityUI();

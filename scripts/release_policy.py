@@ -164,6 +164,60 @@ TRUSTED_ADDED_TOOL_PATHS = frozenset({
 })
 
 
+def source_integration_requested(sha):
+    # Presence is a hold, never a permissive fallback for malformed markers.
+    return 'sourceIntegration' in read_request(sha)
+
+
+def source_integration(before, revision, admission):
+    """Authenticate source synchronization only; no resource history is advanced."""
+    import re
+    request, previous = read_request(revision), read_request(before)
+    value = request.get('sourceIntegration')
+    def sha(item):
+        return isinstance(item, str) and re.fullmatch('[a-f0-9]{40}', item) is not None
+    required = {'approved-release-security-validation.yml',
+                'masterapp-platform-architecture-validation.yml', 'parfait-isolated-validation.yml'}
+    if (not isinstance(value, dict) or set(value) != {'schemaVersion', 'baseRevision', 'sourceRevision'}
+        or type(value['schemaVersion']) is not int or value['schemaVersion'] != 1
+        or not all(sha(item) for item in (before, revision, value.get('sourceRevision'), admission.get('candidate')))
+        or value['baseRevision'] != before or 'trustedToolPromotion' in request
+        or request.get('releaseMode') != 'validate-only' or request.get('targets') != []
+        or request.get('cloudflareWebsiteRouting') is not False or request.get('preserveLiveTargets') is not False
+        or request.get('requestedBy') != 'Founder'
+        or any(not isinstance(request.get(key), str) or not request[key].strip() for key in ('requestId', 'authorization', 'purpose'))
+        or request['requestId'] == previous.get('requestId')
+        or admission.get('executionAuthority') != revision
+        or type(admission.get('sourcePr')) is not int or admission['sourcePr'] < 1
+        or not isinstance(admission.get('validation'), dict) or set(admission['validation']) != required):
+        raise ValueError('SOURCE_INTEGRATION_AUTHORIZATION_UNPROVEN')
+    mutable = {'requestedBy', 'authorization', 'purpose', 'requestId', 'releaseMode', 'targets',
+               'cloudflareWebsiteRouting', 'preserveLiveTargets', 'trustedToolPromotion', 'sourceIntegration'}
+    if ({key: item for key, item in request.items() if key not in mutable}
+        != {key: item for key, item in previous.items() if key not in mutable}):
+        raise ValueError('SOURCE_INTEGRATION_HISTORY_CHANGED')
+    def git(*args):
+        result = subprocess.run(['git', *args], capture_output=True, text=True, check=False)
+        if result.returncode:
+            raise ValueError('SOURCE_INTEGRATION_IMMUTABLE_SOURCE_UNPROVEN')
+        return result.stdout
+    candidate, source = admission['candidate'], value['sourceRevision']
+    if git('rev-list', '--parents', '-n', '1', revision).split() != [revision, before, candidate]:
+        raise ValueError('SOURCE_INTEGRATION_MERGE_CHANGED')
+    git('merge-base', '--is-ancestor', before, source)
+    git('merge-base', '--is-ancestor', source, candidate)
+    git('diff', '--quiet', candidate, revision)
+    git('diff', '--quiet', source, candidate, '--', '.', ':!' + REQUEST)
+    if git('diff', '--no-renames', '--name-status', '-z', source, candidate, '--') != 'M\0' + REQUEST + '\0':
+        raise ValueError('SOURCE_INTEGRATION_UNREVIEWED_SOURCE')
+    entries = [git('ls-tree', '-z', ref, '--', REQUEST) for ref in (before, source, candidate)]
+    if any(not re.fullmatch(r'100644 blob [a-f0-9]{40}\t' + re.escape(REQUEST) + '\x00', entry) for entry in entries):
+        raise ValueError('SOURCE_INTEGRATION_REQUEST_MODE_CHANGED')
+    return dict(schemaVersion=1, phase='source-integration', productionEligible=False,
+        authorizesMutation=False, baseRevision=before, sourceRevision=source,
+        executionAuthority=revision, requestId=request['requestId'], requestEntry=entries[-1], source=admission)
+
+
 def tool_promotion_requested(sha):
     # Presence, including null/malformed/stale values, must never fall through
     # into normal publication. The exact validator owns positive admission.
@@ -276,7 +330,7 @@ def trusted_tool_promotion(before, revision, admission):
     if (not isinstance(value, dict) or set(value) != {'schemaVersion', 'baseRevision', 'sourceRevision', 'files'}
         or type(value['schemaVersion']) is not int or value['schemaVersion'] != 1
         or not all(sha(v) for v in (before, revision, value.get('baseRevision'), value.get('sourceRevision')))
-        or value['baseRevision'] != before or request.get('releaseMode') != 'validate-only'
+        or value['baseRevision'] != before or 'sourceIntegration' in request or request.get('releaseMode') != 'validate-only'
         or request.get('targets') != [] or request.get('cloudflareWebsiteRouting') is not False
         or request.get('preserveLiveTargets') is not False
         or request.get('requestedBy') != 'Founder' or not isinstance(request.get('requestId'), str) or not request['requestId']

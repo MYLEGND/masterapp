@@ -602,6 +602,7 @@
         : {showInNavigation:true,order:0,isDeleted:false};
       navigation.showInNavigation=navigation.showInNavigation!==false;
       navigation.isDeleted=navigation.isDeleted===true;
+      navigation.isPublished=navigation.isPublished!==false;
       navigation.order=Number.isFinite(Number(navigation.order)) ? Number(navigation.order) : 0;
       if(navigation.showInNavigation && !navigation.isDeleted && !String(navigation.label||'').trim())
         navigation.label=defaultNavigationLabel(route,title);
@@ -1490,6 +1491,20 @@
     host.appendChild(add);
   }
 
+  // Same opaque-hex contrast contract as CommerceThemeContrast on server-rendered Store pages.
+  function storeThemeForeground(background, preferred, fallbackBackground) {
+    const rgb=value=>/^#[0-9a-f]{6}$/i.test(String(value||''))
+      ? {r:parseInt(value.slice(1,3),16),g:parseInt(value.slice(3,5),16),b:parseInt(value.slice(5,7),16)} : null;
+    if(background&&!rgb(background)&&preferred) return preferred;
+    const bg=rgb(background)||rgb(fallbackBackground);
+    if(!bg) throw new Error('A canonical opaque hex fallback is required.');
+    const luminance=relativeLuminance(bg);
+    const contrast=value=>(Math.max(luminance,value)+.05)/(Math.min(luminance,value)+.05);
+    const candidate=rgb(preferred);
+    if(candidate&&contrast(relativeLuminance(candidate))>=4.5) return preferred;
+    return contrast(1)>=contrast(0)?'#ffffff':'#000000';
+  }
+
   function applyTheme(theme) {
     const root = document.documentElement;
     const strings = {
@@ -1519,6 +1534,14 @@
       if (theme?.[key]) root.style.setProperty(cssVar, theme[key]);
       else root.style.removeProperty(cssVar);
     });
+    const computedTheme=window.getComputedStyle?.(root);
+    const resolved=(key,fallback)=>theme?.[key]||computedTheme?.getPropertyValue(fallback)?.trim()||null;
+    const accent=theme?.goldStrong||theme?.gold||resolved('goldStrong','--web-gold-strong')||resolved('gold','--web-gold');
+    const secondary=theme?.navyDeep||theme?.navy||resolved('navyDeep','--web-navy-deep');
+    const surface=resolved('surface','--web-surface');
+    root.style.setProperty('--web-on-accent',storeThemeForeground(accent,secondary,'#6f4b3b'));
+    root.style.setProperty('--web-on-secondary',storeThemeForeground(secondary,surface,'#1f120d'));
+    root.style.setProperty('--web-on-elevated',storeThemeForeground(theme?.surfaceElevated||surface,resolved('text','--web-ink'),'#ffffff'));
     const numberValue=key=>{
       const value=theme?.[key];
       return value==null || typeof value==='boolean' || (typeof value==='string' && !value.trim())
@@ -4778,7 +4801,19 @@
   }
 
   function applyBusinessPageNavigation() {
-    if (SITE_KEY !== 'business') return;
+    if (SITE_KEY !== 'business') {
+      const pages=new Map(websitePageEntries(true).map(page=>[page.route,page]));
+      for(const [path,navigation] of Object.entries(renderInput?.pageNavigation || {})) {
+        if(editorMode) break;
+        pages.set(canonicalSiteRoute(path),{deleted:navigation.isDeleted===true,published:navigation.isPublished!==false,showInNavigation:navigation.showInNavigation!==false});
+      }
+      document.querySelectorAll('.site-header nav a[href],.site-header .nav a[href]').forEach(link=>{
+        const route=canonicalSiteRoute(new URL(link.getAttribute('href'),location.href).pathname);
+        const page=pages.get(route);
+        if(page && (page.deleted || page.published===false || page.showInNavigation===false)) link.remove();
+      });
+      return;
+    }
     const header=document.querySelector('.site-header');
     const nav=header?.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]') || document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
     if (!nav) return;
@@ -4791,7 +4826,7 @@
     // the catalog; doing so lets stale/default links survive beside managed
     // pages and creates duplicate banner tabs.
     const entries=websitePageEntries(false)
-      .filter(value=>value.showInNavigation!==false && !value.deleted && !value.parentPath)
+      .filter(value=>value.showInNavigation!==false && value.published!==false && !value.deleted && !value.parentPath)
       .sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0) || a.route.localeCompare(b.route));
 
     nav.querySelectorAll('[data-legend-page-nav="true"],a:not([data-legend-store-nav])').forEach(node=>node.remove());
@@ -4964,7 +4999,9 @@
   }
 
   function storeIsEnabled() {
-    return documentState.store?.enabled === true && storeContext?.enabled === true && !!storeContext?.storefrontUrl;
+    const page=documentState.pages?.['/store'];
+    return documentState.store?.enabled === true && storeContext?.enabled === true && !!storeContext?.storefrontUrl &&
+      (editorMode || (page?.navigation?.isPublished!==false && page?.navigation?.isDeleted!==true));
   }
 
   function effectiveCartIcon() {
@@ -5106,6 +5143,7 @@
         showInNavigation:page.showInNavigation !== false,
         parentPath:normalizePageRoute(page.parentPath),
         order:Number.isFinite(Number(page.order)) ? Number(page.order) : index * 10,
+        published:page.published !== false,
         deleted:page.deleted === true
       });
     });
@@ -5135,6 +5173,7 @@
         nativeRoute:previous?.nativeRoute===true,
         legacyTemplatePath:normalizePageRoute(legacy?.templatePath),
         deleted:navigation.isDeleted===true,
+        published:navigation.isPublished!==false,
         showInNavigation:navigation.showInNavigation!==false,
         parentPath:normalizePageRoute(navigation.parentPath),
         order:Number.isFinite(Number(navigation.order))?Number(navigation.order):0
@@ -5506,7 +5545,7 @@
       open.disabled=entry.deleted; open.setAttribute('aria-current',String(entry.route===current));
       open.addEventListener('click',()=>void navigateToEditorPage(entry.route)); row.appendChild(open);
 
-      if (SITE_KEY==='business') {
+      {
         const label=document.createElement('input');
         label.type='text'; label.maxLength=120; label.value=entry.label; label.setAttribute('aria-label',`Navigation label for ${entry.route}`);
         label.disabled=entry.deleted;
@@ -5535,7 +5574,10 @@
           applyBusinessPageNavigation();
           refreshPageSelector();
         });
-        row.appendChild(visible);
+        const visibilityLabel=document.createElement('label');
+        visibilityLabel.title='Hide the navigation link only; the published page remains available at its direct address.';
+        visibilityLabel.append(visible,document.createTextNode('Show link'));
+        row.appendChild(visibilityLabel);
 
         const remove=document.createElement('button'); remove.type='button';
         const home=entry.route==='/';
@@ -5557,20 +5599,20 @@
         row.appendChild(remove);
       }
 
-      if (SITE_KEY==='protect' && entry.route==='/trainingpackages') {
-        // This obsolete Protect-only route has a recoverable retirement action,
-        // not the business site's arbitrary page creation/removal permissions.
-        open.disabled=true;
-        const retire=document.createElement('button'); retire.type='button';
-        retire.textContent=entry.deleted?'Training page retired':'Retire training page';
-        retire.disabled=entry.deleted;
-        retire.addEventListener('click',async()=>{
-          retire.disabled=true;
-          try { await creativeApplyMutationBatch([{type:'removePage',pagePath:entry.route}]); }
-          catch(error) { retire.disabled=false; alert(error.message || 'The page could not be retired.'); }
-        });
-        row.appendChild(retire);
-      }
+      const publicationLabel=document.createElement('label');
+      publicationLabel.className='legend-cms-page-publication';
+      const published=document.createElement('input'); published.type='checkbox';
+      published.checked=entry.published!==false && !entry.deleted;
+      published.disabled=entry.deleted;
+      published.setAttribute('aria-label',`Publish ${entry.label}`);
+      published.addEventListener('change',event=>{
+        checkpoint();
+        ensurePageRecord(entry.route).navigation.isPublished=event.target.checked;
+        markDirty(); renderPageManager();
+      });
+      publicationLabel.title='Unpublish to hide this page from visitors and direct links. Saved content stays available here; publish again to restore it.';
+      publicationLabel.append(published,document.createTextNode('Published page'));
+      row.appendChild(publicationLabel);
       host.appendChild(row);
     }
   }
@@ -5691,6 +5733,9 @@
 
   async function updateStore(enabled,labelValue=null,cartIconValue=null,cartIconSizeValue=null) {
     if (!editorMode || saving) return;
+    // Store operations return the canonical draft. Persist pending canvas edits
+    // first, just as page navigation does, before replacing that local document.
+    if (dirty) { const saved=await save(false); if(!saved || dirty) return; }
     const status=document.getElementById('legend-cms-status');
     if(status) status.textContent=enabled?'Setting up your store…':'Removing Store page…';
     try {
@@ -8562,7 +8607,7 @@
   function relativeLuminance(rgb) {
     const channel=value=>{
       const normalized=Math.max(0,Math.min(255,value))/255;
-      return normalized<=.03928 ? normalized/12.92 : Math.pow((normalized+.055)/1.055,2.4);
+      return normalized<=.04045 ? normalized/12.92 : Math.pow((normalized+.055)/1.055,2.4);
     };
     return .2126*channel(rgb.r)+.7152*channel(rgb.g)+.0722*channel(rgb.b);
   }

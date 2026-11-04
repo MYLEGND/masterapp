@@ -136,7 +136,7 @@ public static class CommerceServiceRegistration
             ApplyInternalRoutes(application);
             var allowed = new[] {
                 typeof(StoreController), typeof(StoreCartController),
-                typeof(StoreCheckoutController), typeof(TrainingSubscriptionsController), typeof(MerchantPaymentWebhookController), typeof(ParfaitPublicPreviewController),
+                typeof(StoreCheckoutController), typeof(StoreEmailPreferencesController), typeof(TrainingSubscriptionsController), typeof(MerchantPaymentWebhookController), typeof(ParfaitPublicPreviewController),
                 typeof(CommerceManagementController)
             };
             var assembly = typeof(StoreController).Assembly;
@@ -206,6 +206,11 @@ public static class CommerceServiceRegistration
         services.AddScoped<TrainingEnrollmentService>();
         services.AddScoped<MerchantCheckoutService>();
         services.AddScoped<MerchantPaymentCompletionService>();
+        services.AddHttpClient("CommerceShipping", client => client.Timeout = TimeSpan.FromSeconds(45))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddScoped<Legend.Commerce.Shipping.ICommerceShippingProvider, Legend.Commerce.Shipping.EasyPostShippingProvider>();
+        services.AddScoped<Legend.Commerce.Shipping.ICommerceShippingProvider, Legend.Commerce.Shipping.ShippoShippingProvider>();
+        services.AddScoped<Legend.Commerce.Shipping.CommerceShippingService>();
         services.AddScoped<ParfaitOrderService>();
         services.AddScoped<ParfaitCustomerAutomationService>();
         services.AddScoped<CommerceSignalService>();

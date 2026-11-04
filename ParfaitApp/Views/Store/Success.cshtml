@@ -1,13 +1,17 @@
 @model ParfaitApp.Models.ParfaitOrderSuccessViewModel
 @{
-    ViewData["Title"] = "Order Confirmed";
+    var order = Model.Order;
+    var title = order is null ? "Order not found"
+        : order.IsPaid ? "Order confirmed"
+        : order.IsFailedPayment ? "Payment not completed"
+        : order.IsPendingPayment ? "Payment pending" : "Order details";
+    ViewData["Title"] = title;
     ViewData["BodyClass"] = "sp-body";
     ViewData["ContentContainerClass"] = "container-fluid";
     ViewData["LayoutContentClass"] = "sp-layout-content";
     var commerce = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
     var storeRoot = ViewData["StoreRootPath"] as string ?? "/store";
     var storeName = commerce?.StoreName ?? "Parfait";
-
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
 }
 
@@ -16,176 +20,113 @@
 }
 
 <section class="sp-store-page sp-store-page--success">
-    <div class="sp-shell sp-transaction-page">
-        @if (Model.Order is not null)
-        {
-            <header class="sp-transaction-header sp-success-hero">
-                <div>
-                    <div class="sp-success-hero-top">
-                        <span class="sp-stock-pill is-success">@Model.Order.PaymentStatus</span>
-                        <span class="sp-stock-pill is-info">@Model.Order.OrderNumber</span>
-                    </div>
-                    <p class="sp-transaction-kicker">@storeName Receipt</p>
-                    <h1>Order Confirmed</h1>
-                </div>
-                <div class="sp-transaction-actions">
-                    <a class="sp-button sp-button--ghost" href="@storeRoot">Back To Shop</a>
-                </div>
-            </header>
-        }
-
-        <div class="sp-flow-layout sp-success-layout">
-            @if (Model.Order is null)
+    <article class="sp-shell sp-receipt" aria-labelledby="receipt-title">
+        <header class="sp-receipt-header">
+            <p class="sp-receipt-kicker">@storeName</p>
+            <h1 id="receipt-title">@title</h1>
+            @if (order is not null)
             {
-                <div class="sp-flow-card sp-success-card sp-success-card--summary">
-                    <h1>Order Not Found</h1>
-                    <p>We could not find the order details for this confirmation page.</p>
-
-                    <div class="sp-success-actions">
-                        <a class="sp-button sp-button--primary" href="@storeRoot">Back to Shop</a>
-                    </div>
-                </div>
+                <p class="sp-receipt-reference"><span>Order @order.OrderNumber</span><span>Payment: @order.PaymentStatus</span></p>
             }
-            else
+            @if (order is null)
             {
-                var order = Model.Order;
-
-                <section class="sp-flow-card sp-flow-rail sp-success-card sp-success-card--summary">
-                    <div class="sp-summary-head">
-                        <div>
-                            <span class="sp-flow-label">Paid</span>
-                            <h2>Order Summary</h2>
+                <p class="sp-receipt-note">We could not find the order details for this confirmation page.</p>
+            }
+            else if (!order.IsPaid)
+            {
+                <p class="sp-receipt-note" role="status">@(order.IsFailedPayment
+                    ? "Payment was not completed. Keep your order number for reference."
+                    : order.IsPendingPayment
+                        ? "Payment has not been confirmed. Keep your order number for reference."
+                        : "The current payment and fulfillment status are shown below.")</p>
+            }
+        </header>
+        @if (order is not null)
+        {
+            <div class="sp-receipt-body">
+                <section class="sp-receipt-items" aria-labelledby="receipt-items-title">
+                    <h2 id="receipt-items-title">Your items</h2>
+                    @foreach (var item in order.Items)
+                    {
+                        var hasPhoto = !string.IsNullOrWhiteSpace(item.ImageUrl);
+                        <div class="sp-receipt-item @(hasPhoto ? "sp-receipt-item--photo" : "")">
+                            @if (hasPhoto)
+                            {
+                                <img class="sp-receipt-photo" src="@item.ImageUrl" alt="" width="48" height="56" />
+                            }
+                            <div class="sp-receipt-item-copy">
+                                <h3>@item.Name</h3>
+                                <p>@if (!string.IsNullOrWhiteSpace(item.Size)) { <span>Size @item.Size · </span> }<span>Qty @item.Quantity</span></p>
+                            </div>
+                            <strong class="sp-receipt-price">@Money(item.LineTotalCents)</strong>
                         </div>
-                    </div>
-
-                    <div class="sp-confirm-grid sp-confirm-grid--success">
-                        <div>
-                            <span>Total Paid</span>
-                            <strong>@Money(order.TotalCents)</strong>
-                        </div>
-                        <div>
-                            <span>Subtotal</span>
-                            <strong>@Money(order.SubtotalCents)</strong>
-                        </div>
-                        <div>
-                            <span>Shipping</span>
-                            <strong>@Money(order.ShippingCents)</strong>
-                        </div>
-                        <div>
-                            <span>Tax</span>
-                            <strong>@Money(order.TaxCents)</strong>
-                        </div>
+                    }
+                </section>
+                <section class="sp-receipt-summary" aria-labelledby="receipt-summary-title">
+                    <h2 id="receipt-summary-title">Order summary</h2>
+                    <dl class="sp-receipt-totals">
+                        <div><dt>Subtotal</dt><dd>@Money(order.SubtotalCents)</dd></div>
+                        <div><dt>Shipping</dt><dd>@Money(order.ShippingCents)</dd></div>
+                        <div><dt>Tax</dt><dd>@Money(order.TaxCents)</dd></div>
                         @if (order.DiscountCents > 0)
                         {
-                            <div>
-                                <span>Discount</span>
-                                <strong class="sp-success-negative">-@Money(order.DiscountCents)</strong>
-                            </div>
+                            <div><dt>Discount @if (!string.IsNullOrWhiteSpace(order.DiscountCode)) { <span>(@order.DiscountCode)</span> }</dt><dd>-@Money(order.DiscountCents)</dd></div>
                         }
-                        <div>
-                            <span>Receipt</span>
-                            <strong>@order.Email</strong>
-                        </div>
-                    </div>
-
-                    <div class="sp-success-ledger">
-                        <div class="sp-review-totals">
-                            <div class="sp-review-line sp-review-line--subtotal">
-                                <span>Order Number</span>
-                                <strong>@order.OrderNumber</strong>
-                            </div>
-                            <div class="sp-review-line sp-review-line--shipping">
-                                <span>Payment</span>
-                                <strong>@order.PaymentStatus</strong>
-                            </div>
-                            <div class="sp-review-line sp-review-line--tax">
-                                <span>Fulfillment</span>
-                                <strong>@order.FulfillmentStatus</strong>
-                            </div>
-                            @if (!string.IsNullOrWhiteSpace(order.DiscountCode))
-                            {
-                                <div class="sp-review-line sp-review-line--discount">
-                                    <span>Offer</span>
-                                    <strong>@order.DiscountCode</strong>
-                                </div>
-                            }
-                        </div>
-
-                        <div class="sp-success-actions">
-                            <a class="sp-button sp-button--primary" href="@storeRoot">Back to Shop</a>
-                            <a class="sp-button sp-button--ghost" href="@(commerce?.IsParfait == false ? commerce.StoreRootPath : "/")">Public Site</a>
-                        </div>
-                    </div>
-                </section>
-
-                <section class="sp-flow-card sp-success-card sp-success-card--details">
-                    <div class="sp-summary-head">
-                        <div>
-                            <span class="sp-flow-label">Receipt Details</span>
-                            <h2>Items Purchased</h2>
-                        </div>
-                    </div>
-
-                    <div class="sp-success-items">
-                        @foreach (var item in order.Items)
+                        <div class="sp-receipt-total"><dt>@(order.IsPaid && order.RefundedCents == 0 ? "Total paid" : "Order total")</dt><dd>@Money(order.TotalCents)</dd></div>
+                        @if (order.RefundedCents > 0)
                         {
-                            <div class="sp-success-item">
-                                @if (!string.IsNullOrWhiteSpace(item.ImageUrl))
-                                {
-                                    <img src="@item.ImageUrl" alt="@item.Name" />
-                                }
-                                else
-                                {
-                                    <span class="sp-product-no-photo" role="img" aria-label="No product photo">No product photo</span>
-                                }
-                                <div>
-                                    <h3>@item.Name</h3>
-                                    <p>Size @item.Size · Qty @item.Quantity</p>
-                                    <strong>@Money(item.LineTotalCents)</strong>
-                                </div>
-                            </div>
+                            <div><dt>Refunded</dt><dd>@Money(order.RefundedCents)</dd></div>
                         }
-                    </div>
-
-                    <div class="sp-success-block-grid">
-                        <article class="sp-success-block">
-                            <span class="sp-success-block-label">Shipping To</span>
-                            <strong>@order.FirstName @order.LastName</strong>
-                            <p class="sp-shipping-block">
-                                @order.AddressLine1<br />
-                                @if (!string.IsNullOrWhiteSpace(order.AddressLine2))
-                                {
-                                    @order.AddressLine2<br />
-                                }
-                                @order.City, @order.State @order.PostalCode
-                            </p>
-                        </article>
-
-                        <article class="sp-success-block">
-                            <span class="sp-success-block-label">Order Contact</span>
-                            <strong>@order.Email</strong>
-                            <p class="sp-shipping-block">
-                                @order.Phone
-                            </p>
-                        </article>
-                    </div>
+                    </dl>
                 </section>
-            }
-        </div>
-    </div>
+            </div>
+            <div class="sp-receipt-details">
+                <section aria-labelledby="receipt-shipping-title">
+                    <h2 id="receipt-shipping-title">Shipping to</h2>
+                    <address>
+                        <strong>@order.FirstName @order.LastName</strong><br />
+                        @order.AddressLine1<br />
+                        @if (!string.IsNullOrWhiteSpace(order.AddressLine2)) { @order.AddressLine2<br /> }
+                        @order.City, @order.State @order.PostalCode
+                    </address>
+                </section>
+                <section aria-labelledby="receipt-contact-title">
+                    <h2 id="receipt-contact-title">Order contact</h2>
+                    <p>@order.Email</p>
+                    @if (!string.IsNullOrWhiteSpace(order.Phone)) { <p>@order.Phone</p> }
+                    <p class="sp-receipt-fulfillment">Fulfillment: <strong>@order.FulfillmentStatus</strong></p>
+                </section>
+            </div>
+        }
+        <footer class="sp-receipt-footer">
+            <a class="sp-button sp-button--primary" href="@storeRoot">Continue shopping</a>
+        </footer>
+    </article>
 </section>
 
 @section Scripts {
+    <script>
+        document.querySelectorAll(".sp-receipt-photo").forEach(image => {
+            const omitUnavailablePhoto = () => {
+                image.closest(".sp-receipt-item")?.classList.remove("sp-receipt-item--photo");
+                image.remove();
+            };
+            image.addEventListener("error", omitUnavailablePhoto, { once: true });
+            if (image.complete && image.naturalWidth === 0) omitUnavailablePhoto();
+        });
+    </script>
     @if (Model.Order?.IsPaid == true)
     {
         <script>
-            (() => {
+            (async () => {
                 const store = window.ParfaitStorefront;
                 const key = store?.storageKey || "parfaitCart";
-                window.sessionStorage.removeItem(key === "parfaitCart" ? "parfaitCheckoutAttemptId" : key + ":checkoutAttemptId");
-                store?.clearCart();
-                store?.clearDiscountCode();
-            })();
+                const attemptId = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Order!.CheckoutAttemptId));
+                if (await store?.reconcilePaidCheckout(attemptId)) {
+                    const attemptKey = key === "parfaitCart" ? "parfaitCheckoutAttemptId" : key + ":checkoutAttemptId";
+                    if (window.sessionStorage.getItem(attemptKey) === attemptId) window.sessionStorage.removeItem(attemptKey);
+                }
+            })().catch(() => { const notice = document.createElement("p"); notice.setAttribute("role", "status"); notice.textContent = "Payment is confirmed. Your browser could not update the cart; review it before shopping again."; document.querySelector(".sp-receipt-footer")?.prepend(notice); });
         </script>
     }
 }
