@@ -6,6 +6,12 @@
     --sp-cocoa-600: #926950;
     --sp-cream: #fff8f1;
     --sp-gold: #d9b17a;
+    --sp-success-text: #24583a;
+    --sp-success-surface: #dff2e5;
+    --sp-warning-text: #885415;
+    --sp-warning-surface: #fff1dd;
+    --sp-danger-text: #8a2b2b;
+    --sp-danger-surface: #ffe8e8;
     --sp-theme-primary: var(--web-gold-strong, var(--web-gold, var(--sp-cocoa-700)));
     --sp-theme-secondary: var(--web-navy-deep, var(--sp-cocoa-950));
     --sp-theme-surface: var(--web-surface, #fff);
@@ -471,21 +477,21 @@ body.sp-body {
 }
 
 .sp-stock-pill.is-success {
-    border-color: rgba(42, 123, 73, .25);
-    background: rgba(223, 242, 229, .92);
-    color: #24583a;
+    border-color: color-mix(in srgb, var(--sp-success-text) 25%, transparent);
+    background: var(--sp-success-surface);
+    color: var(--sp-success-text);
 }
 
 .sp-stock-pill.is-warning {
-    border-color: rgba(180, 111, 22, .25);
-    background: rgba(255, 241, 221, .94);
-    color: #885415;
+    border-color: color-mix(in srgb, var(--sp-warning-text) 25%, transparent);
+    background: var(--sp-warning-surface);
+    color: var(--sp-warning-text);
 }
 
 .sp-stock-pill.is-danger {
-    border-color: rgba(180, 47, 47, .24);
-    background: rgba(255, 232, 232, .94);
-    color: #8a2b2b;
+    border-color: color-mix(in srgb, var(--sp-danger-text) 25%, transparent);
+    background: var(--sp-danger-surface);
+    color: var(--sp-danger-text);
 }
 
 .sp-stock-pill.is-info {
@@ -872,21 +878,21 @@ body.sp-body {
 }
 
 .sp-cart-status.is-success {
-    border-color: rgba(132, 216, 162, .34);
-    background: rgba(47, 110, 62, .28);
-    color: #dcf7e4;
+    border-color: color-mix(in srgb, var(--sp-success-text) 25%, transparent);
+    background: var(--sp-success-surface);
+    color: var(--sp-success-text);
 }
 
 .sp-cart-status.is-warning {
-    border-color: var(--sp-theme-muted);
-    background: rgba(122, 83, 32, .26);
-    color: #ffe5bf;
+    border-color: color-mix(in srgb, var(--sp-warning-text) 25%, transparent);
+    background: var(--sp-warning-surface);
+    color: var(--sp-warning-text);
 }
 
 .sp-cart-status.is-danger {
-    border-color: rgba(225, 139, 130, .34);
-    background: rgba(104, 42, 36, .28);
-    color: #ffd8d3;
+    border-color: color-mix(in srgb, var(--sp-danger-text) 25%, transparent);
+    background: var(--sp-danger-surface);
+    color: var(--sp-danger-text);
 }
 
 .sp-cart-item,
@@ -982,7 +988,7 @@ body.sp-body {
 
 .sp-cart-issue {
     margin: 0;
-    color: #ffd1cc;
+    color: var(--sp-danger-text);
     font-size: .72rem;
     font-weight: 700;
 }
@@ -1262,7 +1268,6 @@ body.sp-body {
     display: grid;
     align-items: center;
     width: min(100%, 560px);
-    min-height: 106px;
     padding: .85rem .92rem;
     border: 1px solid var(--sp-line);
     border-radius: 18px;
@@ -1352,10 +1357,15 @@ body.sp-body {
 
 .sp-checkout-error {
     min-height: 1.1rem;
-    color: #ffd1cc;
+    color: var(--sp-danger-text);
     font-size: .74rem;
     font-weight: 800;
     text-align: center;
+}
+
+.sp-checkout-error:not(:empty),
+.sp-cart-issue:not(:empty) {
+    background: var(--sp-danger-surface);
 }
 
 .sp-cart-empty {

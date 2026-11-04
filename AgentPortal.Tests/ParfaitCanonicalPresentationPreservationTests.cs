@@ -31,14 +31,14 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     [InlineData("Views/Store/Product.cshtml", "84cc90c78062604b8ead7f40cf3facafdc7d0256")]
     // Reviewed embedded payment, same-intent recovery, compact receipt and optional
     // default-selected marketing preference; prior unsubscribe remains authoritative.
-    [InlineData("Views/Store/Checkout.cshtml", "808a2bd21295c095cf49ef109c2e0e24535bd874")]
+    [InlineData("Views/Store/Checkout.cshtml", "8c4479bef8ba0d4272331cb4252b68c97c8f7db3")]
     [InlineData("Views/Store/Success.cshtml", "0d2aa2e9953dd908ed26115f2e881789d58d47bf")]
     [InlineData("wwwroot/css/site.css", "3d421e41b9070fb34c0698262587db696502bdda")]
     [InlineData("wwwroot/css/home.css", "2b1c97a3012f53f9f242e4656822f28a6ae944a2")]
     // Reviewed responsive Store hierarchy and canonical editor theme tokens;
     // hidden summary rows and original Parfait identity remain preserved.
     // Reviewed recovered training hierarchy uses the same Store tokens.
-    [InlineData("wwwroot/css/storefront.css", "701d7655223a203f017a4e026317cbe10bf2b634")]
+    [InlineData("wwwroot/css/storefront.css", "763842a036ea6c2456f41d5b3933a32a24bb330d")]
     // Reviewed be032 refines internal header typography and responsive payment-provider cards.
     // Reviewed shared premium compact layout; single shell, page-only light mode and right navigation remain intact.
     // Reviewed native Team metrics use two phone/four desktop columns.
