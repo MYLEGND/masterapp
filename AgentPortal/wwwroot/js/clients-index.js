@@ -3918,7 +3918,7 @@ async function openDrawerForRow(row){
     dMeetingDuration.value = row.dataset.sMeetingDuration || "30";
 
     const pendingBusinessAccountLink = document.getElementById("btnBusinessAccount");
-    if (pendingBusinessAccountLink) { pendingBusinessAccountLink.hidden = true; pendingBusinessAccountLink.removeAttribute("href"); }
+    if (pendingBusinessAccountLink) { pendingBusinessAccountLink.hidden = true; pendingBusinessAccountLink.removeAttribute("href"); pendingBusinessAccountLink.setAttribute("aria-disabled", "true"); pendingBusinessAccountLink.setAttribute("tabindex", "-1"); }
     renderPortalActions(row, null);
     renderAppointmentSnapshot(null);
     renderProtectionSnapshotSummary(null, { loading: true });
@@ -3966,8 +3966,15 @@ async function openDrawerForRow(row){
       const profileId = detail.clientProfileId || row.dataset.clientProfileId;
       const eligible = norm(detail.recordType || row.dataset.sRecordtype).toLowerCase() === "businessclient" && !!profileId && detail.agentWorkspaceAccessEnabled !== false;
       businessAccountLink.hidden = !eligible;
-      if (eligible) businessAccountLink.href = `/Clients/ReconcileBusinessAccount?profileId=${encodeURIComponent(profileId)}`;
-      else businessAccountLink.removeAttribute("href");
+      if (eligible) {
+        businessAccountLink.href = `/Clients/ReconcileBusinessAccount?profileId=${encodeURIComponent(profileId)}`;
+        businessAccountLink.removeAttribute("aria-disabled");
+        businessAccountLink.removeAttribute("tabindex");
+      } else {
+        businessAccountLink.removeAttribute("href");
+        businessAccountLink.setAttribute("aria-disabled", "true");
+        businessAccountLink.setAttribute("tabindex", "-1");
+      }
     }
     if (detail.accountManagementMode) {
       row.dataset.accountManagementMode = detail.accountManagementMode;
