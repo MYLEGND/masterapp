@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requested the underlying cause correction and direct nonredundant retained resume. This request only promotes reviewed recovery tools; no application or provider mutation is authorized by this promotion.",
-  "purpose": "Publish pending reviewed website, Studio, diagnostics, analytics and training dependency repairs across their four actual affected application owners. Historical requests and completed resource references remain unchanged. Old Protect68ef remains UNKNOWN; only the exact one-generation forward replacement consent may pass source selection, and actual immutable merge package binding plus durable intent remain mandatory before upload. No schema or routing change.",
-  "requestId": "website-diagnostics-candidate18-validation-promotion-20261101",
+  "authorization": "Founder authorized normal source-preserving integration of independently reviewed Store/mobile and embedded-checkout source after direct Mac deployment. This validate-only request authorizes no application, database, configuration, payment, postage, routing or provider mutation.",
+  "purpose": "Synchronize reviewed source eb0694f3bc3785f16739c3ff49be968d2d0e90b1 into Legend/fast-track-release without republishing. All five runtime revisions were observed at that source. Live checkout loading, cart-header and quantity follow-ups remain unresolved; this request does not claim full live journey verification or task completion. Preserve historical resource receipts and the existing native deployment journals unchanged.",
+  "requestId": "store-mobile-embedded-source-integration-20261103-eb0694f3-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -76,31 +76,9 @@
     "rollbackArtifactDigest": "sha256:171f0b608107fb23f33ce5cb572ded74303018e120ca088e93341dad18aeb3d0",
     "rollbackPackageDigest": "3e8ba8b6073bec9e3a64204c0e0b745e8dcf894c28be05900b158bdc2e28431c"
   },
-  "trustedToolPromotion": {
+  "sourceIntegration": {
     "schemaVersion": 1,
-    "baseRevision": "b5e940d762480ad8722bd86a76b4391864913dc2",
-    "sourceRevision": "c7280aca096fe7257cab69245cf713911ef7fac8",
-    "files": {
-      "scripts/deploy-approved-app.py": {
-        "mode": "100644",
-        "blob": "4044810a0fd0529a5f4d2d834434b8557a2ce868"
-      },
-      "scripts/release-artifacts/test-transport.cjs": {
-        "mode": "100644",
-        "blob": "313d37f6900202eb0efa7eedf2f2c5aa21672f5b"
-      },
-      "scripts/release-artifacts/transport.cjs": {
-        "mode": "100644",
-        "blob": "0fcb70eec2ef92618fc4d5bd336082ea0fa83a45"
-      },
-      "scripts/test-validation-resume.py": {
-        "mode": "100644",
-        "blob": "475fb582e655b5c7c61ad7126b46868b70ac0868"
-      },
-      "scripts/validation-resume.py": {
-        "mode": "100644",
-        "blob": "9947b30026017fb8d2ab7dbf8e7097bc68ec25e9"
-      }
-    }
+    "baseRevision": "69f282796e0a8e183f0e75305cd280b339f01a87",
+    "sourceRevision": "eb0694f3bc3785f16739c3ff49be968d2d0e90b1"
   }
 }
