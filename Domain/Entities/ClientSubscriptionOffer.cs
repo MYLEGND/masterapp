@@ -12,6 +12,7 @@ public sealed class ClientSubscriptionOffer
     // Accepted training terms remain unchanged when the catalog or promotions change.
     public string? TrainingPlanName { get; set; }
     public string? TrainingBenefits { get; set; }
+    public Guid? TrainingDiscountId { get; set; }
     public string? TrainingPromotionCode { get; set; }
     public string SubscriptionScope { get; set; } = ClientSubscriptionScope.LegendMembership;
     public Guid? CommerceBusinessId { get; set; }

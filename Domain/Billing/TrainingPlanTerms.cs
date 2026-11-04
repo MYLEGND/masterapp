@@ -2,7 +2,7 @@ using Domain.Entities;
 
 namespace Domain.Billing;
 
-public sealed record TrainingPlanTerms(int MonthlyAmountCents, string Name, string Benefits, string? PromotionCode)
+public sealed record TrainingPlanTerms(int MonthlyAmountCents, string Name, string Benefits, string? PromotionCode, Guid? DiscountId = null)
 {
     public static TrainingPlanTerms FromCatalog(CommerceProduct product, string? promotionCode)
     {
@@ -12,12 +12,14 @@ public sealed record TrainingPlanTerms(int MonthlyAmountCents, string Name, stri
 
         var code = promotionCode?.Trim().ToUpperInvariant();
         var amount = product.PriceCents;
+        Guid? discountId = null;
         if (!string.IsNullOrWhiteSpace(code))
         {
             var promotion = product.Discounts.SingleOrDefault(x => x.IsActive &&
                 string.Equals(x.Code.Trim(), code, StringComparison.OrdinalIgnoreCase));
-            if (promotion is null || promotion.Amount <= 0)
+            if (promotion is null || promotion.Amount <= 0 || promotion.UsageLimit is <= 0)
                 throw new InvalidOperationException("The recurring promotion is unavailable.");
+            discountId = promotion.Id;
             var discount = promotion.DiscountType switch
             {
                 "Percent" when promotion.Amount < 100 => decimal.Round(amount * promotion.Amount / 100m, 0, MidpointRounding.AwayFromZero),
@@ -28,6 +30,12 @@ public sealed record TrainingPlanTerms(int MonthlyAmountCents, string Name, stri
                 throw new InvalidOperationException("A training subscription must have a positive monthly price.");
             amount -= checked((int)discount);
         }
-        return new(amount, product.Name.Trim(), product.Description.Trim(), string.IsNullOrWhiteSpace(code) ? null : code);
+        return new(amount, product.Name.Trim(), product.Description.Trim(), string.IsNullOrWhiteSpace(code) ? null : code, discountId);
     }
 }
+
+public sealed class TrainingPromotionCapacityException() : InvalidOperationException(
+    "This limited training offer is fully reserved. Review the current plan price before requesting another invitation.");
+
+public sealed class TrainingPriceChangedException() : InvalidOperationException(
+    "The training price changed. Review the current plan before requesting an invitation.");

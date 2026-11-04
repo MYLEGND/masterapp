@@ -433,6 +433,8 @@ public sealed class WebsiteInquiryIsolationTests
     [InlineData("/Contact", false)]
     [InlineData("/store/checkout", false)]
     [InlineData("/store/checkout", true)]
+    [InlineData("/store/training", false)]
+    [InlineData("/store/training", true)]
     public async Task ParfaitInquiryUsesCanonicalBusinessInquiryLeadCrmAnalyticsAndPrimaryEmail(string sourcePath, bool publishedDomain)
     {
         using var f = new Fixture("https://shopparfait.com");

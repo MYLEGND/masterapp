@@ -37,10 +37,12 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     [InlineData("wwwroot/css/home.css", "00f32a42b0f2f1ea1324c6f8897abe91a130ec94")]
     // Reviewed responsive Store hierarchy and canonical editor theme tokens;
     // hidden summary rows and original Parfait identity remain preserved.
-    [InlineData("wwwroot/css/storefront.css", "733c53d4feef8cb4de9c0bd29587f2830022de7c")]
+    // Reviewed recovered training hierarchy uses the same Store tokens.
+    [InlineData("wwwroot/css/storefront.css", "dea7359d7bfe44d23a49b12fa65dee683736e235")]
     // Reviewed be032 refines internal header typography and responsive payment-provider cards.
     // Reviewed shared premium compact layout; single shell, page-only light mode and right navigation remain intact.
-    [InlineData("wwwroot/css/internal.css", "a38d3a9839eb01ca36643178f232fef4ff201611")]
+    // Reviewed native Team metrics use two phone/four desktop columns.
+    [InlineData("wwwroot/css/internal.css", "9824817a29b228a616d7476f4be5e1fcb8e82efc")]
     [InlineData("wwwroot/js/storefront.js", "fe8a36a50964b16547aa674d5918d7c480dfe123")]
     // Reviewed internal health behavior: unavailable identity evidence must not render as zero.
     // CommerceCoreOwnershipContractTests covers the payload; public design assets remain pinned.

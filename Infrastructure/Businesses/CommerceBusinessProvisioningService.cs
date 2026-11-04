@@ -16,6 +16,7 @@ namespace Infrastructure.Businesses;
 /// </summary>
 public interface ICommerceBusinessProvisioningService
 {
+    Task<CommerceBusiness> ReconcileExistingAccountAsync(BusinessAccountReconciliationRequest request, CancellationToken cancellationToken = default);
     Task UpdateEntityNameAsync(Guid businessId, Guid actorClientProfileId, string entityName,
         CancellationToken cancellationToken = default, string? actorAgentUserId = null);
     Task UpdateOwnershipAsync(Guid businessId, Guid actorClientProfileId, string entityName,
@@ -26,6 +27,11 @@ public interface ICommerceBusinessProvisioningService
         CommerceBusinessProvisioningRequest request,
         CancellationToken cancellationToken = default);
 }
+
+// The caller reviews the complete association snapshot; email is not selection authority.
+public sealed record BusinessAccountAssociationSnapshot(Guid Id, Guid BusinessId, string RoleKey, string Status, DateTime UpdatedUtc);
+public sealed record BusinessAccountReconciliationRequest(Guid BusinessId, Guid AccountProfileId,
+    string ActorUserId, IReadOnlyList<BusinessAccountAssociationSnapshot> ExpectedAssociations);
 
 public sealed record BusinessOwnerInput(Guid? ClientProfileId, string Email, decimal Percentage);
 public sealed record BusinessOwnerAccount(Guid ClientProfileId, string Email, string FirstName, string LastName);
@@ -78,6 +84,55 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
     public CommerceBusinessProvisioningService(MasterAppDbContext db)
     {
         _db = db;
+    }
+
+    public async Task<CommerceBusiness> ReconcileExistingAccountAsync(BusinessAccountReconciliationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return await _db.Database.CreateExecutionStrategy().ExecuteAsync(() => ReconcileExistingAccountCoreAsync(request, cancellationToken));
+    }
+
+    private async Task<CommerceBusiness> ReconcileExistingAccountCoreAsync(BusinessAccountReconciliationRequest request, CancellationToken cancellationToken)
+    {
+        // Serializable range reads protect both account-profile and business uniqueness.
+        await using var transaction = _db.Database.IsRelational()
+            ? await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken) : null;
+        var profile = await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == request.AccountProfileId, cancellationToken);
+        if (profile is null || string.IsNullOrWhiteSpace(profile.ClientUserId) ||
+            ClientRecordClassification.Resolve(profile.ClientUserId, profile.CrmNotes) != ClientRecordClassification.BusinessClient)
+            throw new InvalidOperationException("An existing business client account is required.");
+        var authorized = await BusinessWorkspaceAccess.ResolveActorMembershipAsync(_db, request.BusinessId,
+            request.ActorUserId, "team", request.AccountProfileId, cancellationToken);
+        if (authorized is null || !(authorized.RoleKey is "owner" or "account"))
+            throw new UnauthorizedAccessException("Business account reconciliation is not permitted.");
+        var associations = await _db.CommerceBusinessMembers.Where(x => x.ClientProfileId == request.AccountProfileId).ToListAsync(cancellationToken);
+        var actual = associations.Select(x => new BusinessAccountAssociationSnapshot(x.Id, x.CommerceBusinessId, x.RoleKey, x.Status, x.UpdatedUtc)).OrderBy(x => x.Id);
+        if (request.ExpectedAssociations is null || !actual.SequenceEqual(request.ExpectedAssociations.OrderBy(x => x.Id)))
+            throw new DbUpdateConcurrencyException("Business account associations changed. Review them again.");
+        var target = associations.Single(x => x.Id == authorized.Id);
+        if (associations.Any(x => x.Id != target.Id && x.RoleKey == "account" && x.Status == "Active") ||
+            await _db.CommerceBusinessMembers.AnyAsync(x => x.CommerceBusinessId == request.BusinessId &&
+                x.Id != target.Id && x.RoleKey == "account" && x.Status == "Active", cancellationToken))
+            throw new InvalidOperationException("An active business account binding must be reconciled before selecting this business.");
+        var business = await _db.CommerceBusinesses.SingleAsync(x => x.Id == request.BusinessId, cancellationToken);
+        if (target.RoleKey != "account")
+        {
+            var history = string.IsNullOrWhiteSpace(business.OwnershipHistoryJson) ? new List<JsonElement>() :
+                JsonSerializer.Deserialize<List<JsonElement>>(business.OwnershipHistoryJson)!;
+            var now = DateTime.UtcNow;
+            history.Add(JsonSerializer.SerializeToElement(new { ChangedUtc = now, request.ActorUserId,
+                Operation = "ExistingBusinessAccountReconciliation", request.AccountProfileId, request.BusinessId,
+                PreviousAssociations = request.ExpectedAssociations, PreviousOwnershipPercentage = target.OwnershipPercentage }));
+            business.OwnershipHistoryJson = JsonSerializer.Serialize(history);
+            business.UpdatedUtc = now;
+            target.RoleKey = "account";
+            target.OwnershipPercentage = null;
+            target.UpdatedUtc = now;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        return business;
     }
 
     public async Task<CommerceBusiness> CreateAsync(
@@ -222,6 +277,13 @@ public sealed class CommerceBusinessProvisioningService : ICommerceBusinessProvi
         var associations = await _db.CommerceBusinessMembers.AsNoTracking()
             .Where(x => x.ClientProfileId == profile.Id).ToListAsync(ct);
         if (associations.Count == 0) return null;
+        var accountBindings = associations.Where(x => x.RoleKey == "account" && x.Status == "Active").ToList();
+        if (accountBindings.Count > 1 || (accountBindings.Count == 1 &&
+            await _db.CommerceBusinessMembers.AsNoTracking().AnyAsync(x =>
+                x.CommerceBusinessId == accountBindings[0].CommerceBusinessId && x.Id != accountBindings[0].Id &&
+                x.RoleKey == "account" && x.Status == "Active", ct)))
+            throw new InvalidOperationException("Business account bindings must be reconciled before setup.");
+        if (accountBindings.Count == 1) associations = accountBindings;
         if (associations.Count != 1)
             throw new InvalidOperationException("Business account associations must be reconciled before setup.");
         var member = associations[0];

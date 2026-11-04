@@ -146,7 +146,8 @@ internal static partial class RehearsalFixture
                 _ => throw new ProbeObservationFailure("INPUT_UNAVAILABLE") };
             requestedCount = (int.Parse(requestedCount) + contract.Migrations.Count(m => ExpandedMigrations.Contains(m.Id))).ToString();
         }
-        if (requestedCount == "expanded-store-only") requestedCount = "3";
+        if (requestedCount == "expanded-store-only") requestedCount = ExpandedMigrations.Length.ToString();
+        if (requestedCount == "standalone-reconciliation-only") requestedCount = "2";
         if (requestedCount == "payment-and-successors")
             requestedCount = contract.Migrations.SkipWhile(m => m.Id != "20261011064911_AddBusinessScopedMerchantPayments").Count().ToString();
         if (requestedCount == "canonical-payment-only")
@@ -304,7 +305,7 @@ internal static partial class RehearsalFixture
                     Schema = c.Schema, Table = c.Table, Name = c.Name }))).ToArray();
             foreach (var command in db.GetService<IMigrationsSqlGenerator>().Generate(reverse))
                 await db.Database.ExecuteSqlRawAsync(command.CommandText, timeout.Token);
-            if (expanded && !payments) await db.Database.ExecuteSqlRawAsync("ALTER TABLE dbo.CommerceMerchantAuthorizations ALTER COLUMN ClientProfileId uniqueidentifier NOT NULL", timeout.Token);
+            if (pending.Any(m => m.Id == OwnerMigration) && !payments) await db.Database.ExecuteSqlRawAsync("ALTER TABLE dbo.CommerceMerchantAuthorizations ALTER COLUMN ClientProfileId uniqueidentifier NOT NULL", timeout.Token);
             if (store || expanded) await FinishStoreBaseline(db, pending, timeout.Token);
             if ((store || expanded) && !crm) await db.Database.ExecuteSqlRawAsync(
                 "ALTER TABLE dbo.WebsiteLeadIntakeLinks ADD CONSTRAINT DF_Rehearsal_AssociationVersion DEFAULT ('00000000-0000-0000-0000-000000000000') FOR AssociationVersion", timeout.Token);

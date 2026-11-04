@@ -145,6 +145,9 @@ builder.Services.AddScoped<CommerceStoreContextService>();
 builder.Services.AddLegendCommerceCore();
 builder.Services.AddScoped<IParfaitBusinessPlatformService, ParfaitBusinessPlatformService>();
 builder.Services.AddSingleton<IParfaitInternalPageRegistry, ParfaitInternalPageRegistry>();
+// Existing membership checks do not require identity-provisioning credentials.
+builder.Services.AddScoped(sp => new Lazy<Infrastructure.Identity.IClientEntraLifecycleService>(
+    () => sp.GetRequiredService<Infrastructure.Identity.IClientEntraLifecycleService>()));
 builder.Services.AddScoped<IParfaitTeamAccessService, ParfaitTeamAccessService>();
 builder.Services.AddMasterAppBilling(builder.Configuration);
 Infrastructure.Leads.WebsiteLeadServiceRegistration.AddWebsiteLeadNotificationTransport(builder.Services);

@@ -972,6 +972,8 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.TrainingPlanName).HasMaxLength(256);
             e.Property(x => x.TrainingBenefits).HasMaxLength(12000);
             e.Property(x => x.TrainingPromotionCode).HasMaxLength(120);
+            e.HasOne<CommerceProductDiscount>().WithMany().HasForeignKey(x => x.TrainingDiscountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => new { x.TrainingDiscountId, x.ClientProfileId });
             e.Property(x => x.Currency).HasMaxLength(8).IsRequired();
             e.Property(x => x.BillingAnchorSelectionMode).HasConversion<string>().HasMaxLength(40).IsRequired();
             e.Property(x => x.FreeTrialDays).HasDefaultValue(0);

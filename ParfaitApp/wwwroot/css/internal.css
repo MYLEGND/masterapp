@@ -171,6 +171,20 @@ html {
 
 
 /* === PARFAIT TEAM COMPACT SYSTEM START === */
+.pf-team-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--pf-space-3, 12px);
+}
+.pf-team-metrics > .pf-rail-card {
+    grid-column: auto;
+    padding: 12px;
+    min-height: 0;
+}
+@media (max-width: 680px) {
+    .pf-team-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 .pf-team-page .pf-workspace-grid {
     align-items: stretch;
 }

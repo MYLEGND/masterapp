@@ -786,6 +786,7 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
             '20261030070000_CrmRelationshipHistory'] + [row[0] for row in m.AUTHORITY.REVIEWED_STORE_ENTRIES]
         historical = [dict(id=value, supported=True) for value in ids]
         expanded = json.loads('[{"id":"20261103081639_ScopedMerchantWebsiteOwners","supported":false,"columns":[],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]},{"id":"20261103170724_SharedCommerceAutomationState","supported":true,"columns":[{"schema":"dbo","table":"CommerceBusinessSettings","name":"CustomerAutomationStateJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]},{"id":"20261103174446_SharedCommerceShippingState","supported":true,"columns":[{"schema":"dbo","table":"CommerceOrders","name":"ShippingLabelStateJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CommerceBusinessSettings","name":"ShippingConfigurationJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]}]')
+        expanded += json.loads('[{"id":"20261104012500_ParfaitMemberPageRestrictions","supported":true,"columns":[{"schema":"dbo","table":"CommerceBusinessMembers","name":"ParfaitPageGrantsJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]},{"id":"20261104014500_TrainingPromotionMemberLimits","supported":false,"columns":[{"schema":"dbo","table":"CommerceProductDiscounts","name":"UsageLimit","type":"int","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"ClientSubscriptionOffers","name":"TrainingDiscountId","type":"uniqueidentifier","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[{"schema":"dbo","table":"ClientSubscriptionOffers","name":"IX_ClientSubscriptionOffers_TrainingDiscountId_ClientProfileId","columns":["TrainingDiscountId","ClientProfileId"],"unique":false,"filter":null}],"guards":[],"foreignKeys":[{"schema":"dbo","table":"ClientSubscriptionOffers","constraint":{"name":"FK_ClientSubscriptionOffers_CommerceProductDiscounts_TrainingDiscountId","columns":["TrainingDiscountId"],"principalSchema":"dbo","principalTable":"CommerceProductDiscounts","principalColumns":["Id"]}}]}]')
         self.current['migrations'] = historical + expanded
         self.source_present.update(row['id'] + '.cs' for row in self.current['migrations'])
         self.test_stdout += ''.join('LEGEND_' + marker + '_APPEND_TEST:PROVEN\n' for marker in
@@ -801,13 +802,15 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
             self.assertIn('payment-and-successors', fixtures)
             self.assertIn('expanded-store-only', fixtures)
             original = copy.deepcopy(self.current)
-            for change in ('unknown','reorder','owner','json'):
+            for change in ('unknown','reorder','owner','json','index','foreign-key'):
                 self.current=copy.deepcopy(original); self.sql_entered=False
                 rows=self.current['migrations']
                 if change=='unknown': rows.append(dict(id='29990101000000_Unknown'))
                 elif change=='reorder': rows[-2:]=rows[-2:][::-1]
-                elif change=='owner': rows[-3]['supported']=True
-                else: rows[-1]['columns'][0]['nullable']=False
+                elif change=='owner': rows[-5]['supported']=True
+                elif change=='json': rows[-2]['columns'][0]['nullable']=False
+                elif change=='index': rows[-1]['indexes'][0]['unique']=True
+                else: rows[-1]['foreignKeys'][0]['constraint']['principalTable']='CommerceOrders'
                 with self.subTest(change=change), self.assertRaisesRegex(RuntimeError, 'Reviewed migration (entry|suffix) contract failed'):
                     self.gate()
                 self.assertFalse(self.sql_entered)

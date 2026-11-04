@@ -97,6 +97,8 @@ public sealed class InternalSettingsController : Controller
             TempData["TeamStatus"] = $"{input.Email.Trim()} added to Parfait internal and invited by email.";
             return RedirectToAction(nameof(Team));
         }
+        catch (KeyNotFoundException) { return NotFound(); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
         catch (InvalidOperationException ex)
         {
             ModelState.AddModelError("NewMember.Email", ex.Message);
@@ -116,6 +118,8 @@ public sealed class InternalSettingsController : Controller
             await _teamAccess.UpdateMemberAsync(id, input, ct);
             TempData["TeamStatus"] = "Team member permissions updated.";
         }
+        catch (KeyNotFoundException) { return NotFound(); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
         catch (InvalidOperationException ex)
         {
             TempData["TeamError"] = ex.Message;
@@ -134,6 +138,8 @@ public sealed class InternalSettingsController : Controller
             await _teamAccess.RemoveMemberAsync(id, ct);
             TempData["TeamStatus"] = "Team member removed.";
         }
+        catch (KeyNotFoundException) { return NotFound(); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
         catch (InvalidOperationException ex)
         {
             TempData["TeamError"] = ex.Message;

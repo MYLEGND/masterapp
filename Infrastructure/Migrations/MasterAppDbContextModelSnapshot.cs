@@ -2316,6 +2316,9 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(12000)
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid?>("TrainingDiscountId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("TrainingPlanName")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
@@ -2338,6 +2341,8 @@ namespace Infrastructure.Migrations
                     b.HasIndex("OwnerAgentUserId");
 
                     b.HasIndex("ClientProfileId", "Status");
+
+                    b.HasIndex("TrainingDiscountId", "ClientProfileId");
 
                     b.ToTable("ClientSubscriptionOffers", (string)null);
                 });
@@ -2456,6 +2461,9 @@ namespace Infrastructure.Migrations
                     b.Property<decimal?>("OwnershipPercentage")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("ParfaitPageGrantsJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("RoleKey")
                         .IsRequired()
@@ -3523,6 +3531,9 @@ namespace Infrastructure.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
+
+                    b.Property<int?>("UsageLimit")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -15436,6 +15447,11 @@ namespace Infrastructure.Migrations
                     b.HasOne("Domain.Entities.CommerceProduct", null)
                         .WithMany()
                         .HasForeignKey("CommerceProductId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Domain.Entities.CommerceProductDiscount", null)
+                        .WithMany()
+                        .HasForeignKey("TrainingDiscountId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ClientProfile");

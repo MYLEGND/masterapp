@@ -654,9 +654,14 @@ public sealed class CommerceStoreContextService(
         }
     }
 
-    private string PublicBase(string key, string fallback)
+    public static string? StandaloneParfaitManagementEntry(IConfiguration? configuration) =>
+        ManagementEntry(ResolvePublicBase(configuration, "Commerce:PublicBaseUrl", "https://shopparfait.com"));
+
+    private string PublicBase(string key, string fallback) => ResolvePublicBase(configuration, key, fallback);
+
+    private static string ResolvePublicBase(IConfiguration? configuration, string key, string fallback)
     {
-        var configured = configuration[key]?.Trim();
+        var configured = configuration?[key]?.Trim();
         if (!string.IsNullOrWhiteSpace(configured) &&
             Uri.TryCreate(configured, UriKind.Absolute, out var uri) &&
             uri.Scheme == Uri.UriSchemeHttps &&

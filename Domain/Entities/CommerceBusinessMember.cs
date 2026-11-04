@@ -25,6 +25,9 @@ public sealed class CommerceBusinessMember
     public bool CanManageAnalytics { get; set; } = true;
     public bool CanManageTeam { get; set; } = true;
 
+    // Native Parfait page restrictions only; null inherits canonical capabilities.
+    public string? ParfaitPageGrantsJson { get; set; }
+
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

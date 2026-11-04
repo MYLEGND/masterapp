@@ -3917,6 +3917,8 @@ async function openDrawerForRow(row){
     dMeetingTime.value = row.dataset.sMeetingTime || "";
     dMeetingDuration.value = row.dataset.sMeetingDuration || "30";
 
+    const pendingBusinessAccountLink = document.getElementById("btnBusinessAccount");
+    if (pendingBusinessAccountLink) { pendingBusinessAccountLink.hidden = true; pendingBusinessAccountLink.removeAttribute("href"); }
     renderPortalActions(row, null);
     renderAppointmentSnapshot(null);
     renderProtectionSnapshotSummary(null, { loading: true });
@@ -3959,6 +3961,14 @@ async function openDrawerForRow(row){
     }, "drawer");
 
     activeClientDetail = detail;
+    const businessAccountLink = document.getElementById("btnBusinessAccount");
+    if (businessAccountLink) {
+      const profileId = detail.clientProfileId || row.dataset.clientProfileId;
+      const eligible = norm(detail.recordType || row.dataset.sRecordtype).toLowerCase() === "businessclient" && !!profileId && detail.agentWorkspaceAccessEnabled !== false;
+      businessAccountLink.hidden = !eligible;
+      if (eligible) businessAccountLink.href = `/Clients/ReconcileBusinessAccount?profileId=${encodeURIComponent(profileId)}`;
+      else businessAccountLink.removeAttribute("href");
+    }
     if (detail.accountManagementMode) {
       row.dataset.accountManagementMode = detail.accountManagementMode;
     }

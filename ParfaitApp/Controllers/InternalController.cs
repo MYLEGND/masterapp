@@ -41,14 +41,28 @@ public sealed class InternalController : Controller
             return Redirect(firstPage?.Route ?? "/internal/denied");
         }
 
-        return Challenge(
-            new AuthenticationProperties
-            {
-                RedirectUri = string.IsNullOrWhiteSpace(returnUrl) || !Url.IsLocalUrl(returnUrl)
-                    ? "/internal"
-                    : returnUrl
-            },
-            OpenIdConnectDefaults.AuthenticationScheme);
+        return MicrosoftAccountChallenge(returnUrl);
+    }
+
+    [HttpPost("login")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SwitchAccount(string? returnUrl = null)
+    {
+        // Clear only this application's session. Microsoft owns account/email entry;
+        // the existing token validation still decides Founder and Team access.
+        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return MicrosoftAccountChallenge(returnUrl);
+    }
+
+    private ChallengeResult MicrosoftAccountChallenge(string? returnUrl)
+    {
+        var properties = new AuthenticationProperties
+        {
+            RedirectUri = !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)
+                ? returnUrl : "/internal"
+        };
+        properties.Parameters["prompt"] = "select_account";
+        return Challenge(properties, OpenIdConnectDefaults.AuthenticationScheme);
     }
 
     [HttpPost("logout")]

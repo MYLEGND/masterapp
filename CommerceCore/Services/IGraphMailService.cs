@@ -14,5 +14,6 @@ public interface IGraphMailService
         IReadOnlyCollection<string> allowedPageTitles,
         string loginUrl,
         string invitedBy,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        string? identityRedemptionUrl = null);
 }

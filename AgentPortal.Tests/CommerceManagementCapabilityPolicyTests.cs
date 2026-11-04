@@ -543,6 +543,7 @@ public sealed partial class CommerceManagementCapabilityPolicyTests
             Tickets = new(protection);
             Ticket = Tickets.Protect(new(WebsiteEditorSiteKeys.Business, WebsiteEditorSiteKeys.BusinessOwnerKey(Business.Id), null, false, DateTime.UtcNow.AddMinutes(5), Business.Id, "actor", null, Profile.Id));
             services = new ServiceCollection().AddSingleton(Db)
+                .AddSingleton(new BusinessWorkspaceService(Db, Mock.Of<Infrastructure.Analytics.IAnalyticsQueryService>(), configuration))
                 .AddSingleton(new MerchantConnectionService(Db, protection, Array.Empty<IMerchantPaymentGateway>(), configuration)).BuildServiceProvider();
             var stores = Stores = new CommerceStoreContextService(Db, new CommerceBusinessScopeResolver(Db), null!, new WebsiteDomainService(Db, Mock.Of<System.Net.Http.IHttpClientFactory>(), configuration), configuration);
             Meta = new(configuration, Mock.Of<System.Net.Http.IHttpClientFactory>(), protection, Microsoft.Extensions.Logging.Abstractions.NullLogger<Infrastructure.Analytics.MarketingMetaAdsOAuthService>.Instance);

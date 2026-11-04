@@ -33,6 +33,11 @@
     <a class="btn btn-gold" asp-action="Archive">Archive / Deleted</a>
 }
 
+@if (businessWorkspace is not null)
+{
+    @await Html.PartialAsync("~/Views/Shared/_BusinessTrainingCohort.cshtml", businessWorkspace.Training)
+}
+
 <form id="__af" method="post" style="display:none;">
     @Html.AntiForgeryToken()
 </form>

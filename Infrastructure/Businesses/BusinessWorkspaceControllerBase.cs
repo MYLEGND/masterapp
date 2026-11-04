@@ -82,6 +82,15 @@ public abstract partial class BusinessWorkspaceControllerBase(BusinessWorkspaceS
         CancellationToken cancellationToken) => ExecuteCrmWrite(businessId, () => WorkspaceService.BulkUpdateAsync(businessId,
             input, User.GetCanonicalUserId(), cancellationToken), cancellationToken);
 
+    [HttpGet("training/{profileId:guid}")]
+    public async Task<IActionResult> TrainingContact(Guid businessId, Guid profileId, CancellationToken cancellationToken)
+    {
+        if (await ResolveBusinessAsync(businessId, "crm", cancellationToken) is null) return Forbid();
+        var model = await WorkspaceService.TrainingAsync(businessId, null, 1, profileId, cancellationToken);
+        if (model.Contacts.Count != 1) return NotFound();
+        return View("~/Views/Shared/BusinessTrainingContact.cshtml", model);
+    }
+
     [HttpGet("clients")]
     [HttpGet("clients/{contactId}")]
     public Task<IActionResult> Clients(Guid businessId, string? contactId, string? search = null, int page = 1,
