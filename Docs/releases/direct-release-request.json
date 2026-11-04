@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized the direct Mac Parfait follow-up, canonical brand styling, reversible public Training removal, shipping save verification, and existing-client reconciliation. This validate-only request authorizes no GitHub deployment, SQL, configuration, payment, postage, IAM or routing mutation; direct Mac publication requires separate reviewed admission.",
-  "purpose": "Preserve the verified release42 and accepted checkout polish while correcting Portal startup composition, canonical public/internal action colors, public Training visibility and shipping verification/persistence. Training launch and catalog import are postponed. Preserve training data and existing Square connections. Complete independent source, localhost, package, current-head validation, native release admission, direct Azure publication, live acceptance and mandatory nonpublishing source integration separately.",
-  "requestId": "parfait-brand-publication-shipping-followup-20261104-v1",
+  "authorization": "Founder authorized Parfait-only CSS cleanup and mandatory normal source incorporation. This request authorizes source integration only, with no GitHub production publication or other resource mutation.",
+  "purpose": "Preserve already deployed5ac ancestry and reviewed Parfait-only cocoa-border CSS correction. All non-Parfait styling remains unchanged. Parfait-only native deployment remains separately gated; no backend, payment, shipping configuration, SQL, IAM or routing change.",
+  "requestId": "parfait-css-source-integration-20261104-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -75,5 +75,10 @@
     "rollbackArtifactId": 13016709993,
     "rollbackArtifactDigest": "sha256:171f0b608107fb23f33ce5cb572ded74303018e120ca088e93341dad18aeb3d0",
     "rollbackPackageDigest": "3e8ba8b6073bec9e3a64204c0e0b745e8dcf894c28be05900b158bdc2e28431c"
+  },
+  "sourceIntegration": {
+    "schemaVersion": 1,
+    "baseRevision": "2ced2b136402f86a7e8f07b2dc8249c4d8732dbb",
+    "sourceRevision": "c6913872fe9197f20fa5df221288219b7d4f3fc6"
   }
 }
