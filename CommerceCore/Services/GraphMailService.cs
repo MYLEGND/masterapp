@@ -201,7 +201,8 @@ $@"
         IReadOnlyCollection<string> allowedPageTitles,
         string loginUrl,
         string invitedBy,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? identityRedemptionUrl = null)
     {
         var senderUpn = ResolveSenderUpn(
             _config["GraphMail:ParfaitTeamSenderUpn"],
@@ -213,17 +214,28 @@ $@"
             throw new InvalidOperationException("Missing SenderUpn/Contact:SenderEmail config.");
 
         var graph = BuildClient();
+        var html = BuildTeamInvitationHtml(toEmail, displayName, roleLabel, allowedPageTitles,
+            loginUrl, invitedBy, siteName, identityRedemptionUrl);
+        await SendMailAsync(graph, senderUpn, [toEmail.Trim()], "Your Parfait internal invite", html, ct);
+    }
+
+    private static string BuildTeamInvitationHtml(string toEmail, string displayName, string roleLabel,
+        IReadOnlyCollection<string> allowedPageTitles, string loginUrl, string invitedBy,
+        string siteName, string? identityRedemptionUrl)
+    {
         var enc = HtmlEncoder.Default;
         var safeName = enc.Encode(string.IsNullOrWhiteSpace(displayName) ? toEmail.Trim() : displayName.Trim());
         var safeRole = enc.Encode(roleLabel.Trim());
         var safeInvitedBy = enc.Encode(string.IsNullOrWhiteSpace(invitedBy) ? "Parfait Admin" : invitedBy.Trim());
         var safeUrl = enc.Encode(loginUrl.Trim());
         var accessSummary = allowedPageTitles.Count == 0
-            ? "Dashboard"
+            ? "Your assigned permissions"
             : string.Join(", ", allowedPageTitles.Select(title => title.Trim()).Where(title => !string.IsNullOrWhiteSpace(title)));
         var safeAccessSummary = enc.Encode(accessSummary);
 
-        var html =
+        var setup = string.IsNullOrWhiteSpace(identityRedemptionUrl) ? "" :
+            $"<p>First complete <a href='{enc.Encode(identityRedemptionUrl.Trim())}'>Microsoft account setup</a>, then use the acceptance link below.</p>";
+        return
 $@"
 <div style='font-family:Inter,Arial,sans-serif;line-height:1.65;color:#111;'>
   <h2 style='margin:0 0 10px;'>You&apos;re invited to Parfait Internal</h2>
@@ -239,13 +251,14 @@ $@"
     <p style='margin:0;'><strong>Starting access:</strong> {safeAccessSummary}</p>
   </div>
 
+  {setup}
   <p style='margin:16px 0 12px;'>
-    Sign in with your <strong>@mylegnd.com</strong> Microsoft account to open your Parfait internal workspace.
+    Sign in with the invited Microsoft account, then accept this invitation.
   </p>
 
   <p style='margin:0 0 18px;'>
     <a href='{safeUrl}' style='display:inline-block;padding:12px 18px;border-radius:999px;background:#4f3425;color:#fff;text-decoration:none;font-weight:700;'>
-      Open Parfait Internal
+      Accept invitation
     </a>
   </p>
 
@@ -254,7 +267,6 @@ $@"
   </p>
 </div>";
 
-        await SendMailAsync(graph, senderUpn, [toEmail.Trim()], $"Your Parfait internal invite", html, ct);
     }
 
     private static IReadOnlyList<string> ResolveRecipients(params string?[] rawValues)

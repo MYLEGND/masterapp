@@ -35,18 +35,18 @@ public sealed class ParfaitAnalyticsAccessTests
             builder.Services.AddControllersWithViews().AddApplicationPart(typeof(InternalModulesController).Assembly).AddLegendCommerceMvc();
             await using var app = builder.Build();
             var registry = new ParfaitInternalPageRegistry(app.Services.GetRequiredService<IActionDescriptorCollectionProvider>());
-            var environment = new Mock<IWebHostEnvironment>();
-            environment.SetupGet(x => x.ContentRootPath).Returns(root);
-            environment.SetupGet(x => x.WebRootPath).Returns(root);
-            var paths = new ParfaitStoragePaths(environment.Object, new ConfigurationBuilder()
-                .AddInMemoryCollection(new[] { new System.Collections.Generic.KeyValuePair<string,string?>("Parfait:StorageRoot", root) }).Build());
-            Directory.CreateDirectory(paths.DataRoot);
-            File.WriteAllText(paths.TeamAccessPath, JsonSerializer.Serialize(new { Members = new[] {
-                new { Id = Guid.NewGuid(), Email = "synthetic-staff@mylegnd.com", DisplayName = "Synthetic staff",
-                    RoleKey = "support", IsActive = active, AllowedPageKeys = new[] { assignedPage } }
-            } }));
-            var access = new ParfaitTeamAccessService(paths, registry, Mock.Of<IGraphMailService>());
-            var user = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.Email, "synthetic-staff@mylegnd.com") }, "synthetic-cookie"));
+            await using var db = ControllerTestHelpers.BuildDb();
+            var oid = Guid.NewGuid().ToString();
+            var business = new Domain.Entities.CommerceBusiness { Key = "parfait", IsActive = true, Status = "Active" };
+            var profile = new Domain.Entities.ClientProfile { ClientUserId = oid, Email = "synthetic-staff@mylegnd.com" };
+            db.AddRange(business, profile, new Domain.Entities.CommerceBusinessMember {
+                CommerceBusinessId=business.Id, ClientProfileId=profile.Id, RoleKey="staff", Status=active?"Active":"Disabled",
+                CanManageAnalytics=true, CanManageStorefront=true, CanManageOrders=true,
+                ParfaitPageGrantsJson=JsonSerializer.Serialize(new[]{assignedPage})
+            });
+            await db.SaveChangesAsync();
+            var access = new ParfaitTeamAccessService(db, new ParfaitBusinessScopeService(db), registry, null!, null!, new HttpContextAccessor(), null!, Mock.Of<IGraphMailService>(), new ConfigurationBuilder().Build());
+            var user = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim("oid", oid), new Claim(ClaimTypes.Email, "synthetic-staff@mylegnd.com") }, "synthetic-cookie"));
             foreach (var path in new[] { "/internal/analytics/summary", "/internal/analytics/commerce", "/internal/analytics/marketing-setup",
                 "/internal/analytics/calendar-callback", "/internal/analytics/external-ads/callback" })
             {

@@ -29,6 +29,11 @@
 
 <div class="wrap density-comfort leads-crm pipeline-mode" id="legendWrap" data-business-id="@businessWorkspace?.BusinessId" data-crm-api-base="@(businessWorkspace is null ? "" : $"/business/{businessWorkspace.BusinessId}/crm/api")" data-pipeline-stages="@(businessWorkspace is null ? "[]" : System.Text.Json.JsonSerializer.Serialize(businessWorkspace.Preferences.Stages))">
 
+@if (businessWorkspace is not null)
+{
+    @await Html.PartialAsync("~/Views/Shared/_BusinessTrainingCohort.cshtml", businessWorkspace.Training)
+}
+
 <form id="__af" method="post" style="display:none;">
     @Html.AntiForgeryToken()
 </form>

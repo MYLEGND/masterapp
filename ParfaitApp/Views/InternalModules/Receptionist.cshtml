@@ -1,0 +1,32 @@
+@model Shared.Analytics.ReceptionistConfigurationSnapshot
+@{
+    ViewData["Title"] = "AI Receptionist";
+    Layout = "_InternalLayout";
+    var workspace = ViewData["ReceptionistWorkspaceUrl"] as string;
+}
+<section class="pf-command-page">
+    <header class="pf-command-head"><div class="pf-command-copy">
+        <h1 class="pf-command-title">AI Receptionist</h1>
+        <p class="pf-command-text">Parfait conversations, services, hours and call permission.</p>
+    </div><span class="pf-command-badge is-@(Model.AdmissionEnabled ? "success" : "warning")">@(Model.AdmissionEnabled ? "Calls allowed when ready" : "New conversations paused")</span></header>
+    @if (TempData["ReceptionistNotice"] is string notice) { <p role="status">@notice</p> }
+    <section class="pf-module-card">
+        <h2 class="pf-module-title">Setup and control</h2>
+        <p>Set your greeting and services, choose reception hours and limits, then connect and review your voice setup. Allow calls only after its readiness checks pass.</p>
+        <p>Pause stops new AI conversations without deleting your configuration. Existing calls may still need to finish or be stopped from the conversation controls.</p>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+        @if (workspace is not null) {
+            <a class="btn btn-primary" href="@workspace">Open receptionist setup</a>
+            <a class="btn btn-outline-secondary" href="@(workspace + "/connections")">Voice connection and review</a>
+        } else { <p role="status">The business workspace address is unavailable. Ask your administrator to configure the Portal address.</p> }
+        @if (Model.ConfigurationId.HasValue && Model.AdmissionEnabled) {
+            <form asp-action="PauseReceptionist" method="post" class="m-0">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="expectedRevision" value="@Model.ConnectionRevision" />
+                <button type="submit" class="btn btn-outline-secondary">Pause new conversations</button>
+            </form>
+        }
+        </div>
+        <p class="mt-3 mb-0">Saved configuration: @(Model.ConfigurationId.HasValue ? $"Version {Model.ConfigurationVersion}" : "Not configured"). Call permission alone does not establish provider readiness.</p>
+    </section>
+</section>

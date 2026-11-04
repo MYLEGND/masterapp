@@ -213,6 +213,8 @@ public sealed class ParfaitProductDiscountCodeEditorViewModel
 
     public string DiscountType { get; set; } = "Percent";
     public decimal Amount { get; set; }
+    [Range(1, int.MaxValue)]
+    public int? UsageLimit { get; set; }
     public bool IsActive { get; set; } = true;
 
     public string SummaryLabel => string.Equals(DiscountType, "Fixed", StringComparison.OrdinalIgnoreCase)

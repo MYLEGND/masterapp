@@ -317,27 +317,15 @@ public sealed partial class CommerceManagementController(
         if (input.MemberId == Guid.Empty || input.ExpectedUpdatedTicks <= 0)
             return BadRequest("A complete member update receipt is required.");
 
-        var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
-        var member = await db.CommerceBusinessMembers.SingleOrDefaultAsync(x =>
-            x.Id == input.MemberId && x.CommerceBusinessId == store.CommerceBusinessId, ct);
-        if (member is null) return NotFound();
-        if (member.RoleKey.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
-            member.RoleKey.Equals("platform-owner", StringComparison.OrdinalIgnoreCase) ||
-            member.RoleKey.Equals("account", StringComparison.OrdinalIgnoreCase))
-            return Forbid();
-        if (member.UpdatedUtc.Ticks != input.ExpectedUpdatedTicks)
-            return Conflict("Team access changed in another session. Reload to review permissions.");
-
-        member.CanManageStorefront = input.CanManageStorefront;
-        member.CanManageCatalog = input.CanManageCatalog && input.CanManageStorefront;
-        member.CanManageOrders = input.CanManageOrders && input.CanManageStorefront;
-        member.CanManageAnalytics = input.CanManageAnalytics;
-        if (input.CanManageCrm.HasValue)
-            member.CanManageCrm = input.CanManageCrm.Value;
-        // Team administration remains controlled by canonical business ownership.
-        member.UpdatedUtc = DateTime.UtcNow;
-        try { await db.SaveChangesAsync(ct); }
-        catch (DbUpdateConcurrencyException) { return Conflict("Team access changed. Reload before saving permissions."); }
+        try
+        {
+            var saved = await HttpContext.RequestServices.GetRequiredService<BusinessWorkspaceService>().SaveTicketMemberPermissionsAsync(
+                stores, ticket, tickets, input.MemberId, input.ExpectedUpdatedTicks,
+                new(input.CanManageStorefront, input.CanManageCatalog, input.CanManageOrders, input.CanManageAnalytics, input.CanManageCrm), ct);
+            if (!saved) return Conflict("Team access changed in another session. Reload to review permissions.");
+        }
+        catch (KeyNotFoundException) { return NotFound(); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
         return ManagerRedirect(nameof(Team), new { ticket });
     }
 

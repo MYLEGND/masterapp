@@ -3550,3 +3550,119 @@ Production remains at the previously recorded successful revisions until those g
 are satisfied. Physical printer/postage integration, actual native push delivery and
 real email delivery are not claimed by mock coverage. Do not replay prior migration,
 transfer, binding or deployment intents while continuing.
+
+
+## Parfait standalone reconciliation — 2026-11-03 direct Mac continuation
+
+This work continues from deployed source
+`eb0694f3bc3785f16739c3ff49be968d2d0e90b1`, preserving both reviewed Store
+and mobile backend implementations. That source was deployed to Portal, Client,
+Protect, Parfait and Website. Its normal nonpublishing integration is verified at
+fast-track `e16c0d2330fee15bd4ae117a27a767b78b1e616c` (PR761, merge run
+41747049574). Native iOS/Android store binaries were not uploaded by that backend
+release. New Parfait changes in this section are predeployment source work;
+provider/data effects require separate exact receipts and must not be inferred
+from this checkpoint or passing tests.
+
+The standalone Parfait App Service and domain remain intact. No Cloudflare domain
+migration, Square credential rotation, replacement merchant account, or product-
+specific payment connection is introduced. Read-only provider evidence confirms
+Parfait and LEGEND use the same existing Square merchant/location authority.
+Existing paid orders, merchant bindings and prior migration history are preserved.
+
+Canonical authority and repaired consumers:
+
+- Native internal access reads existing business memberships, linked Microsoft OIDs,
+  lifecycle state and capability policy. The historical empty native team JSON file
+  remains recovery material and is not an active authorization source. Optional
+  per-page restrictions live on the existing member row, narrow canonical capabilities,
+  and deny malformed restrictions. Protected ownership remains server-enforced.
+- Login offers Microsoft's account chooser and the denied page can clear the native
+  cookie and choose another account through a CSRF-protected POST. Existing owner
+  access does not instantiate the optional identity-provisioning dependency.
+- Native `/internal/settings/shipping` and order postage routes adapt the existing
+  shared shipping owner with native membership/page checks. Postage credentials and
+  ship-from configuration remain store-wide; carrier labels, reprints, reference QR
+  stickers and parcel rates use the existing order/shipping state and purchase intent.
+- The canonical Razor imports moved from Shared-only scope to the Views root. This
+  repairs generated names, labels, validation, actions and versioned assets for native
+  forms, including the Team POST that otherwise displayed inputs without submitting
+  their values. Shared descendants retain the same imports.
+- Team writes use the existing canonical membership/invitation owner. New identity
+  invitations retain both Microsoft's setup link and membership acceptance. The same
+  existing Graph mail transport sends them. Protected owner dialogs are read-only;
+  owner summaries derive from canonical rows and compact metrics use two phone/four
+  desktop columns.
+- Existing business-account reconciliation selects the intended existing Parfait
+  association under a serializable, audited, expected-snapshot operation. The second
+  association and its draft are retained. No profile/business is recreated or merged.
+- Training uses existing catalog products, discounts, immutable offers, activation
+  invitations, subscriptions, payment/refund records and the LEGEND Square billing
+  owner. The original catalog migration omitted the original four offers; their
+  approved historical terms were recovered rather than invented. Zac confirmed no
+  introductory places were sold. The guarded operational importer invokes the existing
+  ProductSave owner for four stable external keys and preserves the existing apparel.
+- First-five offers use an immutable discount identity and serializable capacity
+  admission. Displayed prices are bound to enrollment; exhausted/stale offers require
+  review instead of silently raising the price. Paid, accepted, redeemed, retryable
+  and unknown histories retain places. Only expired, definitively failed unpaid
+  attempts release them. Used discount identities cannot be deleted/recreated to reset
+  capacity. The page uses canonical Store tokens and shows the configured limit.
+- Business CRM projects existing training relationships by exact business scope and
+  client identity, with search, read-only detail and deduplicated contacts. Pending
+  enrollment stays distinct from paid customers. Net collected totals use canonical
+  completed-payment/refund evidence; uncertain histories are excluded and disclosed.
+  No fabricated website lead, Founder contact link, marketing consent or second billing
+  record is written. Existing public inquiry capture remains the inquiry authority.
+
+Two additive migrations append to the verified 235-entry baseline:
+`20261104012500_ParfaitMemberPageRestrictions` and
+`20261104014500_TrainingPromotionMemberLimits`. They add nullable fields, one ordered
+nonunique index and one trusted NO ACTION FK; existing rows are not backfilled or
+removed. The generic production migration contract still rejects the unsupported
+existing-column index shape. Disposable-only fixture handling does not broaden that
+contract. The exact reviewed native SQL wrapper is a separate, guarded admission:
+terminal four-writer stop, exact candidate/SQL, preserved history/rows, exclusive
+intent, outer transaction and independent physical postconditions. Never replay a
+partial or uncertain operation.
+
+Local evidence: combined 300/300 tests; focused CRM/Razor and final native owner/DI
+checks 40/40; owning migration rehearsal 13 SQL scenarios; exact wrapper success,
+replay rejection, between-migration failure rollback and postcondition failure rollback;
+exact four-plan importer rehearsal in isolated SQLite. No real message, charge,
+postage purchase, printer action, IAM grant or production data write occurred in
+these local tests. Native rendered acceptance uses isolated localhost15432 with mock
+Microsoft, Square, Graph and postage transports; those mocks do not prove live
+provider delivery or identity creation.
+
+Release scope is the four .NET consumers (Portal, Client, Protect, Parfait) because
+shared Domain/Infrastructure/CommerceCore/Shared code changed. Static Website remains
+at verified eb0694 source and is observed throughout the native sequence. Prepared
+runners preserve the existing native journal/mutex observations, exact artifacts,
+uncertain-operation holds and existing Work push cutoff. Stop requires reviewed
+235/2 schema state; upload/restart require applied237/0. No historical migration,
+Square binding or completed upload is replayed.
+
+Remaining at this source checkpoint: final rendered acceptance and preservation
+pins; exact committed candidate and current CI; four package/provenance checks;
+fresh publisher/provider/schema admission; direct native migration-first deployment;
+existing account reconciliation; verified-consumer training activation in Client,
+Portal and Parfait (Protect stays disabled); canonical four-plan catalog import;
+live native login/shipping/training/CRM and payment journey verification; and normal
+nonpublishing fast-track integration. New staff identity provisioning additionally
+requires the explicitly reserved owner decision on the proposed existing-secret
+access. No such grant is implied by the earlier Square-only approval.
+
+### Parfait public presentation and receptionist continuation — 2026-11-03
+
+- Preserve committed `475aacf5e9e271aa606dcd7a6dbcfa8abf3cd1e9` and all earlier Store/mobile/payment protections. Its three current-head validation runs passed; the additional source below requires a new exact candidate and validation.
+- Zac explicitly requires white public page and banner fills. Canonical public surface/elevated tokens are white; readable foregrounds, compact Home/Contact layouts and white transaction/legal banners consume those tokens. Authored Website theme values remain authoritative. No legal or brand story content was removed.
+- Native `/internal/settings/receptionist` uses the existing business-scoped receptionist configuration. Owner settings capability and antiforgery protect the pause action. It can only pause; it cannot activate provider spending. Setup links use the configured Portal address. Pausing retains the saved configuration, hides public voice entry and preserves written inquiry submission. Other sites retain their existing defaults.
+- Store CSS delivery hashes the actual owning asset before preserving the `/store-assets` transport alias. One shared presentation helper and stylesheet partial serve native Parfait and packaged scoped Store consumers; no duplicate asset copy is introduced.
+- Localhost `https://localhost:15432` is an isolated SQL/provider/mail/identity fixture. Actual native pause POST persisted false after reload with configuration version 1 retained. A written inquiry completed with exactly one Website lead and one CRM profile. No actual voice connection, customer email, payment or postage was invoked. Local origin normalization and synthetic owner/configuration setup are fixture-only.
+- Exact native shipping route, account reconciliation, canonical team, recovered four-plan training and CRM local evidence from the preceding continuation remains retained. Additional final presentation/rendered checks are recorded privately with exact source fingerprints.
+- Zac approved the existing Microsoft provider access proposal: Parfait may read only the existing `AzureAd--ClientSecret` secret and use the existing identity provider. No new Graph role, credential rotation or user invitation is authorized by that approval. Execution remains pending the reviewed release.
+- The shared inquiry module change requires fresh packages for Portal, Client, Protect, Parfait and Website. Existing deployment journal/mutex, four-writer migration hold, two pending forward-only migrations, existing push cutoff and migration-first admission remain mandatory. Earlier four-package artifacts are retained as evidence, not relabeled as this release.
+- Not yet deployed: finish exact source/rendered acceptance and current CI, five artifact review, fresh provider/schema admission, direct deployment, canonical existing-client account binding, approved provider configuration, staged training flags/catalog recovery, live verification and normal fast-track source incorporation. Preserve the completed paid Store order and existing Square merchant connection throughout.
+
+- Follow-up admission correction: the c892 commerce validation exposed the shared Store alias contract after 1,278 other tests passed. Theme aliases remain owned solely by `storefront.css`; the native public layout loads that stylesheet once, and native white defaults are supplied by `site.css` through the existing web theme properties. Scoped websites retain their original fallback/foreground contract. No failing contract assertion was removed or weakened. c892 packages remain recoverable but are superseded for deployment by the corrected candidate.

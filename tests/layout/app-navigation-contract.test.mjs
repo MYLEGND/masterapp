@@ -449,3 +449,24 @@ test('navigation geometry keeps one mobile boundary and gives motto a normal-flo
   assert.match(mobile,/grid-area: motto/);
   assert.match(css,/\.legend-global-nav \.navbar-left \.nav-row \{[\s\S]*flex-wrap: wrap;/);
 });
+
+
+test('business account navigation becomes focusable only with an eligible current profile',()=>{
+  const source=readFileSync(join(ROOT,'AgentPortal/wwwroot/js/clients-index.js'),'utf8');
+  const reset=source.slice(source.indexOf('    const pendingBusinessAccountLink ='),source.indexOf('    renderPortalActions(row, null);'));
+  const update=source.slice(source.indexOf('    const businessAccountLink ='),source.indexOf('    if (detail.accountManagementMode)'));
+  const attributes=new Map();
+  const link={hidden:true,set href(value){attributes.set('href',value);},setAttribute:(key,value)=>attributes.set(key,value),removeAttribute:key=>attributes.delete(key)};
+  const run=detail=>vm.runInNewContext(update,{document:{getElementById:()=>link},detail,row:{dataset:{}},norm:value=>String(value||'')});
+  run({recordType:'BusinessClient',clientProfileId:'profile/one',agentWorkspaceAccessEnabled:true});
+  assert.equal(link.hidden,false);
+  assert.equal(attributes.get('href'),'/Clients/ReconcileBusinessAccount?profileId=profile%2Fone');
+  assert.equal(attributes.has('aria-disabled'),false);assert.equal(attributes.has('tabindex'),false);
+  vm.runInNewContext(reset,{document:{getElementById:()=>link}});
+  assert.equal(link.hidden,true);assert.equal(attributes.has('href'),false);
+  assert.equal(attributes.get('aria-disabled'),'true');assert.equal(attributes.get('tabindex'),'-1');
+  for(const detail of [{recordType:'Client',clientProfileId:'other'},{recordType:'BusinessClient'},{recordType:'BusinessClient',clientProfileId:'other',agentWorkspaceAccessEnabled:false}]){
+    run(detail);assert.equal(link.hidden,true);assert.equal(attributes.has('href'),false);
+    assert.equal(attributes.get('aria-disabled'),'true');assert.equal(attributes.get('tabindex'),'-1');
+  }
+});

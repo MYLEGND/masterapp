@@ -738,6 +738,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
             Code = discount.Code,
             DiscountType = discount.DiscountType,
             Amount = discount.Amount,
+            UsageLimit = discount.UsageLimit,
             IsActive = discount.IsActive
         };
     }
@@ -817,13 +818,18 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     {
         var normalized = NormalizeDiscountCodes(discounts);
         foreach (var removed in entity.Discounts.Where(row => !normalized.Any(item => item.Id == row.ExternalDiscountKey)).ToList())
-            _db.Remove(removed);
+        {
+            if (_db.ClientSubscriptionOffers.Any(x => x.TrainingDiscountId == removed.Id)) removed.IsActive = false;
+            else _db.Remove(removed);
+        }
 
         foreach (var discount in normalized)
         {
             var row = entity.Discounts.SingleOrDefault(item => item.ExternalDiscountKey == discount.Id);
             if (row is null)
             {
+                if (entity.Discounts.Any(existing => string.Equals(existing.Code, discount.Code, StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidOperationException("Update the existing promotion instead of replacing its identity.");
                 row = new CommerceProductDiscount { CommerceProductId = entity.Id, ExternalDiscountKey = discount.Id };
                 entity.Discounts.Add(row);
                 _db.Add(row);
@@ -831,6 +837,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
             row.Code = discount.Code;
             row.DiscountType = discount.DiscountType;
             row.Amount = discount.Amount;
+            row.UsageLimit = discount.UsageLimit;
             row.IsActive = discount.IsActive;
         }
     }
@@ -943,6 +950,8 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         if (product.BillingKind == Domain.Billing.ClientSubscriptionScope.MonthlyTraining &&
             (product.PriceCents <= 0 || product.PriceCents > Domain.Billing.ClientSubscriptionOfferPricing.CustomMaximumCents))
             throw new InvalidOperationException("Enter a monthly training price between $0.01 and $2,500.");
+        if (product.DiscountCodes.Any(x => x.UsageLimit.HasValue) && product.BillingKind != Domain.Billing.ClientSubscriptionScope.MonthlyTraining)
+            throw new InvalidOperationException("Member limits apply only to monthly training promotions.");
         var slug = string.IsNullOrWhiteSpace(product.Slug) ? product.Name : product.Slug;
         slug = slug.Trim().ToLowerInvariant().Replace(" ", "-");
 
@@ -1050,17 +1059,16 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
 
     private static List<ParfaitProductDiscountCodeEditorViewModel> NormalizeDiscountCodes(List<ParfaitProductDiscountCodeEditorViewModel>? codes)
     {
-        return (codes ?? [])
-            .Select(NormalizeDiscountCode)
-            .Where(code => !string.IsNullOrWhiteSpace(code.Code) && code.Amount > 0)
-            .GroupBy(code => code.Code, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .OrderBy(code => code.Code)
-            .ToList();
+        var normalized = (codes ?? []).Select(NormalizeDiscountCode)
+            .Where(code => !string.IsNullOrWhiteSpace(code.Code) && code.Amount > 0).ToList();
+        if (normalized.GroupBy(code => code.Code, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
+            throw new InvalidOperationException("Each promotion code must be unique.");
+        return normalized.OrderBy(code => code.Code).ToList();
     }
 
     private static ParfaitProductDiscountCodeEditorViewModel NormalizeDiscountCode(ParfaitProductDiscountCodeEditorViewModel code)
     {
+        if (code.UsageLimit is <= 0) throw new InvalidOperationException("A member limit must be greater than zero.");
         var discountType = string.Equals(code.DiscountType, "Fixed", StringComparison.OrdinalIgnoreCase) ? "Fixed" : "Percent";
         var amount = discountType == "Fixed"
             ? Math.Round(Math.Max(0m, code.Amount), 2, MidpointRounding.AwayFromZero)
@@ -1072,6 +1080,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
             Code = ParfaitProductCatalogDefaults.NormalizeDiscountCode(code.Code),
             DiscountType = discountType,
             Amount = amount,
+            UsageLimit = code.UsageLimit,
             IsActive = code.IsActive
         };
     }
@@ -1079,6 +1088,8 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     private static ParfaitCommerceSettingsViewModel NormalizeCommerceSettings(ParfaitCommerceSettingsViewModel settings)
     {
         var normalizedDiscount = NormalizeDiscountCode(settings.GlobalDiscount ?? new ParfaitProductDiscountCodeEditorViewModel());
+        if (normalizedDiscount.UsageLimit.HasValue)
+            throw new InvalidOperationException("Member limits belong to individual monthly training promotions.");
 
         return new ParfaitCommerceSettingsViewModel
         {

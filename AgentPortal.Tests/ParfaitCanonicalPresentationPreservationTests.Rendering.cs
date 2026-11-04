@@ -22,6 +22,35 @@ namespace AgentPortal.Tests;
 public sealed partial class ParfaitCanonicalPresentationPreservationTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StoreAssetVersionHashesOwningFileAndPreservesTransportAlias(bool packagedUnderAlias)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "legend-store-asset-" + System.Guid.NewGuid().ToString("N"));
+        var physicalRoot = packagedUnderAlias ? Path.Combine(directory, "store-assets") : directory;
+        Directory.CreateDirectory(Path.Combine(physicalRoot, "css"));
+        try
+        {
+            foreach (var content in new[] { "body{background:white}", "body{background:#fff;color:#222}" })
+            {
+                await File.WriteAllTextAsync(Path.Combine(physicalRoot, "css", "storefront.css"), content);
+                using var host = await new HostBuilder().ConfigureWebHost(builder => builder
+                    .UseContentRoot(directory).UseWebRoot(directory).UseEnvironment("Testing").UseTestServer()
+                    .ConfigureServices(services => services.AddControllersWithViews())
+                    .Configure(app => { })).StartAsync();
+                var environment = host.Services.GetRequiredService<IWebHostEnvironment>();
+                var versions = host.Services.GetRequiredService<IFileVersionProvider>();
+                var expected = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(
+                    System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(content)));
+                Assert.Equal("/store-assets/css/storefront.css?v=" + expected,
+                    Infrastructure.Commerce.CommerceStorefrontPresentation.VersionedAsset(environment, versions,
+                        PathString.Empty, "css/storefront.css"));
+            }
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]

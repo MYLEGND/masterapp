@@ -31,6 +31,19 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
 
     public async Task<List<BusinessWorkspaceNavigationItem>> NavigationAsync(Guid profileId, string actor, string? email, CancellationToken ct, Guid? selectedBusinessId = null)
     {
+        if (!selectedBusinessId.HasValue)
+        {
+            var bindings = await db.CommerceBusinessMembers.AsNoTracking().Where(x => x.ClientProfileId == profileId &&
+                x.RoleKey == "account" && x.Status == "Active").Take(2).ToListAsync(ct);
+            if (bindings.Count > 1) return new();
+            if (bindings.Count == 1)
+            {
+                var binding = bindings[0];
+                if (await db.CommerceBusinessMembers.CountAsync(x => x.CommerceBusinessId == binding.CommerceBusinessId &&
+                    x.RoleKey == "account" && x.Status == "Active", ct) != 1) return new();
+                selectedBusinessId = binding.CommerceBusinessId;
+            }
+        }
         var ids = await db.CommerceBusinessMembers.AsNoTracking().Where(x => x.ClientProfileId == profileId && x.Status == "Active" &&
                 (!selectedBusinessId.HasValue || x.CommerceBusinessId == selectedBusinessId))
             .Select(x => x.CommerceBusinessId).Distinct().ToListAsync(ct);
@@ -54,8 +67,10 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
             result.Add(new(id, business.DisplayName, preferences.LeadLabel, preferences.ClientLabel,
                 crm is not null, analyticsBusiness is not null, settings is not null, website is not null, liveDomain is null ? null : "https://" + liveDomain,
                 (storeAccess is not null || analyticsBusiness is not null || settings is not null || website is not null)
-                    ? await ParfaitApp.Services.CommerceStoreContextService.PublishedManagementEntryAsync(db, configuration,
-                        WebsiteEditorSiteKeys.Business, WebsiteEditorSiteKeys.BusinessOwnerKey(id), ct) : null));
+                    ? business.Key == ParfaitApp.Services.ParfaitBusinessScopeService.ParfaitBusinessKey
+                        ? ParfaitApp.Services.CommerceStoreContextService.StandaloneParfaitManagementEntry(configuration)
+                        : await ParfaitApp.Services.CommerceStoreContextService.PublishedManagementEntryAsync(db, configuration,
+                            WebsiteEditorSiteKeys.Business, WebsiteEditorSiteKeys.BusinessOwnerKey(id), ct) : null));
         }
         return result;
     }
@@ -128,6 +143,7 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
         if (search.Length > 0) query = query.Where(x => x.FirstName.Contains(search) || x.LastName.Contains(search) || x.Email.Contains(search) || x.Phone.Contains(search));
         var model = new BusinessWorkspaceModel { BusinessId = business.Id, BusinessName = business.DisplayName, Kind = kind, Search = search, Page = page, Total = await query.CountAsync(ct) };
         model.Preferences = (await SettingsAsync(business.Id, ct)).Preferences;
+        model.Training = await TrainingAsync(business.Id, search, page, null, ct);
         var rows = await query.OrderBy(x => x.CrmOrder).ThenBy(x => x.LeadId).ToListAsync(ct);
         model.Contacts = rows.Select(x => Project(x, model.Preferences)).ToList();
         model.CanonicalContacts = rows.Select(x => ProjectCanonical(x, model.Preferences)).ToList();

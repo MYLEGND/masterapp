@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized normal source-preserving integration of independently reviewed Store/mobile and embedded-checkout source after direct Mac deployment. This validate-only request authorizes no application, database, configuration, payment, postage, routing or provider mutation.",
-  "purpose": "Synchronize reviewed source eb0694f3bc3785f16739c3ff49be968d2d0e90b1 into Legend/fast-track-release without republishing. All five runtime revisions were observed at that source. Live checkout loading, cart-header and quantity follow-ups remain unresolved; this request does not claim full live journey verification or task completion. Preserve historical resource receipts and the existing native deployment journals unchanged.",
-  "requestId": "store-mobile-embedded-source-integration-20261103-eb0694f3-v1",
+  "authorization": "Founder authorized direct Mac release42 and mandatory normal incorporation into Legend/fast-track-release. This source-integration request authorizes no GitHub deployment, migration, configuration, payment, postage, routing, or provider mutation.",
+  "purpose": "Synchronize the preserved Parfait standalone source42 after direct Mac upload/restart and five actual runtime readbacks. White public styling and shipping-to-email sign-in were verified live. Keep account binding, catalog recovery, authenticated staff acceptance, and the separately reviewed checkout presentation follow-up explicitly pending; do not republish the deployed packages.",
+  "requestId": "parfait-direct-mac-42-source-integration-20261104-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -78,7 +78,7 @@
   },
   "sourceIntegration": {
     "schemaVersion": 1,
-    "baseRevision": "69f282796e0a8e183f0e75305cd280b339f01a87",
-    "sourceRevision": "eb0694f3bc3785f16739c3ff49be968d2d0e90b1"
+    "baseRevision": "e16c0d2330fee15bd4ae117a27a767b78b1e616c",
+    "sourceRevision": "42c40d5b420e18111791d51a402ee45427544981"
   }
 }

@@ -18,7 +18,7 @@
         }));
     var activeMembers = Model.Members.Count(member => member.IsActive);
     var teamManagers = Model.Members.Count(member => member.CanManageTeam);
-    var pendingSignIns = Model.Members.Count(member => !member.LastSignInUtc.HasValue);
+    var pendingSignIns = Model.Members.Count(member => member.StatusLabel == "Pending");
 }
 
 <section class="pf-command-page pf-team-page">
@@ -30,7 +30,7 @@
         <div class="pf-command-meta">
             <span class="pf-command-badge is-success">@activeMembers active</span>
             <span class="pf-command-badge is-info">@teamManagers with team controls</span>
-            <span class="pf-command-badge is-warning">@pendingSignIns pending sign-in</span>
+            <span class="pf-command-badge is-warning">@pendingSignIns pending acceptance</span>
         </div>
     </header>
 
@@ -44,9 +44,9 @@
         <div class="alert alert-danger">@teamError</div>
     }
 
-    <section class="pf-command-rail">
+    <section class="pf-team-metrics">
         <article class="pf-rail-card is-success pf-span-3">
-            <div class="pf-rail-label">Owner Lock</div>
+            <div class="pf-rail-label">Protected owners</div>
             <strong class="pf-rail-value">@Model.FounderCount</strong>
             <p class="pf-rail-note">Owner access stays fixed.</p>
         </article>
@@ -93,7 +93,7 @@
 
         <div class="pf-module-card pf-span-8">
             <h2 class="pf-module-title">Approve Access</h2>
-            <p class="text-muted mb-4">Invite a @@mylegnd.com account and assign a starting role.</p>
+            <p class="text-muted mb-4">Invite a Microsoft account. Access starts only after identity-verified acceptance.</p>
 
             <form action="@Url.Content("~/internal/settings/team/add")" method="post" class="pf-team-invite-form">
                 @Html.AntiForgeryToken()
@@ -170,8 +170,7 @@
                             new System.Collections.Generic.KeyValuePair<string, string>[] {
                                 new("Microsoft Sign-In", member.IdentityStatusLabel),
                                 new("Allowed pages", allowedSummary),
-                                new("Invite sent", member.InviteSentUtc.HasValue ? member.InviteSentUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Not sent yet."),
-                                new("Last sign-in", member.LastSignInUtc.HasValue ? member.LastSignInUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Not signed in yet.")
+                                new("Membership", member.StatusLabel)
                             }))
                     </div>
                 }
@@ -195,6 +194,18 @@
                 </div>
 
                 <div class="pf-modal-body">
+                    @if (member.IsProtected)
+                    {
+                        <p><strong>@member.RoleLabel</strong> · @member.Email</p>
+                        <p>@member.RoleDescription</p>
+                        <dl class="pf-team-list">
+                            <div><dt>Microsoft account</dt><dd>@member.IdentityStatusLabel</dd></div>
+                            <div><dt>Page access</dt><dd>@(member.AllowedPageTitles.Count == 0 ? "No pages available." : string.Join(", ", member.AllowedPageTitles))</dd></div>
+                        </dl>
+                        <div class="pf-modal-footer"><button type="button" class="pf-secondary-action" data-pf-close>Close</button></div>
+                    }
+                    else
+                    {
                     <div class="pf-modal-grid">
                         <section class="pf-media-panel">
                             <h3 class="pf-module-title">@member.Email</h3>
@@ -214,7 +225,7 @@
                                 </div>
                                 <div>
                                     <strong>Invite Sent</strong>
-                                    <span>@(member.InviteSentUtc.HasValue ? member.InviteSentUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Not sent yet.")</span>
+                                    <span>@(member.InviteSentUtc.HasValue ? member.InviteSentUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Delivery history is not tracked here.")</span>
                                 </div>
                                 <div>
                                     <strong>Created</strong>
@@ -222,7 +233,7 @@
                                 </div>
                                 <div>
                                     <strong>Last Sign-In</strong>
-                                    <span>@(member.LastSignInUtc.HasValue ? member.LastSignInUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Not signed in yet.")</span>
+                                    <span>@(member.LastSignInUtc.HasValue ? member.LastSignInUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Sign-in history is not tracked here.")</span>
                                 </div>
                             </div>
                         </section>
@@ -230,6 +241,8 @@
                         <section class="pf-editor-panel">
                             <form action="@Url.Content($"~/internal/settings/team/{member.Id}")" method="post">
                                 @Html.AntiForgeryToken()
+                                <input type="hidden" name="ExpectedUpdatedTicks" value="@member.ExpectedUpdatedTicks" />
+                                <fieldset disabled="@member.IsProtected">
                                 <input type="hidden" name="IsActive" value="false" />
 
                                 <div class="mb-3">
@@ -244,6 +257,10 @@
                                 <div class="mb-3">
                                     <label class="form-label fw-bold" for="role-@member.Id">Role</label>
                                     <select id="role-@member.Id" name="RoleKey" class="form-select" data-pf-role-select>
+                                        @if (member.IsProtected)
+                                        {
+                                            <option value="@member.RoleKey" selected>@member.RoleLabel</option>
+                                        }
                                         @foreach (var role in Model.RoleOptions)
                                         {
                                             <option value="@role.Key" selected="@(member.RoleKey.Equals(role.Key, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@role.Label</option>
@@ -287,6 +304,7 @@
                                     <button type="button" class="pf-secondary-action" data-pf-close>Cancel</button>
                                     <button type="submit" class="pf-action">Save Access</button>
                                 </div>
+                                </fieldset>
                             </form>
 
                             <form action="@Url.Content($"~/internal/settings/team/{member.Id}/remove")"
@@ -294,10 +312,12 @@
                                   class="pf-danger-zone"
                                   onsubmit="return confirm('Remove this team member from Parfait internal access?');">
                                 @Html.AntiForgeryToken()
-                                <button type="submit">Remove Team Member</button>
+                                <input type="hidden" name="ExpectedUpdatedTicks" value="@member.ExpectedUpdatedTicks" />
+                                <button type="submit" disabled="@member.IsProtected">Remove Team Member</button>
                             </form>
                         </section>
                     </div>
+                    }
                 </div>
             </div>
         </div>

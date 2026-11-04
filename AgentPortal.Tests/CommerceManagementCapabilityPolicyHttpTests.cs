@@ -232,6 +232,7 @@ public sealed partial class CommerceManagementCapabilityPolicyTests
         var builder = Microsoft.AspNetCore.Builder.WebApplication.CreateBuilder(new Microsoft.AspNetCore.Builder.WebApplicationOptions { EnvironmentName = "Testing" });
         builder.WebHost.UseTestServer();
         builder.Services.AddSingleton(f.Db);
+        builder.Services.AddSingleton(new BusinessWorkspaceService(f.Db, Mock.Of<Infrastructure.Analytics.IAnalyticsQueryService>(), new ConfigurationBuilder().Build()));
         builder.Services.AddControllersWithViews().AddLegendCommerceManagementMvc().AddControllersAsServices();
         builder.Services.Replace(ServiceDescriptor.Transient<CommerceManagementController>(_ => f.Controller));
         await using var app = builder.Build();

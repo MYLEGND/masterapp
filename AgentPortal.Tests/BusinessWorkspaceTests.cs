@@ -331,6 +331,42 @@ public sealed class BusinessWorkspaceTests
         Assert.Contains("/leads", html, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task TrainingDetailResolvesAndVersionsStylesheetAndRendersCanonicalTable()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "training-view-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "css"));
+        await File.WriteAllTextAsync(Path.Combine(root, "css", "clients-index.css"), ".action-table{width:100%}");
+        try
+        {
+            using var host = await BuildClientAppRazorHostAsync();
+            using var files = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(root);
+            host.Services.GetRequiredService<IWebHostEnvironment>().WebRootFileProvider = files;
+            using var scope = host.Services.CreateScope();
+            var services = scope.ServiceProvider;
+            var http = new DefaultHttpContext { RequestServices = services };
+            http.Request.Scheme = "https"; http.Request.Host = new HostString("client.test");
+            var action = new ActionContext(http, new RouteData(), new ActionDescriptor());
+            var view = services.GetRequiredService<IRazorViewEngine>().GetView(null, "~/Views/Shared/BusinessTrainingContact.cshtml", false);
+            Assert.True(view.Success);
+            var model = new BusinessTrainingCohort { BusinessId = Guid.NewGuid(), Contacts = [new BusinessTrainingContact(
+                Guid.NewGuid(), "training@example.test", "training@example.test", "", false,
+                [new BusinessTrainingTerm(Guid.NewGuid(), "Training plan", 25000, "USD", "Offered", null)])] };
+            var data = new ViewDataDictionary<BusinessTrainingCohort>(services.GetRequiredService<IModelMetadataProvider>(), new ModelStateDictionary()) { Model = model };
+            using var writer = new StringWriter();
+            await view.View.RenderAsync(new ViewContext(action, view.View, data,
+                new TempDataDictionary(http, services.GetRequiredService<ITempDataProvider>()), writer, new HtmlHelperOptions()));
+            var html = writer.ToString();
+            Assert.Contains("href=\"/css/clients-index.css?v=", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("href=\"~/", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("asp-append-version", html, StringComparison.Ordinal);
+            Assert.Contains("class=\"action-table\"", html, StringComparison.Ordinal);
+            Assert.Contains("training@example.test", html, StringComparison.Ordinal);
+            Assert.Contains("250.00/month", html, StringComparison.Ordinal);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     private static Task<IHost> BuildClientAppRazorHostAsync()
     {
         return new HostBuilder()
@@ -343,7 +379,8 @@ public sealed class BusinessWorkspaceTests
                     services.AddDataProtection();
                     services.AddControllersWithViews()
                         .AddApplicationPart(typeof(ClientApp.Controllers.HomeController).Assembly)
-                        .AddApplicationPart(Assembly.Load("ClientApp.Views"));
+                        .AddApplicationPart(Assembly.Load("ClientApp.Views"))
+                        .AddApplicationPart(typeof(BusinessWorkspaceModel).Assembly);
                 })
                 .Configure(_ => { }))
             .StartAsync();

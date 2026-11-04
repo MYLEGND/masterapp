@@ -14,7 +14,25 @@ namespace ParfaitApp.Services;
 public sealed class TrainingEnrollmentService(MasterAppDbContext db, IBillingOrchestrator billing,
     IWebsiteInquiryEmailSender mail, IConfiguration configuration)
 {
-    public async Task RequestAsync(Guid businessId, Guid productId, string email, string? promotion, CancellationToken ct)
+    public async Task<IReadOnlyList<TrainingPlanOfferViewModel>> PlansAsync(Guid businessId, CancellationToken ct)
+    {
+        var products = await db.CommerceProducts.AsNoTracking().Include(x => x.Discounts).Where(x =>
+            x.CommerceBusinessId == businessId && x.IsActive && x.BillingKind == ClientSubscriptionScope.MonthlyTraining)
+            .OrderBy(x => x.DisplayOrder).ToListAsync(ct);
+        var plans = new List<TrainingPlanOfferViewModel>();
+        foreach (var product in products)
+        {
+            var introductions = product.Discounts.Where(x => x.IsActive && x.UsageLimit > 0).ToList();
+            var promotion = introductions.Count == 1 ? introductions[0] : null;
+            var terms = promotion is null ? null : TrainingPlanTerms.FromCatalog(product, promotion.Code);
+            var available = promotion is not null && (await Infrastructure.Billing.TrainingPromotionReservations
+                .ReservedClientIdsAsync(db, promotion.Id, DateTime.UtcNow, ct)).Count < promotion.UsageLimit;
+            plans.Add(new(product, promotion?.Code, terms?.MonthlyAmountCents, available));
+        }
+        return plans;
+    }
+
+    public async Task RequestAsync(Guid businessId, Guid productId, string email, string? promotion, CancellationToken ct, int? expectedMonthlyAmountCents = null)
     {
         if (!Infrastructure.Billing.ClientSubscriptionActivationPolicyOptions.FromConfiguration(configuration).TrainingSubscriptionsEnabled)
             throw new InvalidOperationException("Training enrollment is temporarily unavailable.");
@@ -38,7 +56,10 @@ public sealed class TrainingEnrollmentService(MasterAppDbContext db, IBillingOrc
             var product = await db.CommerceProducts.Include(x => x.Discounts).SingleOrDefaultAsync(x =>
                 x.Id == productId && x.CommerceBusinessId == businessId, ct)
                 ?? throw new ArgumentException("The training plan is unavailable.");
-            _ = TrainingPlanTerms.FromCatalog(product, promotion);
+            var quoted = TrainingPlanTerms.FromCatalog(product, promotion);
+            if ((quoted.DiscountId.HasValue && product.Discounts.Any(x => x.Id == quoted.DiscountId && x.UsageLimit.HasValue) && !expectedMonthlyAmountCents.HasValue) ||
+                (expectedMonthlyAmountCents.HasValue && expectedMonthlyAmountCents.Value != quoted.MonthlyAmountCents))
+                throw new TrainingPriceChangedException();
             var scope = ClientSubscriptionScope.Training(businessId);
             var client = await db.ClientProfiles.SingleOrDefaultAsync(x => x.NormalizedEmail == normalized || x.Email.ToLower() == normalized, ct);
             if (client is not null)
@@ -109,3 +130,6 @@ public sealed class TrainingEnrollmentService(MasterAppDbContext db, IBillingOrc
         }
     }
 }
+
+public sealed record TrainingPlanOfferViewModel(CommerceProduct Product, string? IntroductoryPromotionCode,
+    int? IntroductoryMonthlyAmountCents, bool IntroductoryOfferAvailable);

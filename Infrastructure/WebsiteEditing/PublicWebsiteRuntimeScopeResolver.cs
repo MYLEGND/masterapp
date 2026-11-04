@@ -41,7 +41,7 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
             // A published website may also own the canonical Parfait checkout,
             // which is a server route rather than a compiled CMS page. Both
             // authorities must agree on the business before admitting its form.
-            if (NormalizePath(sourcePath) == "/store/checkout")
+            if (NormalizePath(sourcePath) is "/store/checkout" or "/store/training")
             {
                 var commerceStores = context.RequestServices?.GetService<ParfaitApp.Services.CommerceStoreContextService>();
                 var checkoutStore = commerceStores is null ? null :
@@ -49,7 +49,7 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
                 if (checkoutStore?.IsParfait == true)
                 {
                     if (checkoutStore.CommerceBusinessId != business.CommerceBusinessId ||
-                        checkoutStore.CheckoutPath != NormalizePath(sourcePath)) return null;
+                        (NormalizePath(sourcePath) != "/store/training" && checkoutStore.CheckoutPath != NormalizePath(sourcePath))) return null;
                     return business with { IsCommerceApp = true, CommerceCheckoutPath = checkoutStore.CheckoutPath };
                 }
             }
@@ -184,7 +184,7 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
                    PublishedDocumentContainsPath(scope.PublishedVersion, normalized, WebsiteEditorSiteKeys.Protect);
 
         if (scope.IsCommerceApp)
-            return IsContactPath(normalized, allowAgentPrefix: false) ||
+            return IsContactPath(normalized, allowAgentPrefix: false) || normalized == "/store/training" ||
                    (!string.IsNullOrWhiteSpace(scope.CommerceCheckoutPath) &&
                     string.Equals(normalized, scope.CommerceCheckoutPath, StringComparison.OrdinalIgnoreCase));
 

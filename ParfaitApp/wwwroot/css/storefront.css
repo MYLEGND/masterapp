@@ -6,11 +6,6 @@
     --sp-cocoa-600: #926950;
     --sp-cream: #fff8f1;
     --sp-gold: #d9b17a;
-    --sp-line: var(--sp-theme-border, var(--web-border-color, color-mix(in srgb, var(--sp-theme-primary) 78%, transparent)));
-    --sp-dark-line: color-mix(in srgb, var(--sp-theme-primary) 65%, transparent);
-    --sp-shadow: 0 8px 24px color-mix(in srgb, var(--sp-theme-secondary) 8%, transparent);
-    --sp-dark-shadow: 0 8px 24px color-mix(in srgb, var(--sp-theme-secondary) 12%, transparent);
-    --sp-font: "Nunito Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
     --sp-theme-primary: var(--web-gold-strong, var(--web-gold, var(--sp-cocoa-700)));
     --sp-theme-secondary: var(--web-navy-deep, var(--sp-cocoa-950));
     --sp-theme-surface: var(--web-surface, #fff);
@@ -23,6 +18,13 @@
     --sp-theme-on-secondary: var(--web-on-secondary, var(--web-surface, var(--sp-cream)));
     --sp-theme-font: var(--web-font, var(--sp-font));
     --sp-theme-radius: var(--web-radius, 22px);
+    --sp-sticky-top: calc(var(--pf-header-offset, 102px) + .9rem);
+    --sp-theme-on-primary: var(--sp-theme-on-secondary);
+    --sp-line: var(--sp-theme-border, var(--web-border-color, color-mix(in srgb, var(--sp-theme-primary) 78%, transparent)));
+    --sp-dark-line: color-mix(in srgb, var(--sp-theme-primary) 65%, transparent);
+    --sp-shadow: 0 8px 24px color-mix(in srgb, var(--sp-theme-secondary) 8%, transparent);
+    --sp-dark-shadow: 0 8px 24px color-mix(in srgb, var(--sp-theme-secondary) 12%, transparent);
+    --sp-font: "Nunito Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
     --sp-sticky-top: calc(var(--pf-header-offset, 102px) + .9rem);
 }
 
@@ -43,9 +45,9 @@ body.sp-body {
 .sp-transaction-header {
     border: 1px solid var(--sp-line);
     border-radius: min(var(--sp-theme-radius), 14px);
-    background: var(--sp-theme-secondary);
-    color: var(--sp-theme-on-secondary);
-    box-shadow: var(--sp-dark-shadow);
+    background: var(--sp-theme-surface-elevated);
+    color: var(--sp-theme-on-elevated);
+    box-shadow: var(--sp-shadow);
 }
 
 .sp-store-hero {
@@ -606,7 +608,7 @@ body.sp-body {
 
 .sp-transaction-kicker {
     margin: 0 0 .28rem;
-    color: color-mix(in srgb, var(--sp-theme-on-secondary) 80%, transparent);
+    color: color-mix(in srgb, var(--sp-theme-on-elevated) 80%, var(--sp-theme-surface-elevated));
     font-size: .68rem;
     font-weight: 900;
     letter-spacing: .17em;
@@ -615,7 +617,7 @@ body.sp-body {
 
 .sp-transaction-header h1 {
     margin: 0;
-    color: var(--sp-theme-on-secondary);
+    color: var(--sp-theme-on-elevated);
     font-size: clamp(1.3rem, 2.5vw, 1.85rem);
     font-weight: 900;
     letter-spacing: -.02em;
@@ -964,7 +966,7 @@ body.sp-body {
 .sp-review-unit-price,
 .sp-cart-compare-price {
     margin: 0;
-    color: rgba(255, 248, 241, .7);
+    color: color-mix(in srgb, var(--sp-theme-on-secondary) 82%, var(--sp-theme-secondary));
     font-size: .7rem;
     font-weight: 700;
 }
@@ -1043,7 +1045,7 @@ body.sp-body {
 .sp-field {
     display: grid;
     gap: .28rem;
-    color: rgba(255, 248, 241, .84);
+    color: color-mix(in srgb, var(--sp-theme-on-secondary) 82%, var(--sp-theme-secondary));
     font-size: .62rem;
     font-weight: 900;
     letter-spacing: .08em;
@@ -1076,7 +1078,7 @@ body.sp-body {
     width: 100%;
     min-height: 40px;
     padding: 0 .72rem;
-    border: 1px solid rgba(255, 248, 241, .18);
+    border: 1px solid var(--sp-line);
     border-radius: 12px;
     background: rgba(255, 248, 241, .1);
     color: var(--sp-theme-on-secondary);
@@ -1090,7 +1092,7 @@ body.sp-body {
 .sp-store-page--checkout .sp-flow-card input:not([type="checkbox"])::placeholder,
 .sp-store-page--cart .sp-discount-entry input::placeholder,
 .sp-store-page--checkout .sp-discount-entry input::placeholder {
-    color: rgba(255, 248, 241, .46);
+    color: color-mix(in srgb, var(--sp-theme-on-secondary) 82%, var(--sp-theme-secondary));
 }
 
 .sp-store-page--cart .sp-flow-card input:focus,
@@ -1129,7 +1131,7 @@ body.sp-body {
 
 .sp-summary-tile span,
 .sp-summary-total-bar span {
-    color: rgba(255, 248, 241, .64);
+    color: color-mix(in srgb, var(--sp-theme-on-secondary) 82%, var(--sp-theme-secondary));
     font-size: .54rem;
     font-weight: 900;
     letter-spacing: .12em;
@@ -1323,7 +1325,7 @@ body.sp-body {
 
 .sp-checkout-final-total-copy span,
 .sp-checkout-final-total-amount span {
-    color: rgba(255, 248, 241, .66);
+    color: color-mix(in srgb, var(--sp-theme-on-secondary) 82%, var(--sp-theme-secondary));
     font-size: .62rem;
     font-weight: 900;
     letter-spacing: .13em;
@@ -1331,7 +1333,7 @@ body.sp-body {
 }
 
 .sp-checkout-final-total-copy small {
-    color: rgba(255, 248, 241, .78);
+    color: color-mix(in srgb, var(--sp-theme-on-secondary) 82%, var(--sp-theme-secondary));
     font-size: .78rem;
     font-weight: 700;
 }
@@ -1487,3 +1489,20 @@ body.sp-body {
     .sp-receipt-details { grid-template-columns: 1fr; gap: 1rem; }
     .sp-receipt-summary { padding-top: .8rem; border-top: 1px solid color-mix(in srgb, var(--sp-theme-text) 10%, transparent); }
 }
+
+/* Training uses the same storefront palette, controls and page hierarchy. */
+.sp-training-intro { margin: 0; max-width: 70ch; color: var(--sp-theme-muted); font-size: .95rem; line-height: 1.6; }
+.sp-training-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 1rem; align-items: start; }
+.sp-training-plan, .sp-training-inquiry { padding: clamp(1rem, 2.4vw, 1.5rem); border: 1px solid var(--sp-line); border-radius: min(var(--sp-theme-radius), 14px); background: var(--sp-theme-surface-elevated); color: var(--sp-theme-on-elevated); }
+.sp-training-inquiry { max-width: 760px; width: 100%; }
+.sp-training-plan h2, .sp-training-inquiry h2 { margin: 0 0 .5rem; font-size: 1.3rem; line-height: 1.3; }
+.sp-training-price { margin: .5rem 0; font-size: 1.7rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.sp-training-price span { font-size: .85rem; font-weight: 400; }
+.sp-training-description { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.6; }
+.sp-training-form { display: grid; gap: .8rem; }
+.sp-training-form label { display: grid; gap: .3rem; font-size: .85rem; }
+.sp-training-form input:not([type=checkbox]) { width: 100%; min-width: 0; padding: .65rem .75rem; color: var(--sp-theme-on-elevated); background: var(--sp-theme-surface-elevated); border: 1px solid var(--sp-line); border-radius: 7px; font: inherit; }
+.sp-training-form .sp-training-consent { display: flex; align-items: flex-start; gap: .5rem; line-height: 1.5; }
+.sp-training-consent input { flex: 0 0 auto; margin-top: .2rem; width: 1rem; height: 1rem; accent-color: var(--sp-theme-primary); }
+.sp-training-note { margin: 0; font-size: .8rem; line-height: 1.5; }
+.sp-training-notice { padding: .75rem 1rem; border-left: 3px solid var(--sp-theme-primary); background: var(--sp-theme-surface-muted); color: var(--sp-theme-text); }

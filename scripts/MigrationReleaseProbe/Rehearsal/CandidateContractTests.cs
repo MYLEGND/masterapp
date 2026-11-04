@@ -29,6 +29,25 @@ internal static class CandidateContractTests
             }
             Check(!RehearsalFixture.ExactOwnerFixtureOperations(OwnerOperations().Concat(new MigrationOperation[] {
                 new DropForeignKeyOperation { Name = "Unknown", Table = "CommerceMerchantAuthorizations" } }).ToArray()), "extra owner FK mutation rejected");
+            const string promotion = "20261104014500_TrainingPromotionMemberLimits";
+            const string member = "20261104012500_ParfaitMemberPageRestrictions";
+            foreach (var id in new[] { member, promotion }) {
+                var exact = assembly.CreateMigration(assembly.Migrations[id], db.Database.ProviderName!).UpOperations;
+                Check(RehearsalFixture.ExactStandaloneFixtureOperations(id, exact), "exact standalone fixture operations");
+                ((AddColumnOperation)exact[0]).IsNullable = false;
+                Check(!RehearsalFixture.ExactStandaloneFixtureOperations(id, exact), "standalone nullability drift rejected");
+            }
+            foreach (var mutate in new Action<IReadOnlyList<MigrationOperation>>[] {
+                x => ((CreateIndexOperation)x[2]).IsUnique = true,
+                x => ((CreateIndexOperation)x[2]).Columns = new[] { "ClientProfileId", "TrainingDiscountId" },
+                x => ((AddForeignKeyOperation)x[3]).OnDelete = ReferentialAction.Cascade,
+                x => ((AddForeignKeyOperation)x[3]).PrincipalTable = "CommerceOrders" }) {
+                var changed = assembly.CreateMigration(assembly.Migrations[promotion], db.Database.ProviderName!).UpOperations;
+                mutate(changed);
+                Check(!RehearsalFixture.ExactStandaloneFixtureOperations(promotion, changed), "standalone structure drift rejected");
+            }
+            Check(!CandidateContract.Describe(promotion, assembly.CreateMigration(assembly.Migrations[promotion], db.Database.ProviderName!).UpOperations).Supported,
+                "production promotion remains unsupported");
             var current = CandidateContract.Current(db);
             RehearsalFixture.ValidateExpandedFixture(db, current);
             var malformedOriginal = current with { Migrations = current.Migrations.Select(x => x.Id != "20261011064911_AddBusinessScopedMerchantPayments" ? x : x with {

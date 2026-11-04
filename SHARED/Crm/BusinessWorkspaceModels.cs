@@ -13,6 +13,7 @@ public sealed class BusinessWorkspaceModel
     public int Page { get; set; } = 1;
     public int Total { get; set; }
     public int Days { get; set; } = 30;
+    public BusinessTrainingCohort Training { get; set; } = new();
     public BusinessWorkspacePreferences Preferences { get; set; } = new();
     public Guid SettingsRevision { get; set; }
     public List<BusinessIntakeRecipient> Recipients { get; set; } = [];
@@ -60,3 +61,19 @@ public sealed class BusinessCrmEdit
 
 public sealed record BusinessWorkspaceNavigationItem(Guid BusinessId, string BusinessName, string LeadLabel,
     string ClientLabel, bool CanCrm, bool CanAnalytics, bool CanCustomize, bool CanWebsite = false, string? WebsiteLiveUrl = null, string? StoreManagementUrl = null);
+
+public sealed class BusinessTrainingCohort
+{
+    public Guid BusinessId { get; set; }
+    public string Search { get; set; } = "";
+    public int Page { get; set; } = 1;
+    public int Total { get; set; }
+    public int PaidCustomers { get; set; }
+    public int UnsettledPayments { get; set; }
+    public Dictionary<string, long> NetCollectedMinor { get; set; } = new();
+    public List<BusinessTrainingContact> Contacts { get; set; } = new();
+}
+public sealed record BusinessTrainingContact(Guid ProfileId, string Name, string Email, string Phone,
+    bool HasPaid, List<BusinessTrainingTerm> Terms);
+public sealed record BusinessTrainingTerm(Guid OfferId, string Plan, int MonthlyAmountCents, string Currency,
+    string OfferStatus, string? SubscriptionStatus);

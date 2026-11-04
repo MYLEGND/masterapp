@@ -19,28 +19,30 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
     [InlineData("Views/Home/Terms.cshtml", "4de5260fa3f13dcb01c6a2398e6ffd214bfffc73")]
     [InlineData("Views/Home/Privacy.cshtml", "97c9060926b2d10f796ff274691b1a25ef2a7484")]
     // Reviewed shared theme contrast and versioned canonical Store assets.
-    [InlineData("Views/Shared/_Layout.cshtml", "ea54109636c07955c556649803c7bb154973320c")]
-    [InlineData("Views/Shared/_ScopedWebsiteStoreLayout.cshtml", "9317cf5cac56399cdb577eb331203a04c3487fb2")]
+    [InlineData("Views/Shared/_Layout.cshtml", "80333ca55c42e8a8e8ec3dcf6c43ddb4c547f605")]
+    [InlineData("Views/Shared/_ScopedWebsiteStoreLayout.cshtml", "0aba44aa950901314854d30b3b470d39c6185ec5")]
     [InlineData("Views/Home/Index.cshtml", "9abd970701d5f915d6f0431255869c68e479aed4")]
     // Reviewed Razor invocation and neutral no-photo presentation preserve real images.
     // Both authored stores and the original Parfait layout
     // render _CatalogCards; the original catalog loop is pinned separately below.
-    [InlineData("Views/Store/Index.cshtml", "78af8fa9ae2a6584b3a5aae2b60bcd7be40a3e15")]
+    [InlineData("Views/Store/Index.cshtml", "fd7f8ca10dd9854c1830d75c7cc599b90fb85320")]
     // Reviewed compact product/cart presentation and atomic browser cart ownership.
-    [InlineData("Views/Store/Cart.cshtml", "b06dd5da8539e472687541d666a6a80a54458d16")]
-    [InlineData("Views/Store/Product.cshtml", "f1cc07935aa5fb282e8889c8a7d21361764b874b")]
+    [InlineData("Views/Store/Cart.cshtml", "6b8850bad083b8c5a13a8a741ef377e7d003baf6")]
+    [InlineData("Views/Store/Product.cshtml", "84cc90c78062604b8ead7f40cf3facafdc7d0256")]
     // Reviewed embedded payment, same-intent recovery, compact receipt and optional
     // default-selected marketing preference; prior unsubscribe remains authoritative.
-    [InlineData("Views/Store/Checkout.cshtml", "78c4ec8e0a7b1daf459e61147bc583a47c8dcaa6")]
-    [InlineData("Views/Store/Success.cshtml", "17f18291cb88b855ce3d520999292ae8e1aa1985")]
-    [InlineData("wwwroot/css/site.css", "10f00e83c8e9b8a9e7428efebe01a40a0072903d")]
-    [InlineData("wwwroot/css/home.css", "00f32a42b0f2f1ea1324c6f8897abe91a130ec94")]
+    [InlineData("Views/Store/Checkout.cshtml", "808a2bd21295c095cf49ef109c2e0e24535bd874")]
+    [InlineData("Views/Store/Success.cshtml", "0d2aa2e9953dd908ed26115f2e881789d58d47bf")]
+    [InlineData("wwwroot/css/site.css", "3d421e41b9070fb34c0698262587db696502bdda")]
+    [InlineData("wwwroot/css/home.css", "2b1c97a3012f53f9f242e4656822f28a6ae944a2")]
     // Reviewed responsive Store hierarchy and canonical editor theme tokens;
     // hidden summary rows and original Parfait identity remain preserved.
-    [InlineData("wwwroot/css/storefront.css", "733c53d4feef8cb4de9c0bd29587f2830022de7c")]
+    // Reviewed recovered training hierarchy uses the same Store tokens.
+    [InlineData("wwwroot/css/storefront.css", "701d7655223a203f017a4e026317cbe10bf2b634")]
     // Reviewed be032 refines internal header typography and responsive payment-provider cards.
     // Reviewed shared premium compact layout; single shell, page-only light mode and right navigation remain intact.
-    [InlineData("wwwroot/css/internal.css", "a38d3a9839eb01ca36643178f232fef4ff201611")]
+    // Reviewed native Team metrics use two phone/four desktop columns.
+    [InlineData("wwwroot/css/internal.css", "9824817a29b228a616d7476f4be5e1fcb8e82efc")]
     [InlineData("wwwroot/js/storefront.js", "fe8a36a50964b16547aa674d5918d7c480dfe123")]
     // Reviewed internal health behavior: unavailable identity evidence must not render as zero.
     // CommerceCoreOwnershipContractTests covers the payload; public design assets remain pinned.

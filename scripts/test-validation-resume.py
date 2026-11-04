@@ -2272,6 +2272,36 @@ class FastTrackImpactTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
             self.scope('Infrastructure/Billing/UnreviewedRegistration.cs')
 
+    def test_training_reservations_select_shared_billing_consumers_only(self):
+        result = self.scope('Infrastructure/Billing/TrainingPromotionReservations.cs')
+        self.assertEqual({'AgentPortal', 'ClientApp', 'Protect', 'Parfait'},
+                         {row['target'] for row in result['matrix']['include']})
+        self.assertEqual(self.targets('Infrastructure/Billing/MasterAppBillingOrchestrator.cs'),
+                         {row['target'] for row in result['matrix']['include']})
+        for consumer in ('Infrastructure/Billing/MasterAppBillingOrchestrator.cs',
+                         'CommerceCore/Services/TrainingEnrollmentService.cs'):
+            self.assertIn('TrainingPromotionReservations', (ROOT / consumer).read_text())
+        self.assertFalse(result['schema'])
+        self.assertFalse(result['routing'])
+        self.assertNotIn('releaseAdmission', result)
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            self.scope('Infrastructure/Billing/UnreviewedTrainingReservations.cs')
+
+    def test_training_workspace_partial_retains_shared_workspace_owners(self):
+        path = 'Infrastructure/Businesses/BusinessWorkspaceService.Training.cs'
+        result = self.scope(path)
+        self.assertEqual({'AgentPortal', 'ClientApp', 'Protect', 'Parfait'},
+                         {row['target'] for row in result['matrix']['include']})
+        self.assertEqual(self.targets('Infrastructure/Businesses/BusinessWorkspaceService.cs'),
+                         self.targets(path))
+        self.assertIn('await TrainingAsync(',
+                      (ROOT / 'Infrastructure/Businesses/BusinessWorkspaceService.cs').read_text())
+        self.assertFalse(result['schema'])
+        self.assertFalse(result['routing'])
+        self.assertNotIn('releaseAdmission', result)
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            self.scope('Infrastructure/Businesses/BusinessWorkspaceService.Unreviewed.cs')
+
     def test_unknown_shared_source_blocks_instead_of_blanket_deploy(self):
         with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
             self.scope('Infrastructure/UnreviewedDependency.cs')
