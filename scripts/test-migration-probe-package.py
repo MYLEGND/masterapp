@@ -778,8 +778,23 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
                 with self.subTest(change=change),self.assertRaisesRegex(RuntimeError,'Reviewed migration entry contract failed'):self.gate()
                 self.assertFalse(self.sql_entered)
 
-    def test_expanded_disposable_fixture_preserves_unknown_suffix_rejection(self):
-        import copy
+    @staticmethod
+    def guide_descriptor():
+        name = 'ReceptionistSetupGuideRevisions'
+        def column(key, kind, collation=None):
+            return dict(schema='dbo', table=name, name=key, type=kind, nullable=False,
+                default=None, precision=None, scale=None, collation=collation)
+        return dict(id='20261107153025_AddReceptionistSetupGuide', supported=False, columns=[],
+            tables=[dict(schema='dbo', name=name, columns=[column('Version', 'bigint'), column('Revision', 'uniqueidentifier'),
+                column('BusinessGuideJson', 'nvarchar(max)', 'Latin1_General_100_BIN2'),
+                column('FounderGuideJson', 'nvarchar(max)', 'Latin1_General_100_BIN2'),
+                column('CreatedByActorId', 'nvarchar(450)', 'Latin1_General_100_BIN2'), column('CreatedUtc', 'datetime2')],
+                primaryKey=dict(name='PK_ReceptionistSetupGuideRevisions', columns=['Version']), foreignKeys=[], uniqueKeys=[],
+                checks=[dict(name='CK_ReceptionistSetupGuide_Version', sql='[Version] >= 1')])],
+            indexes=[dict(schema='dbo', table=name, name='IX_ReceptionistSetupGuideRevisions_Revision',
+                columns=['Revision'], unique=True, filter=None)], guards=[], foreignKeys=[])
+
+    def expanded_fixture(self, include_guide=False):
         ids = ['20261020160000_AddReceptionistCoordination', '20261026000134_AddCanonicalSubscriptionPaymentCompletion',
             '20261026063902_AddScopedTrainingSubscriptions', '20261026210738_AddReceptionistManagement',
             '20261026223148_ReceptionistBrowserCreation', '20261030033900_RuntimeDiagnosticPerformanceEvidence',
@@ -788,6 +803,7 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
         expanded = json.loads('[{"id":"20261103081639_ScopedMerchantWebsiteOwners","supported":false,"columns":[],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]},{"id":"20261103170724_SharedCommerceAutomationState","supported":true,"columns":[{"schema":"dbo","table":"CommerceBusinessSettings","name":"CustomerAutomationStateJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]},{"id":"20261103174446_SharedCommerceShippingState","supported":true,"columns":[{"schema":"dbo","table":"CommerceOrders","name":"ShippingLabelStateJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"CommerceBusinessSettings","name":"ShippingConfigurationJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]}]')
         expanded += json.loads('[{"id":"20261104012500_ParfaitMemberPageRestrictions","supported":true,"columns":[{"schema":"dbo","table":"CommerceBusinessMembers","name":"ParfaitPageGrantsJson","type":"nvarchar(max)","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[],"guards":[],"foreignKeys":[]},{"id":"20261104014500_TrainingPromotionMemberLimits","supported":false,"columns":[{"schema":"dbo","table":"CommerceProductDiscounts","name":"UsageLimit","type":"int","nullable":true,"default":null,"precision":null,"scale":null,"collation":null},{"schema":"dbo","table":"ClientSubscriptionOffers","name":"TrainingDiscountId","type":"uniqueidentifier","nullable":true,"default":null,"precision":null,"scale":null,"collation":null}],"tables":[],"indexes":[{"schema":"dbo","table":"ClientSubscriptionOffers","name":"IX_ClientSubscriptionOffers_TrainingDiscountId_ClientProfileId","columns":["TrainingDiscountId","ClientProfileId"],"unique":false,"filter":null}],"guards":[],"foreignKeys":[{"schema":"dbo","table":"ClientSubscriptionOffers","constraint":{"name":"FK_ClientSubscriptionOffers_CommerceProductDiscounts_TrainingDiscountId","columns":["TrainingDiscountId"],"principalSchema":"dbo","principalTable":"CommerceProductDiscounts","principalColumns":["Id"]}}]}]')
         self.current['migrations'] = historical + expanded
+        if include_guide: self.current['migrations'].append(self.guide_descriptor())
         self.source_present.update(row['id'] + '.cs' for row in self.current['migrations'])
         self.test_stdout += ''.join('LEGEND_' + marker + '_APPEND_TEST:PROVEN\n' for marker in
             ('REVIEWED', 'CANONICAL_PAYMENT', 'TRAINING', 'MANAGEMENT', 'BROWSER', 'DIAGNOSTICS', 'CRM', 'STORE'))
@@ -796,7 +812,10 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
             'REVIEWED_MANAGEMENT_ENTRY','REVIEWED_BROWSER_ENTRY','REVIEWED_DIAGNOSTICS_ENTRY','REVIEWED_CRM_ENTRY']
         patches = dict(zip(names, map(digest, historical[:7])))
         patches['REVIEWED_STORE_ENTRIES'] = [(row['id'],digest(row)) for row in historical[7:]]
-        with patch.multiple(m.AUTHORITY, **patches):
+        return patch.multiple(m.AUTHORITY, **patches)
+
+    def test_expanded_disposable_fixture_preserves_unknown_suffix_rejection(self):
+        with self.expanded_fixture():
             self.gate()
             fixtures = [kw['env']['LEGEND_REHEARSAL_PENDING_COUNT'] for cmd,kw in self.calls if cmd[-1]=='migration-test']
             self.assertIn('payment-and-successors', fixtures)
@@ -812,6 +831,33 @@ class TrustedOfflineContractGateTests(unittest.TestCase):
                 elif change=='index': rows[-1]['indexes'][0]['unique']=True
                 else: rows[-1]['foreignKeys'][0]['constraint']['principalTable']='CommerceOrders'
                 with self.subTest(change=change), self.assertRaisesRegex(RuntimeError, 'Reviewed migration (entry|suffix) contract failed'):
+                    self.gate()
+                self.assertFalse(self.sql_entered)
+
+    def test_exact_guide_successor_adds_its_isolated_case_without_losing_earlier_cases(self):
+        with self.expanded_fixture(include_guide=True):
+            self.gate()
+            scenarios = [kw['env']['LEGEND_REHEARSAL_PENDING_COUNT'] for cmd, kw in self.calls if cmd[-1] == 'migration-test']
+            self.assertEqual(1, scenarios.count('receptionist-guide-only'))
+            self.assertIn('payment-and-successors', scenarios)
+            self.assertIn('expanded-store-only', scenarios)
+            self.assertIn('standalone-reconciliation-only', scenarios)
+            self.assertIn('store-membership', scenarios)
+            self.assertFalse(self.current['migrations'][-1]['supported'])
+            original = copy.deepcopy(self.current)
+            for change in ('omit', 'duplicate', 'unknown', 'reorder', 'support', 'column', 'key', 'check', 'index'):
+                self.current = copy.deepcopy(original); self.sql_entered = False
+                rows = self.current['migrations']; guide = rows[-1]
+                if change == 'omit': rows.pop()
+                elif change == 'duplicate': rows.append(copy.deepcopy(guide))
+                elif change == 'unknown': rows.append(dict(id='29990101000000_Unknown'))
+                elif change == 'reorder': rows[-2:] = rows[-2:][::-1]
+                elif change == 'support': guide['supported'] = True
+                elif change == 'column': guide['tables'][0]['columns'][2]['collation'] = None
+                elif change == 'key': guide['tables'][0]['primaryKey']['columns'] = ['Revision']
+                elif change == 'check': guide['tables'][0]['checks'][0]['sql'] = '[Version] >= 0'
+                else: guide['indexes'][0]['unique'] = False
+                with self.subTest(change=change), self.assertRaisesRegex(RuntimeError, 'Reviewed migration (entry|suffix|predecessor) contract failed'):
                     self.gate()
                 self.assertFalse(self.sql_entered)
 
