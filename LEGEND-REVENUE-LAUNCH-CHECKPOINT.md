@@ -3718,3 +3718,194 @@ The current task is CSS cleanup only for Parfait. Preserve the deployed5ac basel
 Independent source and representative rendered review passed the exact two CSS blobs and approved the corresponding visual-baseline pin updates. Local preview localhost15436 serves candidate CSS with retained accepted compiled views and isolated synthetic data/providers. Actual1280/390 checks cover product, cart, checkout/focus/error, seeded paid receipt and Contact; cocoa borders, white surfaces and no horizontal overflow were observed. A separate before/after unrelated-business rendering comparison proves identical colors and focus fallback. All existing visual source blob pins match after the two reviewed updates.
 
 This is CSS acceptance only: the mock purchase returned a recoverable error, and receipt rendering used the seeded paid order. It is not a new successful payment verification. No production transaction or provider setup was attempted. This CSS correction is not deployed; exact-candidate publication checks and Parfait-only release admission remain pending. Other app services must not be deployed for this task. The prior5ac deployment remains verified and must not be replayed.
+
+
+### Historical Shayla continuation retained from c1a699449
+
+The following November 2 record is preserved as history; the November 7 section after it governs this source continuation.
+
+## 2026-11-02 — Shayla recovery candidate preserved for Founder Mac continuation
+
+Founder direction: save and preserve this work, then hand it to the Founder's local
+Codex to verify, correct, and deploy through the existing direct Mac deployment
+workflow. This supersedes waiting for a new generic deployment approval. Use the
+current local Mac instructions and preserve/synchronize the canonical fast-track
+history; this checkpoint does not authorize bypassing actual security controls.
+
+Repository: MYLEGND/masterapp. Continuation branch:
+`isolation/shayla-stale-call-retirement-20261102`.
+Base: `199da2cf924bfd9d70a886380af9ff600cebafc3`.
+Implementation: `4b01d4b18d41bddb165fc0ddc20fbc0b1d906db7`.
+The preserved source is frozen candidate C5, whose reviewed full transfer patch
+SHA-256 is `2a7768d0291a199f56815654ac696dac35f28afd67a19e402c1f7f54ef63c0ac`.
+The native worktree's 13 source/test/view file hashes matched that exact candidate.
+
+Implementation scope: existing receptionist admission/operator services, shared
+readiness views, Founder controller/model/view, and two focused test files.
+`retire_stale_test_call` uses the existing action journal and saved operation
+package authority. The Founder flow prepares, reviews, previews, and applies a
+bounded historical controlled-test retirement. It excludes a valid locally
+retired call from application admission/concurrency and new provider work while
+retaining honest provider/accounting uncertainty. It does not invent provider
+closure, release usage/cost holds, enable admission, or declare ads readiness.
+No new schema, registry, release-tool edit, credential, or production mutation.
+Shared application owners are Portal, Client, Protect, and Parfait; derive the
+final exact deployment scope from current source and genuine live provenance.
+
+Independent Astra review accepts exact C5 for remote preservation only. This is
+not merge/deployment acceptance. C5 has not been built or executed. Earlier C4
+compiled the affected applications under .NET SDK 10.0.401, then its focused
+ReceptionistOperatorTests/ReceptionistInquiryTests run reported 156 passed,
+9 failed, 0 skipped, 165 total. Six existing form-source tests could not resolve
+`/SHARED/Views/Shared/ReceptionistManagement.cshtml` with relocated artifacts and
+no GITHUB_WORKSPACE source-root input. Three new retirement tests failed current
+operator review validation. Source inspection suggests SQLite-materialized
+DateTime.Kind=Unspecified entered the synthetic test clock; normalize fixture
+timestamps to UTC and verify, keeping the production UTC validator intact. C5
+contains two additional instances of that fixture pattern. Do not claim a green
+run until the corrected exact candidate actually passes.
+
+Native continuation uses the existing Codespace
+`bookish-fiesta-97pj77j5vpwj3pjv6`, worktree
+`/workspaces/shayla-call-retirement`. The original checkout and branch were not
+switched. A successful canonical native preflight preceded source changes.
+The C4 native evidence was copied to
+`/workspaces/shayla-handoff-evidence-20261102/`:
+- `shayla-retirement-isolated.trx`, 275981 bytes, SHA-256
+  `f9bbce9df380b4720cd76a4f6140846b23f79d5f5905c86b33070199999ad938`.
+- `shayla-retirement-isolated.log`, 23873 bytes, SHA-256
+  `f85e556de29550105163474306fd721aeb2945f64f57cf04e4019bb2cdccdb0c`.
+- `C4-test-summary.json`, exact counters and nine failure messages.
+These runtime evidence copies alone are not external durable preservation.
+
+Mac next steps: fetch this exact continuation without resetting other work; read
+the newest local instructions and this checkpoint; correct the fixture issues;
+run the focused tests with GITHUB_WORKSPACE set only as their source-root input
+and a unique MasterAppArtifactsRoot; perform the applicable localhost functional
+pretest; review the final diff and affected dependencies; use the established
+direct Mac producer, capture exact packages/operations/rollback/provenance, and
+verify the new runtime and Founder recovery flow. Synchronize the accepted fixes
+to Legend/fast-track-release through its authorized source path, accounting for
+automatic deployment triggers and preserving concurrent work. Do not deploy this
+unvalidated checkpoint as if its tests were green.
+
+Operational state at handoff: Shayla remains paused; no new test window, provider
+closure, call retirement, backend deployment, or ads readiness has been verified.
+An already-authorized provider hangup returned HTTP 503 with an empty response;
+do not repeat it unchanged or convert carrier completion into provider closure.
+Private exact call/configuration identities and non-secret receipts are retained
+in the accompanying Founder handoff. Cross-period unresolved usage/accounting may
+still block a fresh test after local retirement and requires a canonical repair.
+
+Preserve the already-published website work: mobile inquiry fields each occupy
+their own row, branded mobile menu, four selected phone CTAs, and removal of the
+unwanted non-call hover effect. The local Mac deployment must retain newer
+Protect/Website and shared form fixes from other work. Existing release-tool
+candidate19 and historical unresolved operations are outside this source scope;
+coordinate any shared production writer through the existing mechanism.
+
+Cloud implementation and production actions stop after exact remote preservation
+and handoff. Local Mac continuation is requested; no receiving model has yet
+acknowledged takeover. Keep the native worktree and evidence until the receiver
+has fetched the saved source and preserved any needed runtime logs.
+
+## 2026-11-07 - Shayla source repair for Founder-owned Mac deployment
+
+The Founder's current instruction authorizes completing the preserved Shayla repair on
+the current GitHub source; the Founder will sync and perform direct deployment from
+the existing Mac workflow. This section supersedes the November 2 cloud source-work
+stop for this bounded continuation. Production deployment and live operations remain
+with the Founder. No call, provider, budget, credential, infrastructure or production
+configuration change is authorized by this source integration.
+
+Continue the existing branch `isolation/shayla-stale-call-retirement-20261102`.
+Preserved implementation: `4b01d4b18d41bddb165fc0ddc20fbc0b1d906db7`;
+preserved handoff: `c1a69944907f3785d2058ae85d9f373dae47312c`.
+Current canonical source baseline: `ce09b597a2c02dce8ad06742bf74aaadfddaff63`
+on `Legend/fast-track-release`, tree `4793c7d4683ed7c44e9f1e032b44046d7f295c4f`.
+The 94 newer commits since the preserved common base modify none of the 13 repair
+paths. The integration retains the complete current canonical tree, the historical
+repair ancestry and this historical handoff; only the scoped repair paths and this
+checkpoint change in the implementation anchor.
+
+The repair adds an exact historical controlled-test retirement through the existing
+Founder prepare/review/preview/apply flow and operation journal. Only an eligible,
+expired controlled-test call without active execution or pending business work can
+be retired. A valid retirement releases application concurrency and prevents new
+accept/dialogue work; provider closure, final usage, reservations, account balances
+and accounting uncertainty remain separately preserved. Existing owner, session,
+configuration, revision, replay, Founder and antiforgery protections remain in force.
+No schema or migration change is included.
+
+The preserved runtime repair is unchanged. The test correction normalizes six
+SQLite-materialized deadline assignments to UTC, keeping production UTC validation
+intact. Source-file lookup supports GITHUB_WORKSPACE, the working directory and test
+output ancestry. A new regression checks capacity before and after retirement and
+verifies that unresolved original cost reservations remain unchanged. The corrected
+test file Git blob is `1bb12a6422689825963e24c26022db3509a36830`
+(SHA-256 `8d45a9f6b47319aef0fedae9d54ee719c096f973f6a58b7f950ffb012d5bce7d`).
+The other 12 repair file blobs match the preserved candidate.
+
+This continuation uses authenticated GitHub tools under the Founder's direct GitHub
+instruction. The local material is an exact selected-file snapshot, not a native
+checkout; native session preflight/finish were not run and are not attested.
+Retrieved file bytes were verified against their Git blob identities. The sole
+implementation writer handed a sealed candidate to independent read-only review.
+Static whitespace inspection passed. .NET is unavailable in this workspace; this
+checkpoint does not claim a build or passing executable test result. The prior C4
+156-pass/9-fail run is historical failure evidence, not current acceptance.
+
+Required exact-PR-head architecture-validation, approved-release-security and
+build-and-focused-tests must pass before protected source merge. The existing
+architecture workflow includes FullyQualifiedName~Receptionist, covering the
+operator, inquiry and related receptionist suites. Review exact run logs/results
+for real execution; attribute-only antiforgery checks do not establish hosted HTTP
+middleware acceptance. Record final exact candidate, merge and validation receipts
+in this continuation's PR and the existing Founder/Layla handoff route.
+
+Use the existing nonpublishing sourceIntegration contract: an implementation anchor
+descended from the canonical baseline and preserved branch, followed by a request-only
+commit binding that exact anchor and baseline. Preserve all unrelated resource
+history. releaseMode remains validate-only, targets empty, Cloudflare routing false
+and preserveLiveTargets false. Merge with the protected merge-commit path only after
+exact required checks and independent acceptance. Reconcile any moved canonical
+head before integration. A valid source integration selects no production work;
+do not republish completed resources or claim a deployment from a source merge.
+
+After verified source integration, the Founder syncs the exact merged canonical
+source without discarding local Mac work, runs the existing localhost functional
+pretest and direct deployment workflow, and verifies runtime provenance and the
+Founder recovery flow. Actual recovery still requires retiring the exact stale call,
+separately reconciling provider closure/usage/accounting with genuine evidence,
+verifying the voice connection, and opening a fresh controlled test window. A
+two-way call must end and release its slot, then a second call must start before
+public activation. This source change alone does not make Shayla active or ready.
+No production effects, receiver ACK or completed live acceptance are claimed here.
+
+### 2026-11-07 - PR 766 controller-fixture correction after exact CI
+
+First published candidate `f855b5acfd7d3b11a691b9ea207a639575e7f0bb`
+(source anchor `c46661115a4678bd21bd2b11798870a1eede8c90`) compiled the
+runtime and full regression project. Required security run `42333979043` and
+isolated build/contracts run `42333979085` passed. Architecture run
+`42333979054` failed exactly one test in its advertising/receptionist group:
+805 passed, 1 failed, 0 skipped, 806 total. The failing
+`FounderRetirementControllerCarriesPreparedReviewThroughApplyAndReplay`
+fixture omitted MVC's `ITempDataDictionaryFactory`; `Controller.View` failed
+before the rest of the controller assertions could execute.
+
+The sole correction registers logging, data protection and controllers with views
+in that direct-controller fixture before the existing operation singleton. Test
+assertions and all runtime code remain unchanged. Independent review verified
+that reversing only this registration change recreates the prior accepted test
+blob exactly. Updated test Git blob:
+`055b85e90e86202fe36e2380ddd841e452817c69`; SHA-256:
+`76acb85655fc406cfef7da409cf1bcad5e424141f51e8bb7405e482310db4aaf`.
+
+This correction is accepted for CI publication only. Exact updated CI and final
+source-merge acceptance remain pending. The prior passing evidence remains valid
+only where the unchanged canonical workflow proves reusable inputs. No local .NET
+execution, native continuity attestation, production deployment, live call repair
+or hosted HTTP middleware acceptance is claimed. The existing sourceIntegration
+request will be rebound to the corrected implementation anchor; its baseline,
+validate-only mode, empty targets and immutable resource history remain unchanged.

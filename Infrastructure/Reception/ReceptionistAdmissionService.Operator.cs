@@ -14,6 +14,38 @@ public sealed class ReceptionistCurrentProjectRequiredException : InvalidOperati
 
 public sealed partial class ReceptionistAdmissionService
 {
+    internal async Task<ReceptionistRetirementPreparation> ReadRetirementPreparationAsync(
+        string ownerKey, Guid configurationId, Guid callId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(ownerKey) || ownerKey.Length > 450 || configurationId == Guid.Empty || callId == Guid.Empty)
+            throw new ArgumentException("An exact owner, historical configuration and call are required.");
+        await using var db = new MasterAppDbContext(options);
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
+        var call = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId && x.ConfigurationVersionId == configurationId, ct);
+        var connection = await db.MarketingConnections.AsNoTracking().SingleAsync(x => x.Id == call.MarketingConnectionId && x.OwnerKey == ownerKey, ct);
+        var version = await db.Set<ReceptionistConfigurationVersion>().AsNoTracking().SingleAsync(x => x.Id == configurationId && x.MarketingConnectionId == connection.Id, ct);
+        var config = ReceptionistConfigurationCodec.Read(version.ConfigurationJson, version.ConfigurationSha256);
+        var binding = ReceptionistConfigurationCodec.ReadBinding(version.AcceptedBindingJson, config);
+        if (ReceptionistSql.Owner(connection).Key != ownerKey || connection.Provider != call.Provider || binding?.ProviderProjectKey != call.ProviderProjectKey)
+            throw new InvalidOperationException("The historical owner and binding do not match the call.");
+        var funding = await db.Set<ReceptionistCostReservation>().Where(x => x.CallId == callId).Select(x => x.FundingBudgetAccountId).Distinct().ToArrayAsync(ct);
+        if (funding.Length > 63) throw new InvalidOperationException("The accounting scope exceeds its supported bound.");
+        var ids = funding.Append(call.OwnerBudgetAccountId).Distinct().ToArray();
+        var accounts = await db.Set<ReceptionistBudgetAccount>().AsNoTracking().Where(x => ids.Contains(x.Id)).ToArrayAsync(ct);
+        if (accounts.Length != ids.Length || !accounts.Any(x => x.Id == call.OwnerBudgetAccountId && x.Kind == "owner" && x.ScopeKey == ownerKey))
+            throw new InvalidOperationException("The historical accounting scope is inconsistent.");
+        var now = clock.GetUtcNow().UtcDateTime;
+        var pending = await db.Set<ReceptionistActionIntent>().CountAsync(x => x.CallId == callId && (x.State == "pending" || x.State == "uncertain") &&
+            x.CapabilityKey != StopCapability && x.CapabilityKey != "__runtime_stop", ct);
+        var retired = await RetirementActions(db).AnyAsync(x => x.CallId == callId, ct);
+        return new(now, "observed_not_reviewed", connection.Id, ownerKey, call.Provider, call.ProviderProjectKey,
+            connection.Revision, version.Id, version.Version, version.ConfigurationSha256, call.Id, call.Revision,
+            call.ProviderSessionId, call.MustStopUtc, call.ProviderClosedUtc, call.ControlledTest,
+            binding?.ControlledTestOnly == true, call.SidebandLeaseExpiresUtc > now && !call.SidebandObservationOnly,
+            pending, retired, accounts.Select(x => new ReceptionistPreparationAccount(x.Id, x.Revision, x.Kind,
+                x.ScopeKey, x.Currency, x.TimeZoneId)).ToArray());
+    }
+
     internal async Task<ReceptionistOperatorPreparation> ReadOperatorPreparationAsync(
         string expectedOwnerKey, Guid configurationId, CancellationToken ct)
     {
@@ -98,7 +130,7 @@ public sealed partial class ReceptionistAdmissionService
     }
 
     internal async Task ApplyOperatorAccountingAsync(ReceptionistOperatorPackage package,
-        ReceptionistOperatorState state, Func<MasterAppDbContext, Task> guard, CancellationToken ct)
+        ReceptionistOperatorState state, Func<MasterAppDbContext, Task> guard, CancellationToken ct, string packageSha256)
     {
         switch (package.Operation)
         {
@@ -129,6 +161,9 @@ public sealed partial class ReceptionistAdmissionService
                 await ReconcileDatedVoiceUsageCoreAsync(package.CallId!.Value, package.ReceiptReference,
                     package.VoiceAllocations!, package.FinalVoiceSeconds, guard, ct);
                 break;
+            case "retire_stale_test_call":
+                await RetireStaleTestCallAsync(package, packageSha256, guard, ct);
+                break;
             case "record_provider_closure":
                 await RecordProviderClosureAndUsageCoreAsync(package.CallId!.Value, package.ReceiptReference,
                     package.ObservedProviderClosedUtc!.Value, package.FinalVoiceSeconds, guard, ct);
@@ -137,6 +172,31 @@ public sealed partial class ReceptionistAdmissionService
                 throw new ArgumentException("Unsupported accounting operation.");
         }
     }
+
+    private Task<bool> RetireStaleTestCallAsync(ReceptionistOperatorPackage package, string packageSha256,
+        Func<MasterAppDbContext, Task> guard, CancellationToken ct) =>
+        WithCallAsync(package.CallId!.Value, async (write, call) =>
+        {
+            await guard(write);
+            // Recheck under the same serializable account/call transaction used by claims and closure.
+            var now = clock.GetUtcNow().UtcDateTime;
+            if (!call.ControlledTest || call.ProviderClosedUtc is not null || call.MustStopUtc > now ||
+                call.ProviderSessionId != package.ExpectedProviderSessionId ||
+                (call.SidebandLeaseExpiresUtc > now && !call.SidebandObservationOnly) ||
+                await write.Set<ReceptionistActionIntent>().AnyAsync(x => x.CallId == call.Id &&
+                    (x.State == "pending" || x.State == "uncertain") && x.CapabilityKey != StopCapability && x.CapabilityKey != "__runtime_stop", ct))
+                throw new InvalidOperationException("The controlled-test call is no longer eligible for retirement.");
+            write.Add(new ReceptionistActionIntent
+            {
+                CallId = call.Id, LogicalActionKey = RetirementKey, CapabilityKey = RetirementCapability,
+                RouteKey = RetirementRoute, ArgumentsSha256 = packageSha256,
+                ConfirmationReceipt = package.ReceiptReference, State = "verified",
+                ActualRecordReference = RetirementReference, VerificationReceipt = package.ReceiptReference,
+                CreatedUtc = now, UpdatedUtc = now
+            });
+            call.Revision = Guid.NewGuid();
+            return true;
+        }, ct);
 
     // A configuration has at most one lifetime window. Never delete, replace or extend it.
     // Serializable owner locking makes that identity durable without a second call authority.
@@ -310,6 +370,17 @@ public sealed partial class ReceptionistAdmissionService
                 bookingAction.State == "rejected" && !IsZeroEffectBookingRejection(bookingAction))
                 throw new InvalidOperationException("The exact original production booking attempt is required.");
         }
+        if (package.Operation == "retire_stale_test_call" && call is not null)
+        {
+            var prior = await RetirementActions(read).AsNoTracking().SingleOrDefaultAsync(x => x.CallId == call.Id, ct);
+            if (!call.ControlledTest || binding?.ControlledTestOnly != true || call.ProviderSessionId != package.ExpectedProviderSessionId)
+                throw new InvalidOperationException("The reviewed call is not the exact controlled-test provider session.");
+            if (prior is null && (call.ProviderClosedUtc is not null ||
+                call.MustStopUtc > now || (call.SidebandLeaseExpiresUtc > now && !call.SidebandObservationOnly) ||
+                await read.Set<ReceptionistActionIntent>().AnyAsync(x => x.CallId == call.Id &&
+                    (x.State == "pending" || x.State == "uncertain") && x.CapabilityKey != StopCapability && x.CapabilityKey != "__runtime_stop", ct)))
+                throw new InvalidOperationException("The exact expired controlled-test call is not eligible for local retirement.");
+        }
         var completed = await OperatorCompletionAsync(read, package, packageSha256, connection, configuration,
             accounts, periods, call, reservations, now, ct);
         var latestConfigurationId = await read.Set<ReceptionistConfigurationVersion>().Where(x => x.MarketingConnectionId == connection.Id)
@@ -345,6 +416,14 @@ public sealed partial class ReceptionistAdmissionService
     {
         switch (package.Operation)
         {
+            case "retire_stale_test_call":
+                var retirement = await read.Set<ReceptionistActionIntent>().AsNoTracking().SingleOrDefaultAsync(x =>
+                    x.CallId == call!.Id && x.LogicalActionKey == RetirementKey, ct);
+                if (retirement is null) return (null, false);
+                if (!await RetirementActions(read).AnyAsync(x => x.Id == retirement.Id && x.ArgumentsSha256 == packageSha &&
+                    x.ConfirmationReceipt == package.ReceiptReference, ct))
+                    throw new InvalidOperationException("The local retirement belongs to different reviewed facts.");
+                return ("local-retirement:" + retirement.Id.ToString("D"), false);
             case "create_acceptance_window":
             case "revoke_acceptance_window":
                 var windows = await read.Set<ReceptionistAcceptanceWindow>().AsNoTracking()
@@ -530,6 +609,17 @@ public sealed partial class ReceptionistAdmissionService
         if (package.Enabled is { } enabled) facts.Add(new("Requested admission", enabled ? "Enabled" : "Disabled"));
         if (call is not null)
         {
+            if (package.Operation == "retire_stale_test_call")
+            {
+                facts.Add(new("Local retirement", "Exclude this expired controlled-test call from application concurrency and new work only."));
+                if (package.RetirementReason is not null) facts.Add(new("Operator reason", package.RetirementReason));
+                facts.Add(new("Provider status", call.ProviderClosedUtc is { } knownClosure
+                    ? "Closure verified at " + Date(knownClosure) + "; local retirement did not establish closure."
+                    : "Unresolved; local retirement does not contact the provider or establish closure."));
+                facts.Add(new("Accounting", "Usage, cash, consumption and all reservations remain unchanged; accounting may still block admission."));
+                facts.Add(new("Provider session", call.ProviderSessionId ?? "unknown"));
+                facts.Add(new("Stop deadline", Date(call.MustStopUtc)));
+            }
             facts.Add(new("Call", call.Id.ToString("D"))); facts.Add(new("Observed closure", Date(call.ProviderClosedUtc)));
             facts.Add(new("Voice accounting", call.VoiceAllocationUncertain ? "Held for dated allocation" : call.VoiceUsageFinal ? "Final" : "Reservation retained"));
         }

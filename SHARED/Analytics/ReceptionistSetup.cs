@@ -87,6 +87,7 @@ public sealed record ReceptionistReadinessProjection
     public string ApplicationWindowState { get; init; } = "unknown";
     public string AdmissionReason { get; init; } = "unknown";
     public int? OpenCalls { get; init; }
+    public int? LocallyRetiredProviderUnresolvedCalls { get; init; }
     public int? OpenCallsWithoutStopCondition { get; init; }
     public int? AwaitingStopOrClosure { get; init; }
     // Existing binding/provider receipts cannot prove the current carrier route or human-heard audio.

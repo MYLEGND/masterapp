@@ -847,7 +847,7 @@ public sealed partial class ReceptionistOperatorTests
         Assert.Equal(f.Clock.Now.AddSeconds(360), call.MustStopUtc);
         var replay = await f.ReserveBudgetAsync(binding, call.BrowserCreationId!.Value);
         Assert.False(replay.MayCreate); Assert.Equal("creation_already_claimed", replay.Reason);
-        f.Clock.Now = call.MustStopUtc.AddSeconds(1);
+        f.Clock.Now = DateTime.SpecifyKind(call.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
         var later = await f.ReserveBudgetAsync(binding, Guid.NewGuid());
         Assert.False(later.MayCreate); Assert.Equal("owner_concurrency_limit", later.Reason);
         await db.Entry(reservation).ReloadAsync(); Assert.Equal(.56m, reservation.CashReserved);
@@ -1025,9 +1025,7 @@ public sealed partial class ReceptionistOperatorTests
             fields[$"Evidence[{i}].Sha256"] = item?.Sha256 ?? ""; fields[$"Evidence[{i}].ObservedUtc"] = item?.ObservedUtc?.ToString("O") ?? "";
         }
         var viewPath = "SHARED/Views/Shared/ReceptionistManagement.cshtml";
-        var root = new DirectoryInfo(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") ?? AppContext.BaseDirectory);
-        while (!File.Exists(Path.Combine(root.FullName, viewPath)) && root.Parent is not null) root = root.Parent;
-        var view = await File.ReadAllTextAsync(Path.Combine(root.FullName, viewPath));
+        var view = await File.ReadAllTextAsync(FindSourceFile(viewPath));
         foreach (var name in fields.Keys.Where(x => !x.StartsWith("Evidence[", StringComparison.Ordinal)))
             Assert.Contains("name=\"" + name + "\"", view);
         foreach (var name in numericNames.Where(x => x.EndsWith(risk ? "Maximum" : "Estimate", StringComparison.Ordinal)))
@@ -1060,6 +1058,335 @@ public sealed partial class ReceptionistOperatorTests
         Assert.Equal(risk ? 0 : 120, package.Binding.MaximumSupportedCallSeconds);
         Assert.Equal(risk ? .001m : 0m, Assert.Single(package.Binding.Costs).CashPerSecondMaximum);
         Assert.False((await db.MarketingConnections.SingleAsync()).ReceptionistAdmissionEnabled);
+    }
+
+    [Fact]
+    public async Task RetirementKeepsProviderAndAccountingUnresolvedAndExactReplayIsIdempotent()
+    {
+        await using var f = await Fixture.CreateAsync();
+        await f.AcceptAsync(); await f.EnableOwnerAsync();
+        var ingress = (await f.Admission.GetIngressBindingAsync("openai", Fixture.Ingress))!;
+        var callId = (await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-retire-session"))).CallId!.Value;
+        await f.Admission.RecordProviderStateAsync(callId, "accepted", "synthetic-accepted");
+        await using var db = f.Database();
+        var before = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId);
+        var costsBefore = await db.Set<ReceptionistCostReservation>().AsNoTracking().Where(x => x.CallId == callId).ToArrayAsync();
+        f.Clock.Now = DateTime.SpecifyKind(before.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
+        var package = (await f.ForAsync("retire_stale_test_call", callId: callId)) with { ExpectedProviderSessionId = "synthetic-retire-session" };
+        var metadata = await f.Operator.PrepareRetirementAsync(f.Owner.Key, package.ConfigurationId, callId);
+        Assert.Equal(package.ConfigurationSha256, metadata.ConfigurationSha256);
+        var provider = new RetirementProviderProbe();
+        using var services = new ServiceCollection().AddSingleton(f.Options).AddSingleton<IOpenAiReceptionistClient>(provider).BuildServiceProvider();
+        var admission = new ReceptionistAdmissionService(f.Options, f.Clock, services);
+        var operation = new ReceptionistOperatorService(f.Store, admission, f.Host, f.Protector, f.Http, f.Clock, services);
+        var identity = f.Publish(package); var plan = await operation.PlanAsync(identity.Key, identity.Hash);
+        Assert.True(plan.CanApply);
+        Assert.Contains(plan.Facts, x => x.Label == "Provider status" && x.Value.Contains("Unresolved"));
+        var result = await operation.ApplyAsync(f.Request(plan));
+        Assert.True(result.ReadBackVerified); Assert.Equal("applied", result.Outcome);
+        var replay = await operation.ApplyAsync(f.Request(plan));
+        Assert.True(replay.ReadBackVerified); Assert.Equal("already_applied", replay.Outcome);
+        Assert.Equal(0, provider.Calls);
+        var marker = await db.Set<ReceptionistActionIntent>().AsNoTracking().SingleAsync(x => x.LogicalActionKey == "__admin_retire_stale_test_call");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Admission.RecordActionOutcomeAsync(marker.Id, "verified", marker.ActualRecordReference, marker.VerificationReceipt!));
+        var after = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId);
+        Assert.Null(after.ProviderClosedUtc); Assert.Equal(before.State, after.State);
+        Assert.Equal(before.ObservedVoiceSeconds, after.ObservedVoiceSeconds);
+        Assert.Equal(before.ReservedVoiceSeconds, after.ReservedVoiceSeconds);
+        Assert.Equal(before.VoiceUsageFinal, after.VoiceUsageFinal);
+        Assert.Equal(before.VoiceAllocationUncertain, after.VoiceAllocationUncertain);
+        var costsAfter = await db.Set<ReceptionistCostReservation>().AsNoTracking().Where(x => x.CallId == callId).ToArrayAsync();
+        Assert.Equal(JsonSerializer.Serialize(costsBefore), JsonSerializer.Serialize(costsAfter));
+        var readiness = await f.Admission.GetSetupReadinessAsync(await f.Store.GetReceptionistConfigurationAsync(f.Owner, "openai"));
+        Assert.Equal(0, readiness.OpenCalls); Assert.Equal(1, readiness.LocallyRetiredProviderUnresolvedCalls);
+        Assert.Null(await f.Admission.AcquireSidebandLeaseAsync(callId, "synthetic-worker", TimeSpan.FromSeconds(10)));
+        var observation = await f.Admission.AcquireObservationLeaseAsync(callId, "synthetic-observer", TimeSpan.FromSeconds(10));
+        Assert.NotNull(observation);
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Admission.ClaimActionAsync(callId,
+            "__admin_retire_stale_test_call", "canonical_intake", ReceptionistConfigurationCodec.Hash("fake"), "fake", Guid.NewGuid()));
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Admission.ClaimActionAsync(callId,
+            "__ADMIN_RETIRE_STALE_TEST_CALL", "canonical_intake", ReceptionistConfigurationCodec.Hash("fake"), "fake", Guid.NewGuid()));
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Admission.ClaimActionAsync(callId,
+            "ordinary_action", "__ADMIN_RETIREMENT", ReceptionistConfigurationCodec.Hash("fake"), "fake", Guid.NewGuid()));
+        await f.Admission.RecordProviderStateAsync(callId, "closed", "synthetic-late-closure", f.Clock.Now);
+        await f.Admission.RecordProviderStateAsync(callId, "accepted", "synthetic-late-accepted");
+        var closedReplay = await operation.ApplyAsync(f.Request(plan));
+        Assert.True(closedReplay.ReadBackVerified);
+        Assert.Contains(closedReplay.Facts, x => x.Label == "Provider status" && x.Value.Contains("Closure verified"));
+        Assert.Equal(0, provider.Calls);
+        var closed = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId);
+        Assert.Equal("closed", closed.State); Assert.Equal(f.Clock.Now, closed.ProviderClosedUtc);
+        var cost = (await f.ForAsync("reconcile_call_cost", callId: callId)) with
+        { ComponentKey = "provider_cost", CallCost = new(f.Clock.Now, 1m, f.Clock.Now, 2m, 1m, 2m) };
+        var costId = f.Publish(cost); var costPlan = await f.Operator.PlanAsync(costId.Key, costId.Hash);
+        Assert.True((await f.Operator.ApplyAsync(f.Request(costPlan))).ReadBackVerified);
+        Assert.Equal("already_applied", (await f.Operator.ApplyAsync(f.Request(costPlan))).Outcome);
+        Assert.Single(await db.Set<ReceptionistUsageReceipt>().AsNoTracking().Where(x => x.CallId == callId).ToArrayAsync());
+        readiness = await f.Admission.GetSetupReadinessAsync(await f.Store.GetReceptionistConfigurationAsync(f.Owner, "openai"));
+        Assert.Equal(0, readiness.OpenCalls); Assert.Equal(0, readiness.LocallyRetiredProviderUnresolvedCalls);
+    }
+
+    [Fact]
+    public async Task RetirementReleasesConcurrencyButPreservesUnresolvedReservations()
+    {
+        await using var f = await Fixture.CreateAsync();
+        await f.AcceptAsync(); await f.EnableOwnerAsync();
+        var ingress = (await f.Admission.GetIngressBindingAsync("openai", Fixture.Ingress))!;
+        var callId = (await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-capacity-retire"))).CallId!.Value;
+        await f.Admission.RecordProviderStateAsync(callId, "accepted", "synthetic-accepted");
+        Assert.True((await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-capacity-open"))).Reserved);
+        await using var db = f.Database();
+        var call = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId);
+        var holds = await db.Set<ReceptionistCostReservation>().AsNoTracking().Where(x => x.CallId == callId).ToArrayAsync();
+        Assert.NotEmpty(holds);
+        f.Clock.Now = DateTime.SpecifyKind(call.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
+        var blocked = await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-capacity-before"));
+        Assert.False(blocked.Reserved); Assert.Equal("owner_concurrency_limit", blocked.Reason);
+        var package = (await f.ForAsync("retire_stale_test_call", callId: callId)) with { ExpectedProviderSessionId = "synthetic-capacity-retire" };
+        var identity = f.Publish(package);
+        var plan = await f.Operator.PlanAsync(identity.Key, identity.Hash);
+        Assert.True(plan.CanApply);
+        Assert.True((await f.Operator.ApplyAsync(f.Request(plan))).ReadBackVerified);
+        var after = await db.Set<ReceptionistCostReservation>().AsNoTracking().Where(x => x.CallId == callId).ToArrayAsync();
+        Assert.Equal(JsonSerializer.Serialize(holds), JsonSerializer.Serialize(after));
+        Assert.All(after, x => { Assert.False(x.CashFinal); Assert.False(x.ConsumptionFinal); });
+        Assert.Null((await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId)).ProviderClosedUtc);
+        Assert.True((await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-capacity-after"))).Reserved);
+        var full = await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-capacity-full"));
+        Assert.False(full.Reserved); Assert.Equal("owner_concurrency_limit", full.Reason);
+    }
+
+    [Fact]
+    public async Task RetirementRejectsWrongSubjectUnexpiredLeaseAndPendingWork()
+    {
+        await using var f = await Fixture.CreateAsync();
+        await f.AcceptAsync(); await f.EnableOwnerAsync();
+        var ingress = (await f.Admission.GetIngressBindingAsync("openai", Fixture.Ingress))!;
+        var callId = (await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-scope"))).CallId!.Value;
+        await f.Admission.RecordProviderStateAsync(callId, "accepted", "synthetic-accepted");
+        var initial = (await f.ForAsync("retire_stale_test_call", callId: callId)) with { ExpectedProviderSessionId = "synthetic-scope" };
+        var unexpired = f.Publish(initial); Assert.False((await f.Operator.PlanAsync(unexpired.Key, unexpired.Hash)).CanApply);
+        await using var db = f.Database(); var row = await db.Set<ReceptionistCall>().SingleAsync(x => x.Id == callId);
+        f.Clock.Now = DateTime.SpecifyKind(row.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
+        var wrong = f.Publish((await f.ForAsync("retire_stale_test_call", callId: callId)) with { ExpectedProviderSessionId = "wrong-session" });
+        Assert.False((await f.Operator.PlanAsync(wrong.Key, wrong.Hash)).CanApply);
+        row.SidebandLeaseToken = Guid.NewGuid(); row.SidebandLeaseExpiresUtc = f.Clock.Now.AddMinutes(1); row.SidebandObservationOnly = false;
+        row.SidebandWorkerId = "synthetic-worker"; row.SidebandFence = 1; row.Revision = Guid.NewGuid(); await db.SaveChangesAsync();
+        var leased = f.Publish((await f.ForAsync("retire_stale_test_call", callId: callId)) with { ExpectedProviderSessionId = "synthetic-scope" });
+        Assert.False((await f.Operator.PlanAsync(leased.Key, leased.Hash)).CanApply);
+        row.SidebandLeaseExpiresUtc = f.Clock.Now.AddSeconds(-1); row.Revision = Guid.NewGuid();
+        db.Add(new ReceptionistActionIntent { CallId = callId, LogicalActionKey = "synthetic-pending", CapabilityKey = "canonical_intake",
+            RouteKey = "synthetic.intake", ArgumentsSha256 = ReceptionistConfigurationCodec.Hash("synthetic"), ConfirmationReceipt = "synthetic-confirmed",
+            CreatedUtc = f.Clock.Now, UpdatedUtc = f.Clock.Now });
+        await db.SaveChangesAsync();
+        var pending = f.Publish((await f.ForAsync("retire_stale_test_call", callId: callId)) with { ExpectedProviderSessionId = "synthetic-scope" });
+        Assert.False((await f.Operator.PlanAsync(pending.Key, pending.Hash)).CanApply);
+    }
+
+    [Fact]
+    public async Task RetirementPreviewRejectsChangedCallAndAccountRevisions()
+    {
+        await using var f = await Fixture.CreateAsync();
+        await f.AcceptAsync(); await f.EnableOwnerAsync();
+        var ingress = (await f.Admission.GetIngressBindingAsync("openai", Fixture.Ingress))!;
+        var callId = (await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-race"))).CallId!.Value;
+        await f.Admission.RecordProviderStateAsync(callId, "accepted", "synthetic-accepted");
+        await using var db = f.Database();
+        var call = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId);
+        f.Clock.Now = DateTime.SpecifyKind(call.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
+        var package = (await f.ForAsync("retire_stale_test_call", callId: callId)) with { ExpectedProviderSessionId = "synthetic-race" };
+        var id = f.Publish(package); var plan = await f.Operator.PlanAsync(id.Key, id.Hash); Assert.True(plan.CanApply);
+        Assert.NotNull(await f.Admission.AcquireObservationLeaseAsync(callId, "synthetic-observer", TimeSpan.FromSeconds(10)));
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => f.Operator.ApplyAsync(f.Request(plan)));
+        Assert.Empty(await db.Set<ReceptionistActionIntent>().AsNoTracking().Where(x => x.LogicalActionKey == "__admin_retire_stale_test_call").ToArrayAsync());
+        var fresh = (await f.ForAsync("retire_stale_test_call", callId: callId)) with { ExpectedProviderSessionId = "synthetic-race" };
+        var freshId = f.Publish(fresh); var freshPlan = await f.Operator.PlanAsync(freshId.Key, freshId.Hash); Assert.True(freshPlan.CanApply);
+        var account = await db.Set<ReceptionistBudgetAccount>().SingleAsync(x => x.Id == f.OwnerBudgetId);
+        account.Revision = Guid.NewGuid(); await db.SaveChangesAsync();
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => f.Operator.ApplyAsync(f.Request(freshPlan)));
+        Assert.Empty(await db.Set<ReceptionistActionIntent>().AsNoTracking().Where(x => x.LogicalActionKey == "__admin_retire_stale_test_call").ToArrayAsync());
+    }
+
+    [Theory]
+    [InlineData("empty-receipt")]
+    [InlineData("nonhex-digest")]
+    [InlineData("leading-space-digest")]
+    [InlineData("wrong-capability")]
+    [InlineData("execution-lease")]
+    public async Task IncompleteAdministrativeTupleNeverExcludesAnOpenCall(string defect)
+    {
+        await using var f = await Fixture.CreateAsync();
+        await f.AcceptAsync(); await f.EnableOwnerAsync();
+        var ingress = (await f.Admission.GetIngressBindingAsync("openai", Fixture.Ingress))!;
+        var callId = (await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-invalid-marker"))).CallId!.Value;
+        await f.Admission.RecordProviderStateAsync(callId, "accepted", "synthetic-accepted");
+        await using var db = f.Database();
+        var row = new ReceptionistActionIntent
+        {
+            CallId = callId, LogicalActionKey = "__admin_retire_stale_test_call", CapabilityKey = "__admin_retirement",
+            RouteKey = "admin.retire_stale_test_call", State = "verified", ActualRecordReference = "local-retirement-only",
+            ArgumentsSha256 = ReceptionistConfigurationCodec.Hash("synthetic-package"), ConfirmationReceipt = "synthetic-review",
+            VerificationReceipt = "synthetic-review", CreatedUtc = f.Clock.Now, UpdatedUtc = f.Clock.Now
+        };
+        if (defect == "empty-receipt") row.ConfirmationReceipt = row.VerificationReceipt = "";
+        if (defect == "nonhex-digest") row.ArgumentsSha256 = new string('g', 64);
+        if (defect == "leading-space-digest") row.ArgumentsSha256 = " " + new string('a', 63);
+        if (defect == "wrong-capability") row.CapabilityKey = "canonical_intake";
+        if (defect == "execution-lease") { row.ExecutionLeaseToken = Guid.NewGuid(); row.ExecutionFence = 1; row.WorkerId = "synthetic-worker"; }
+        db.Add(row); await db.SaveChangesAsync();
+        var readiness = await f.Admission.GetSetupReadinessAsync(await f.Store.GetReceptionistConfigurationAsync(f.Owner, "openai"));
+        Assert.Equal(1, readiness.OpenCalls); Assert.Equal(0, readiness.LocallyRetiredProviderUnresolvedCalls);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Admission.RecordActionOutcomeAsync(row.Id, "verified", row.ActualRecordReference, "synthetic-attempt"));
+    }
+
+    [Fact]
+    public async Task FounderSavedRetirementIsPreparedReviewedPreviewedAppliedAndReplayed()
+    {
+        await using var f = await Fixture.CreateAsync();
+        await f.AcceptAsync(); await f.EnableOwnerAsync();
+        var ingress = (await f.Admission.GetIngressBindingAsync("openai", Fixture.Ingress))!;
+        var callId = (await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-saved-retirement"))).CallId!.Value;
+        await f.Admission.RecordProviderStateAsync(callId, "accepted", "synthetic-accepted");
+        await using var db = f.Database();
+        var call = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId);
+        f.Clock.Now = DateTime.SpecifyKind(call.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
+        var evidence = "synthetic-operator-evidence";
+        var draft = new ReceptionistRetirementDraft(f.Owner.Key, call.ConfigurationVersionId, callId,
+            evidence, ReceptionistConfigurationCodec.Hash(evidence), f.Clock.Now, "Expired controlled test requires local retirement");
+        var provider = new RetirementProviderProbe();
+        using var services = new ServiceCollection().AddSingleton(f.Options).AddSingleton<IOpenAiReceptionistClient>(provider).BuildServiceProvider();
+        var operation = new ReceptionistOperatorService(f.Store, new ReceptionistAdmissionService(f.Options, f.Clock, services),
+            f.Host, f.Protector, f.Http, f.Clock, services);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => operation.PrepareSavedRetirementAsync(draft with { ConfigurationId = Guid.NewGuid() }));
+        var prepared = await operation.PrepareSavedRetirementAsync(draft);
+        var id = prepared.Id;
+        var saved = Assert.Single((await operation.SavedRetirementsAsync()).Where(x => x.Key == "saved-" + id.ToString("N")));
+        Assert.Equal("pending", saved.ReviewState);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => operation.PlanAsync(saved.Key, saved.Sha256));
+        var pending = await operation.PreviewSavedRetirementAsync(id, saved.Sha256);
+        Assert.Contains(pending.Facts, x => x.Label == "Operator reason" && x.Value == draft.Reason);
+        Assert.Contains(pending.Facts, x => x.Label == "Provider status" && x.Value.Contains("Unresolved"));
+        Assert.Contains(pending.Facts, x => x.Label == "Accounting" && x.Value.Contains("unchanged"));
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => operation.ReviewSavedRetirementAsync(id, Guid.NewGuid(), saved.Sha256, true));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => operation.PreviewSavedRetirementAsync(id, new string('a', 64)));
+        await operation.ReviewSavedRetirementAsync(id, pending.PendingReviewRevision!.Value, saved.Sha256, true);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => operation.PlanForOwnerAsync(f.Owner, saved.Key, saved.Sha256, (_, _) => Task.FromResult(true)));
+        var plan = await operation.PlanAsync(saved.Key, saved.Sha256); Assert.True(plan.CanApply);
+        var receipt = await operation.ApplyAsync(f.Request(plan)); Assert.True(receipt.ReadBackVerified);
+        Assert.Equal("already_applied", (await operation.ApplyAsync(f.Request(plan))).Outcome);
+        Assert.Equal(0, provider.Calls);
+        var after = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId);
+        Assert.Null(after.ProviderClosedUtc); Assert.Equal(call.ReservedVoiceSeconds, after.ReservedVoiceSeconds);
+        var nonFounder = f.Http.HttpContext!.User;
+        f.Http.HttpContext.User = new ClaimsPrincipal(new ClaimsIdentity([new("oid", Guid.NewGuid().ToString())], "test"));
+        try { await Assert.ThrowsAsync<UnauthorizedAccessException>(() => operation.SavedRetirementsAsync()); }
+        finally { f.Http.HttpContext.User = nonFounder; }
+    }
+
+    [Fact]
+    public async Task FounderRetirementControllerCarriesPreparedReviewThroughApplyAndReplay()
+    {
+        var priorFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        Environment.SetEnvironmentVariable("FOUNDER_OID", Fixture.FounderOid);
+        try
+        {
+            await using var f = await Fixture.CreateAsync();
+            await f.AcceptAsync(); await f.EnableOwnerAsync();
+            var ingress = (await f.Admission.GetIngressBindingAsync("openai", Fixture.Ingress))!;
+            var callId = (await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-controller-retirement"))).CallId!.Value;
+            await f.Admission.RecordProviderStateAsync(callId, "accepted", "synthetic-accepted");
+            await using var db = f.Database();
+            var call = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId);
+            f.Clock.Now = DateTime.SpecifyKind(call.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
+            var provider = new RetirementProviderProbe();
+            using var dependencies = new ServiceCollection().AddSingleton(f.Options).AddSingleton<IOpenAiReceptionistClient>(provider).BuildServiceProvider();
+            var operation = new ReceptionistOperatorService(f.Store, new ReceptionistAdmissionService(f.Options, f.Clock, dependencies),
+                f.Host, f.Protector, f.Http, f.Clock, dependencies);
+            var requestServiceCollection = new ServiceCollection();
+            requestServiceCollection.AddLogging();
+            requestServiceCollection.AddDataProtection();
+            requestServiceCollection.AddControllersWithViews();
+            requestServiceCollection.AddSingleton(operation);
+            using var requestServices = requestServiceCollection.BuildServiceProvider();
+            f.Http.HttpContext!.RequestServices = requestServices;
+            var controller = new AgentPortal.Controllers.FounderEngineeringController(null!)
+            { ControllerContext = new ControllerContext { HttpContext = f.Http.HttpContext } };
+            var reference = "synthetic-carrier-evidence";
+            var input = new AgentPortal.Models.FounderRetirementDraftInput
+            {
+                ExpectedOwnerKey = f.Owner.Key, ConfigurationId = call.ConfigurationVersionId, CallId = callId,
+                EvidenceReference = reference, EvidenceSha256 = ReceptionistConfigurationCodec.Hash(reference),
+                EvidenceObservedUtc = f.Clock.Now.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
+                Reason = "Controlled test exceeded its stop deadline"
+            };
+            var preparedView = Assert.IsType<ViewResult>(await controller.PrepareSavedRetirement(input, default));
+            var preparedModel = Assert.IsType<AgentPortal.Models.FounderReceptionistOperatorViewModel>(preparedView.Model);
+            var pending = Assert.IsType<ReceptionistOperationReview>(preparedModel.PendingRetirementReview);
+            Assert.Contains(pending.Facts, x => x.Label == "Operator reason" && x.Value == input.Reason);
+            var id = Guid.ParseExact(pending.Key[6..], "N");
+            var review = new AgentPortal.Models.FounderRetirementReviewInput
+                { Id = id, Hash = pending.Sha256, Revision = pending.PendingReviewRevision!.Value, Accepted = true };
+            var reviewedView = Assert.IsType<ViewResult>(await controller.ReviewSavedRetirement(review, default));
+            var reviewedModel = Assert.IsType<AgentPortal.Models.FounderReceptionistOperatorViewModel>(reviewedView.Model);
+            Assert.Contains(reviewedModel.SavedRetirements!, x => x.Key == pending.Key && x.ReviewState == "accepted");
+            var planView = Assert.IsType<ViewResult>(await controller.PlanReceptionist(new AgentPortal.Models.FounderReceptionistPlanInput
+                { PackageKey = pending.Key, PackageSha256 = pending.Sha256 }, default));
+            var plan = Assert.IsType<AgentPortal.Models.FounderReceptionistOperatorViewModel>(planView.Model).Plan!;
+            Assert.True(plan.CanApply);
+            var apply = new AgentPortal.Models.FounderReceptionistApplyInput
+                { PackageKey = plan.PackageKey, PackageSha256 = plan.PackageSha256, ExpectedStateToken = plan.ExpectedStateToken! };
+            var resultView = Assert.IsType<ViewResult>(await controller.ApplyReceptionist(apply, default));
+            var receipt = Assert.IsType<AgentPortal.Models.FounderReceptionistOperatorViewModel>(resultView.Model).Receipt!;
+            Assert.True(receipt.ReadBackVerified); Assert.Equal("applied", receipt.Outcome);
+            var replayView = Assert.IsType<ViewResult>(await controller.ApplyReceptionist(apply, default));
+            Assert.Equal("already_applied", Assert.IsType<AgentPortal.Models.FounderReceptionistOperatorViewModel>(replayView.Model).Receipt!.Outcome);
+            Assert.Equal(0, provider.Calls);
+        }
+        finally { Environment.SetEnvironmentVariable("FOUNDER_OID", priorFounder); }
+    }
+
+    [Fact]
+    public async Task FounderRetirementFormsAndActionsRetainAntiforgeryAndReviewStages()
+    {
+        var controller = typeof(AgentPortal.Controllers.FounderEngineeringController);
+        foreach (var name in new[] { "PrepareSavedRetirement", "PreviewSavedRetirement", "ReviewSavedRetirement", "PlanReceptionist", "ApplyReceptionist" })
+            Assert.NotNull(controller.GetMethod(name)!.GetCustomAttribute<ValidateAntiForgeryTokenAttribute>());
+        const string viewPath = "AgentPortal/Views/FounderEngineering/Receptionist.cshtml";
+        var view = await File.ReadAllTextAsync(FindSourceFile(viewPath));
+        foreach (var action in new[] { "PrepareSavedRetirement", "PreviewSavedRetirement", "ReviewSavedRetirement", "PlanReceptionist", "ApplyReceptionist" })
+            Assert.Contains("asp-action=\"" + action + "\"", view);
+        foreach (var name in new[] { "ExpectedOwnerKey", "ConfigurationId", "CallId", "EvidenceReference", "EvidenceSha256", "EvidenceObservedUtc", "Reason" })
+            Assert.Contains("name=\"" + name + "\"", view);
+        Assert.Contains("Provider closure", view, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Accounting may still block", view);
+    }
+
+    private static string FindSourceFile(string relativePath)
+    {
+        // Test outputs may live outside the checkout; the test runner can start at its root.
+        foreach (var start in new[] { Environment.GetEnvironmentVariable("GITHUB_WORKSPACE"), Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
+        {
+            if (string.IsNullOrWhiteSpace(start)) continue;
+            for (var directory = new DirectoryInfo(start); directory is not null; directory = directory.Parent)
+            {
+                var candidate = Path.Combine(directory.FullName, relativePath);
+                if (File.Exists(candidate)) return candidate;
+            }
+        }
+        throw new FileNotFoundException("Could not locate the repository source file for this test.", relativePath);
+    }
+
+    private sealed class RetirementProviderProbe : IOpenAiReceptionistClient
+    {
+        internal int Calls;
+        public Task<OpenAiReceptionistBrowserOutcome> CreateBrowserAsync(string projectId, string credential,
+            OpenAiReceptionistSessionSettings settings, string offer, CancellationToken ct) { Calls++; throw new InvalidOperationException("Unexpected provider I/O"); }
+        public Task<OpenAiReceptionistHttpOutcome> AcceptAsync(string projectId, string sessionId, string credential,
+            OpenAiReceptionistSessionSettings settings, CancellationToken ct) { Calls++; throw new InvalidOperationException("Unexpected provider I/O"); }
+        public Task<OpenAiReceptionistHttpOutcome> HangupAsync(string projectId, string sessionId, string credential, CancellationToken ct)
+        { Calls++; throw new InvalidOperationException("Unexpected provider I/O"); }
+        public Task<System.Net.WebSockets.WebSocket> AttachAsync(string projectId, string sessionId, string credential, CancellationToken ct)
+        { Calls++; throw new InvalidOperationException("Unexpected provider I/O"); }
     }
 
     private sealed class PreparationBindingController : Controller { }
@@ -1225,7 +1552,7 @@ public sealed partial class ReceptionistOperatorTests
             var version = await db.Set<ReceptionistConfigurationVersion>().AsNoTracking().SingleAsync(x => x.Id == versionId);
             Guid[] ids = operation switch
             {
-                "accept_binding" or "reconcile_account_charge" or "reconcile_call_cost" or "reconcile_dated_voice" or "record_provider_closure" => [OwnerBudgetId, FundingId],
+                "accept_binding" or "reconcile_account_charge" or "reconcile_call_cost" or "reconcile_dated_voice" or "record_provider_closure" or "retire_stale_test_call" => [OwnerBudgetId, FundingId],
                 "set_owner_admission" => OwnerBudgetId == Guid.Empty ? [] : [OwnerBudgetId],
                 "approve_budget_ceilings" or "set_budget_admission" => [budgetId!.Value],
                 _ => []

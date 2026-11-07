@@ -222,8 +222,9 @@ public sealed partial class ReceptionistAdmissionService
         if (maximum is < 1 or > 1000) throw new ArgumentOutOfRangeException(nameof(maximum));
         var now = clock.GetUtcNow().UtcDateTime;
         await using var read = new MasterAppDbContext(options);
+        var retiredActions = RetirementActions(read);
         return await read.Set<ReceptionistCall>().AsNoTracking().Where(call => call.ProviderSessionId != null && call.State == state && call.ProviderClosedUtc == null &&
-            call.MustStopUtc > now && (state != "reserved" || call.ProviderAcceptAttemptId == null) &&
+            call.MustStopUtc > now && !retiredActions.Any(x => x.CallId == call.Id) && (state != "reserved" || call.ProviderAcceptAttemptId == null) &&
             (call.SidebandLeaseExpiresUtc == null || call.SidebandLeaseExpiresUtc <= now))
             .OrderBy(x => x.ReservedUtc).ThenBy(x => x.Id).Take(maximum)
             .Select(x => new ReceptionistProviderWorkItem(x.Id, x.State, x.MustStopUtc)).ToListAsync(ct);

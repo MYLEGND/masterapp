@@ -21,6 +21,13 @@ public sealed partial class ReceptionistOperatorService(MarketingConnectionStore
     private const string PreviewPurpose = "voice-op-preview";
     private static readonly TimeSpan PreviewLifetime = TimeSpan.FromMinutes(5);
 
+    public Task<ReceptionistRetirementPreparation> PrepareRetirementAsync(string expectedOwnerKey,
+        Guid configurationId, Guid callId, CancellationToken ct = default)
+    {
+        RequireFounder();
+        return admission.ReadRetirementPreparationAsync(expectedOwnerKey, configurationId, callId, ct);
+    }
+
     public Task<ReceptionistBookingRecoveryPreparation> PrepareBookingRecoveryAsync(string expectedOwnerKey,
         Guid configurationId, Guid? callId, CancellationToken ct = default)
     {
@@ -148,7 +155,7 @@ public sealed partial class ReceptionistOperatorService(MarketingConnectionStore
             else if (package.Operation is "accept_binding" or "set_owner_admission")
                 await store.ApplyReceptionistOperatorAsync(package, initial, preflight.Binding, actor, Guard, ct);
             else
-                await admission.ApplyOperatorAccountingAsync(package, initial, Guard, ct);
+                await admission.ApplyOperatorAccountingAsync(package, initial, Guard, ct, request.PackageSha256);
         }
         catch (ReceptionistOperatorReplayException replay)
         {
@@ -301,6 +308,10 @@ internal sealed record ReceptionistOperatorPackage
     public Guid? CallId { get; init; }
     public Guid? ExpectedCallRevision { get; init; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ExpectedProviderSessionId { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? RetirementReason { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public Guid? BookingActionId { get; init; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public Guid? ExpectedBookingActionRevision { get; init; }
@@ -342,6 +353,8 @@ internal sealed record ReceptionistOperatorPackage
         Supplied("callCost", CallCost is not null); Supplied("accountCharge", AccountCharge is not null);
         Supplied("voice", VoiceAllocations is not null); Supplied("finalVoice", FinalVoiceSeconds.HasValue);
         Supplied("closure", ObservedProviderClosedUtc.HasValue);
+        Supplied("providerSession", ExpectedProviderSessionId is not null);
+        Supplied("retirementReason", RetirementReason is not null);
         Supplied("window", Window is not null);
         Supplied("bookingAction", BookingActionId.HasValue || ExpectedBookingActionRevision.HasValue);
         string[] allowed = Operation switch
@@ -352,13 +365,17 @@ internal sealed record ReceptionistOperatorPackage
             "set_owner_admission" => ["enabled"], "reconcile_call_cost" => ["call", "component", "callCost"],
             "reconcile_account_charge" => ["accountCharge"], "reconcile_dated_voice" => ["call", "voice", "finalVoice"],
             "record_provider_closure" => ["call", "closure", "finalVoice"],
+            "retire_stale_test_call" => ["call", "providerSession", "retirementReason"],
             "reconcile_booking_action" => ["call", "bookingAction"],
             _ => throw new ArgumentException("Unsupported operator operation.")
         };
-        if (supplied.Except(allowed).Any() || allowed.Where(x => x != "finalVoice").Except(supplied).Any())
+        if (supplied.Except(allowed).Any() || allowed.Where(x => x is not ("finalVoice" or "retirementReason")).Except(supplied).Any())
             throw new ArgumentException("One exact bounded operator operation is required.");
         if (CallId.HasValue && (CallId == Guid.Empty || ExpectedCallRevision is null || ExpectedCallRevision == Guid.Empty))
             throw new ArgumentException("An exact call and expected revision are required.");
+        if (RetirementReason is not null) ReceptionistConfigurationCodec.Required(RetirementReason, 500, nameof(RetirementReason));
+        if (Operation == "retire_stale_test_call" && (ExpectedProviderSessionId is null || !OpenAiReceptionistProtocol.Token(ExpectedProviderSessionId, 200)))
+            throw new ArgumentException("The exact provider session identity is required.");
         if (Operation == "reconcile_booking_action" && (BookingActionId is null || BookingActionId == Guid.Empty ||
             ExpectedBookingActionRevision is null || ExpectedBookingActionRevision == Guid.Empty))
             throw new ArgumentException("An exact booking action and expected revision are required.");

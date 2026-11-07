@@ -18,6 +18,23 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
     /// writes, locks, provider I/O or admission effect. Actual calls recheck inside ReserveAsync.
     /// Only the control-plane controller may request its local runtime/window observation.
     /// </summary>
+    private const string RetirementKey = "__admin_retire_stale_test_call";
+    private const string RetirementCapability = "__admin_retirement";
+    private const string RetirementRoute = "admin.retire_stale_test_call";
+    private const string RetirementReference = "local-retirement-only";
+    private static IQueryable<ReceptionistActionIntent> RetirementActions(MasterAppDbContext db) =>
+        db.Set<ReceptionistActionIntent>().Where(x => x.LogicalActionKey == RetirementKey &&
+            x.CapabilityKey == RetirementCapability && x.RouteKey == RetirementRoute && x.State == "verified" &&
+            x.ActualRecordReference == RetirementReference && x.VerificationReceipt != null &&
+            x.ConfirmationReceipt.Trim().Length > 0 && x.VerificationReceipt == x.ConfirmationReceipt &&
+            x.ArgumentsSha256.Length == 64 && (x.ArgumentsSha256
+                .Replace("0", "").Replace("1", "").Replace("2", "").Replace("3", "")
+                .Replace("4", "").Replace("5", "").Replace("6", "").Replace("7", "")
+                .Replace("8", "").Replace("9", "").Replace("a", "").Replace("b", "")
+                .Replace("c", "").Replace("d", "").Replace("e", "").Replace("f", "") + "#") == "#" &&
+            x.ExecutionLeaseToken == null && x.ExecutionFence == 0 && x.WorkerId == null && x.AttemptNumber == 1 &&
+            x.AttemptId != Guid.Empty && x.Revision != Guid.Empty);
+
     public async Task<ReceptionistReadinessProjection> GetSetupReadinessAsync(ReceptionistConfigurationSnapshot snapshot,
         bool observeControlPlaneRuntime = false, CancellationToken ct = default)
     {
@@ -68,6 +85,8 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
                 binding!.ControlledTestOnly, observed.UtcDateTime, ct)).Reason ?? "eligible_at_observation";
         var openCallIds = await read.Set<ReceptionistCall>().Where(
             x => x.MarketingConnectionId == connection.Id && x.ProviderClosedUtc == null).Select(x => x.Id).ToArrayAsync(ct);
+        var retiredIds = await RetirementActions(read).Where(x => openCallIds.Contains(x.CallId)).Select(x => x.CallId).ToArrayAsync(ct);
+        openCallIds = openCallIds.Except(retiredIds).ToArray();
         var openCalls = openCallIds.Length;
         var stopCalls = await CallsRequiringStop(read, observed.UtcDateTime)
             .CountAsync(x => x.MarketingConnectionId == connection.Id && openCallIds.Contains(x.Id), ct);
@@ -90,7 +109,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
                 ReceptionistSetupForms.CanAllowOwnerPermission(snapshot),
             RuntimeState = enabled is null ? "unknown" : enabled.Value ? "enabled" : "disabled",
             BindingScope = !bound ? "unaccepted" : binding!.ControlledTestOnly ? "controlled_test_only" : "public",
-            ApplicationWindowState = window, AdmissionReason = reason, OpenCalls = openCalls,
+            ApplicationWindowState = window, AdmissionReason = reason, OpenCalls = openCalls, LocallyRetiredProviderUnresolvedCalls = retiredIds.Length,
             OpenCallsWithoutStopCondition = closing is { } count ? openCalls - count : null, AwaitingStopOrClosure = closing,
             CallReadiness = enabled == false || reason != "eligible_at_observation" || window == "not_verified" ? "Not ready" : "Unverified"
             // Current carrier routing and correlated human audio acceptance remain unverified. No schema/receipt is fabricated.
@@ -253,7 +272,9 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
             .Select(x => new { x.ReservedVoiceSeconds, x.ObservedVoiceSeconds }).ToListAsync(ct);
         if (checked(ownerPeriod.VoiceSecondsCommitted + unfinishedVoice.Sum(x => Math.Max(0, x.ReservedVoiceSeconds - x.ObservedVoiceSeconds)) +
             configuration.MaximumCallSeconds) > configuration.MonthlyVoiceSecondsLimit) return new("owner_voice_minutes_limit");
-        if (await read.Set<ReceptionistCall>().CountAsync(x => x.OwnerBudgetAccountId == ownerAccount.Id && x.ProviderClosedUtc == null, ct) >=
+        var retiredActions = RetirementActions(read);
+        if (await read.Set<ReceptionistCall>().CountAsync(x => x.OwnerBudgetAccountId == ownerAccount.Id && x.ProviderClosedUtc == null &&
+            !retiredActions.Any(a => a.CallId == x.Id), ct) >=
             configuration.MaximumConcurrentCalls) return new("owner_concurrency_limit");
         var since = now.AddSeconds(-configuration.AdmissionWindowSeconds);
         if (await read.Set<ReceptionistCall>().CountAsync(x => x.OwnerBudgetAccountId == ownerAccount.Id && x.ReservedUtc >= since, ct) >=
@@ -340,6 +361,9 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
     internal async Task<ReceptionistActionClaim> ClaimActionAsync(Guid callId, string logicalActionKey,
         string capabilityKey, string argumentsSha256, string confirmationReceipt, Guid sidebandLeaseToken, CancellationToken ct = default)
     {
+        if (string.Equals(logicalActionKey, RetirementKey, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(capabilityKey, RetirementCapability, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("This administrative action identity is reserved.");
         ReceptionistConfigurationCodec.Identifier(logicalActionKey, 160, nameof(logicalActionKey));
         ReceptionistConfigurationCodec.Identifier(capabilityKey, 100, nameof(capabilityKey));
         RequireSha256(argumentsSha256);
@@ -413,6 +437,9 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
         return await WithCallAsync(callId, async (write, call) =>
         {
             var action = await write.Set<ReceptionistActionIntent>().SingleAsync(x => x.Id == actionId && x.CallId == call.Id, ct);
+            if (string.Equals(action.LogicalActionKey, RetirementKey, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(action.CapabilityKey, RetirementCapability, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Administrative retirement receipts are immutable through business outcome recording.");
             if (state == "verified" && action.CapabilityKey == StopCapability && call.ProviderClosedUtc is null)
                 throw new InvalidOperationException("A stop action is successful only after verified provider closure.");
             if (action.State is "verified" or "rejected")
@@ -518,6 +545,7 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
     }
 
     private async Task<bool> AdmissionStillEnabledAsync(MasterAppDbContext read, ReceptionistCall call, CancellationToken ct) =>
+        !await RetirementActions(read).AnyAsync(x => x.CallId == call.Id, ct) &&
         (!call.ControlledTest || await read.Set<ReceptionistAcceptanceWindow>().CountAsync(x => x.ConfigurationVersionId == call.ConfigurationVersionId, ct) == 1 &&
             await ValidCallWindows(read, clock.GetUtcNow().UtcDateTime).AnyAsync(x => x.ConfigurationVersionId == call.ConfigurationVersionId &&
                 x.MarketingConnectionId == call.MarketingConnectionId && x.IngressKey == call.IngressKey && x.ProviderProjectKey == call.ProviderProjectKey, ct)) &&
