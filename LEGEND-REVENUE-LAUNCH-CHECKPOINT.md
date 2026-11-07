@@ -3909,3 +3909,90 @@ execution, native continuity attestation, production deployment, live call repai
 or hosted HTTP middleware acceptance is claimed. The existing sourceIntegration
 request will be rebound to the corrected implementation anchor; its baseline,
 validate-only mode, empty targets and immutable resource history remain unchanged.
+
+## 2026-11-07 - Bounded Shayla historical accounting recovery continuation
+
+This continues the Founder's existing GitHub source repair instruction and direct
+Mac deployment ownership after PR 766. The canonical source baseline is
+`6ea6c298dd3acee8d818c33deeec5a960dc8c23a` on
+`Legend/fast-track-release`, tree
+`063a53caa8c2b6bd88ac6ce0152460a6884f120f`.
+The earlier administrative retirement implementation and history are preserved.
+This continuation corrects the separate cross-period accounting block and makes
+its existing saved-review controls available through typed Founder forms.
+
+A prior controlled-test call may carry its unresolved historical voice allocation
+only when its exact reviewed retirement remains valid, its deadline has expired,
+its owner/account/connection/project and original controlled-test binding match,
+and no active execution lease or pending/uncertain business action remains.
+The current exact accepted WebRTC binding must have a still-valid
+`owner_budget_delayed_enforcement_v1` policy for its owner and configuration.
+The current binding can be restricted or separately accepted public scope;
+ordinary scope classification, public activation evidence and fresh exact owner
+risk acceptance remain mandatory. Restricted-test acceptance cannot authorize
+public calls. No public activation is performed by this change.
+
+Every eligible carried call retains its full reserved voice seconds in the
+current accounting period. Unallocated observed seconds do not reduce that hold.
+Observed usage above its reservation remains blocked. Provider closure, finality,
+actual usage, all cost records and uncertainty flags remain unchanged. Existing
+cash/service ceilings, non-call charge guards, concurrency, rate, hours, active
+test-window and account controls continue to apply. There is no migration,
+credential edit, funding, limit increase or new provider request.
+
+The Founder observation exposes current calendar/opening, admission state,
+approved ceilings, known committed totals, retained cash/service/voice holds,
+current accepted transport/policy and relevant blockers. Typed preparation for
+`open_budget_period` and `set_budget_admission` uses the existing immutable saved
+operation review, exact-change preview, apply and read-back mechanism. Only
+existing accounts in the selected configuration's scope are available. A new
+current opening derives its month and ceilings from canonical existing facts;
+cash, service and voice totals require explicit dated evidence, including an
+explicit zero when supported. Blank or omitted numbers remain unknown.
+Opening a period does not enable a paused account. No arbitrary JSON or new
+ceiling input is introduced.
+
+The accounting enablement exception binds the reviewed operation's exact
+connection, configuration and owner account. Preview and transactional apply use
+the same conditions. Its preview fingerprints call revisions, retirement
+evidence, execution leases, pending work, current policy and eligible carry IDs.
+The unscoped internal accounting enablement path retains its reconciliation
+requirement. A stale preview must be replaced with a fresh exact review.
+
+This is an authenticated GitHub-only selected-file source continuation. The sole
+implementation writer used a fresh isolated local candidate against the immutable
+baseline, without changing the older preserved candidate or the Founder's Mac.
+Native session preflight/finish were not available and are not attested.
+Local static whitespace validation passed. .NET is absent in this workspace;
+build and executable test results are PENDING, not inferred from source coverage.
+The new focused regressions cover prior-month resume/hold/slot reuse, successive
+accounting periods, exact policy scope and public acceptance, missing or changed
+retirement facts, leases, pending work, known overruns, non-call charges, stale
+previews, replay, explicit nullable MVC totals, scoped metadata and the typed
+Founder controller review/apply/read-back workflow. Direct-controller and
+attribute checks do not claim hosted antiforgery middleware verification.
+
+IMPLEMENTATION_ANCHOR_PENDING: the actual immutable implementation commit must be
+created and independently reviewed before the existing sourceIntegration request
+is rebound. Do not invent a source revision. The request baseline becomes the
+canonical revision above; its sourceRevision must be that real implementation
+anchor. Keep releaseMode validate-only, targets empty, Cloudflare routing false,
+preserveLiveTargets false and all prior per-resource and supersession history
+unchanged. The coordinator owns that request-only anchor commit after this
+writer's sealed handoff. No workflow or release-control change is included.
+
+Required exact-head architecture-validation, approved-release-security and
+build-and-focused-tests, followed by independent exact-candidate acceptance,
+remain pending. Record real run results and merge receipts through the current PR
+and existing Founder/Layla handoff. Protected source integration selects no
+production resources and does not establish live recovery. The Founder retains
+the direct Mac sync, localhost pretest, deployment and provenance verification.
+
+Live continuation still needs genuine current accounting observations, a fresh
+exact voice-risk acceptance and separately reviewed accounting permissions as
+applicable, then a fresh restricted test window. A real two-way test must end and
+release its slot; a second call must start before separately accepted public
+activation. Historical accounting may remain unresolved under the bounded
+conservative carry policy; it is not silently finalized or billed by this patch.
+No deployment, real-call success, public activation, receiver completion or
+independent acceptance is claimed by this source checkpoint.

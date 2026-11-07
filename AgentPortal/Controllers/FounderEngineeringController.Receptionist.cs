@@ -210,14 +210,18 @@ public sealed partial class FounderEngineeringController
 
     private async Task<IActionResult> ReceptionistPageAsync(CancellationToken cancellationToken,
         ReceptionistOperatorPlan? plan = null, ReceptionistOperatorReceipt? receipt = null, string? error = null,
-        Shared.Analytics.ReceptionistOperationReview? pendingReview = null)
+        Shared.Analytics.ReceptionistOperationReview? pendingReview = null,
+        ReceptionistAccountingPreparation? accounting = null,
+        Shared.Analytics.ReceptionistOperationReview? pendingAccountingReview = null)
     {
         IReadOnlyList<ReceptionistOperatorPackageSummary> packages = [];
         IReadOnlyList<Shared.Analytics.ReceptionistSavedOperationSummary> retirements = [];
+        IReadOnlyList<Shared.Analytics.ReceptionistSavedOperationSummary> accountingOperations = [];
         try
         {
             packages = await ReceptionistOperator.CatalogAsync(cancellationToken);
             retirements = await ReceptionistOperator.SavedRetirementsAsync(cancellationToken);
+            accountingOperations = await ReceptionistOperator.SavedAccountingOperationsAsync(cancellationToken);
         }
         catch (UnauthorizedAccessException) { return Forbid(); }
         catch (Exception failure) when (failure is ArgumentException or InvalidOperationException or System.Text.Json.JsonException or System.Security.Cryptography.CryptographicException or OverflowException)
@@ -226,6 +230,7 @@ public sealed partial class FounderEngineeringController
             error ??= "Reviewed operations are unavailable. Verify the existing operator configuration and reload this page.";
         }
         return View("~/Views/FounderEngineering/Receptionist.cshtml",
-            new FounderReceptionistOperatorViewModel(packages, plan, receipt, error, retirements, pendingReview));
+            new FounderReceptionistOperatorViewModel(packages, plan, receipt, error, retirements, pendingReview,
+                accounting, accountingOperations, pendingAccountingReview));
     }
 }

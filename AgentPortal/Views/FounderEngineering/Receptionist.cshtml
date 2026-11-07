@@ -50,6 +50,7 @@
             <label for="receptionist-preparation-call">Original call ID (required for local retirement)</label>
             <input id="receptionist-preparation-call" name="callId" maxlength="36" autocomplete="off" />
             <button type="submit">Read preparation metadata</button>
+            <button type="submit" formaction="@Url.Action("ReceptionistAccounting")">Read current accounting and recovery</button>
             <button type="submit" formaction="@Url.Action("ReceptionistBookingReadiness")">Read saved booking readiness</button>
             <button type="submit" formaction="@Url.Action("ReceptionistBookingRecoveryPreparation")">Read booking recovery metadata</button>
             <button type="submit" formaction="@Url.Action("ReceptionistRetirementPreparation")">Read local retirement metadata</button>
@@ -57,6 +58,142 @@
         <p>Independent provider, capability, cost and reviewer evidence is still required before a reviewed operation can be registered. No call test window starts here.</p>
         <p>Local retirement metadata uses the original call and its pinned historical configuration. It does not contact the provider, release reservations, or establish closure. A separate reviewed retirement package and preview are required.</p>
         <p>Booking recovery metadata can use the original call's pinned configuration ID. It returns scoped action revisions for review and does not contact the calendar. If the result needs a narrower scope, add the original call ID.</p>
+    </section>
+
+    <section class="eng-action-center" aria-labelledby="accounting-recovery-title">
+        <h2 id="accounting-recovery-title">Current accounting and recovery</h2>
+        <p>A locally retired call is no longer an active application call. Its unfinished accounting remains reserved. A current, separately reviewed budget risk policy can carry an eligible retired test call's full voice hold into this month without claiming provider closure or final charges.</p>
+        <p>Read the current operating configuration above to see the exact accounting conditions. These controls only prepare a review; they do not fund a provider, increase limits, enable owner call permission or start a test.</p>
+        @if (Model.Accounting is { } accounting)
+        {
+            <dl class="eng-status-card">
+                <dt>Observed at UTC</dt><dd>@accounting.ObservedUtc.ToString("u")</dd>
+                <dt>Settings owner</dt><dd>@accounting.OwnerKey</dd>
+                <dt>Configuration</dt><dd>Version @accounting.ConfigurationVersion · @accounting.ConfigurationId</dd>
+                <dt>Accepted voice transport</dt><dd>@(accounting.CurrentTransport ?? "Unaccepted")</dd>
+                <dt>Budget policy</dt><dd>@(accounting.BudgetPolicyMode ?? "No reviewed budget risk policy")</dd>
+                <dt>Policy expires UTC</dt><dd>@(accounting.BudgetPolicyExpiresUtc?.ToString("u") ?? "Not applicable")</dd>
+                <dt>Historical hold policy currently eligible</dt><dd>@(accounting.RetiredVoiceCarryPolicyCurrent ? "Yes; individual calls and all limits still checked" : "No")</dd>
+                <dt>Monthly voice allowance</dt><dd>@accounting.MonthlyVoiceSecondsLimit seconds</dd>
+            </dl>
+            @if (accounting.ConfigurationBlockers.Count > 0)
+            {
+                <h3>Current configuration conditions</h3>
+                <ul>@foreach (var blocker in accounting.ConfigurationBlockers) { <li>@blocker</li> }</ul>
+            }
+            @foreach (var status in accounting.Accounts)
+            {
+                <article class="eng-action-card">
+                    <h3>@status.Account.Kind accounting · @status.Account.Currency</h3>
+                    <dl class="eng-status-card">
+                        <dt>Existing account</dt><dd>@status.Account.Id · @status.Account.ScopeKey</dd>
+                        <dt>Accounting calendar</dt><dd>@status.Account.TimeZoneId</dd>
+                        <dt>Current month UTC</dt><dd>@status.CurrentMonthStartsUtc.ToString("u") – @status.CurrentMonthEndsUtc.ToString("u")</dd>
+                        <dt>Accounting permission</dt><dd>@(status.AdmissionEnabled ? "Enabled; owner permission and call readiness remain separate" : "Paused")</dd>
+                        <dt>Current opening</dt><dd>@(status.CurrentPeriod is null ? "Missing; totals are unknown" : status.CurrentPeriod.OpeningReconciled ? "Recorded" : "Unreconciled")</dd>
+                        <dt>Unresolved cash / service reservations</dt><dd>@status.CashHeld / @status.ConsumptionHeld</dd>
+                        <dt>Unfinished voice held</dt><dd>@status.VoiceHeld seconds</dd>
+                        <dt>Retired test calls eligible for full voice hold</dt><dd>@status.RetiredVoiceCarryCount</dd>
+                        <dt>Unresolved non-call charges</dt><dd>@status.UnresolvedNonCallCharges</dd>
+                        @if (status.CurrentPeriod is { } period)
+                        {
+                            <dt>Current cash / service committed</dt><dd>@period.CashCommitted / @period.ConsumptionCommitted</dd>
+                            <dt>Current cash / service ceilings</dt><dd>@period.CashLimit / @period.ConsumptionLimit</dd>
+                            <dt>Current voice committed</dt><dd>@period.VoiceSecondsCommitted seconds</dd>
+                            <dt>Opening reconciled through UTC</dt><dd>@period.ReconciledThroughUtc.ToString("u")</dd>
+                        }
+                    </dl>
+                    @if (status.AdmissionBlockers.Count > 0)
+                    {
+                        <h4>Accounting conditions to resolve</h4>
+                        <ul>@foreach (var blocker in status.AdmissionBlockers) { <li>@blocker</li> }</ul>
+                    }
+                    @if (status.CurrentPeriod is null && status.ExistingCeilings is { } ceilings)
+                    {
+                        <h4>Prepare this month's opening</h4>
+                        <p>Existing accepted ceilings are @ceilings.CashLimit cash and @ceilings.ConsumptionLimit service consumption. They cannot be increased here. Enter real current-period totals and their reconciliation cutoff, including an explicit zero only when supported by your evidence. Unknown historical reservations remain additional holds.</p>
+                        <form asp-action="PrepareSavedAccounting" method="post">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="ExpectedOwnerKey" value="@accounting.OwnerKey" />
+                            <input type="hidden" name="ConfigurationId" value="@accounting.ConfigurationId" />
+                            <input type="hidden" name="ExpectedConnectionRevision" value="@accounting.ConnectionRevision" />
+                            <input type="hidden" name="BudgetAccountId" value="@status.Account.Id" />
+                            <input type="hidden" name="ExpectedAccountRevision" value="@status.Account.Revision" />
+                            <input type="hidden" name="Operation" value="open_budget_period" />
+                            <label>Known current cash committed <input name="KnownCashCommitted" type="number" required min="0" step="0.000001" /></label>
+                            <label>Known current service consumption <input name="KnownConsumptionCommitted" type="number" required min="0" step="0.000001" /></label>
+                            <label>Known current voice seconds <input name="KnownVoiceSeconds" type="number" required min="0" step="1" /></label>
+                            <label>Reconciled through UTC (YYYY-MM-DDTHH:MM:SSZ) <input name="ReconciledThroughUtc" required maxlength="32" /></label>
+                            <label>Accounting evidence reference <input name="EvidenceReference" required maxlength="200" /></label>
+                            <label>Evidence SHA-256 <input name="EvidenceSha256" required pattern="[a-f0-9]{64}" maxlength="64" /></label>
+                            <label>Evidence observed at UTC (YYYY-MM-DDTHH:MM:SSZ) <input name="EvidenceObservedUtc" required maxlength="32" /></label>
+                            <button type="submit">Prepare opening review</button>
+                        </form>
+                    }
+                    else if (status.CurrentPeriod is null)
+                    {
+                        <p>No previous accepted ceilings are available. This recovery flow cannot create an accounting account or invent new limits.</p>
+                    }
+                    @if (status.AdmissionEnabled || status.AdmissionBlockers.Count == 0)
+                    {
+                        <h4>Prepare accounting permission</h4>
+                        <p>This is separate from the owner's permission to receive calls. A fresh preview rechecks current policy, retained holds and accounting limits before applying.</p>
+                        <form asp-action="PrepareSavedAccounting" method="post">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="ExpectedOwnerKey" value="@accounting.OwnerKey" />
+                            <input type="hidden" name="ConfigurationId" value="@accounting.ConfigurationId" />
+                            <input type="hidden" name="ExpectedConnectionRevision" value="@accounting.ConnectionRevision" />
+                            <input type="hidden" name="BudgetAccountId" value="@status.Account.Id" />
+                            <input type="hidden" name="ExpectedAccountRevision" value="@status.Account.Revision" />
+                            <input type="hidden" name="Operation" value="set_budget_admission" />
+                            <label>Accounting evidence reference <input name="EvidenceReference" required maxlength="200" /></label>
+                            <label>Evidence SHA-256 <input name="EvidenceSha256" required pattern="[a-f0-9]{64}" maxlength="64" /></label>
+                            <label>Evidence observed at UTC (YYYY-MM-DDTHH:MM:SSZ) <input name="EvidenceObservedUtc" required maxlength="32" /></label>
+                            <button name="Enabled" value="@(status.AdmissionEnabled ? "false" : "true")" type="submit">@(status.AdmissionEnabled ? "Prepare accounting pause" : "Prepare accounting enablement")</button>
+                        </form>
+                    }
+                </article>
+            }
+            <p>These observations do not reserve capacity or verify live provider activity. Each incoming call still rechecks its accepted scope, owner permission, hours, test window when required, all budgets, rate and concurrency limits.</p>
+        }
+        @if (Model.PendingAccountingReview is { } accountingReview && accountingReview.PendingReviewRevision is { } accountingRevision && Guid.TryParseExact(accountingReview.Key.Substring(6), "N", out var accountingId))
+        {
+            <h3>Review exact proposed accounting change</h3>
+            <p>@OperationLabel(accountingReview.Operation). Accepting this review does not apply it or establish provider closure.</p>
+            <dl class="eng-status-card">@foreach (var fact in accountingReview.Facts) { <dt>@fact.Label</dt><dd>@fact.Value</dd> }</dl>
+            <form asp-action="ReviewSavedAccounting" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="Id" value="@accountingId" />
+                <input type="hidden" name="Hash" value="@accountingReview.Sha256" />
+                <input type="hidden" name="Revision" value="@accountingRevision" />
+                <button name="Accepted" value="true" type="submit">Accept this exact accounting review</button>
+                <button name="Accepted" value="false" type="submit">Reject this accounting review</button>
+            </form>
+        }
+        @foreach (var saved in Model.SavedAccountingOperations ?? [])
+        {
+            <article class="eng-action-card">
+                <p>@OperationLabel(saved.Operation) · @saved.ReviewState · expires @saved.ExpiresUtc.ToString("u")</p>
+                @if (saved.ReviewState == "pending")
+                {
+                    <form asp-action="PreviewSavedAccounting" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="Id" value="@saved.Key.Substring(6)" />
+                        <input type="hidden" name="Hash" value="@saved.Sha256" />
+                        <button type="submit">Preview accounting review</button>
+                    </form>
+                }
+                @if (saved.ReviewState == "accepted")
+                {
+                    <form asp-action="PlanReceptionist" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="PackageKey" value="@saved.Key" />
+                        <input type="hidden" name="PackageSha256" value="@saved.Sha256" />
+                        <button type="submit">Preview reviewed accounting change</button>
+                    </form>
+                }
+            </article>
+        }
     </section>
 
     <section class="eng-action-center" aria-labelledby="retire-test-title">
