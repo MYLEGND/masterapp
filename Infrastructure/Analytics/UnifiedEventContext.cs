@@ -10,6 +10,8 @@ public sealed record UnifiedEventContext
 {
     public string? SiteKey { get; init; }
     public Guid? CommerceBusinessId { get; init; }
+    // Verified storefront dimension; marketing ownership remains independent.
+    public Guid? StoreBusinessId { get; init; }
     public Guid? WebsiteContentVersionId { get; init; }
     public string? WebsiteBindingId { get; init; }
     // =========================

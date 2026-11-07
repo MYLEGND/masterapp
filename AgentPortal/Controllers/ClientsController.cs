@@ -77,9 +77,52 @@ namespace AgentPortal.Controllers;
             await service.CreateAsync(new Infrastructure.Businesses.CommerceBusinessProvisioningRequest(
                 DisplayName: model.EntityName!, LegalName: model.EntityName!, BusinessType: "BusinessClient",
                 OwnerEmail: profile.Email, OwnerDisplayName: model.EntityName!,
-                OwnerRoleKey: "account", CanManageCatalog: false, CanManageOrders: false,
+                OwnerRoleKey: "account", CanManageCatalog: false, CanManageOrders: false, CanManageCrm: true,
                 OwnerClientProfileId: profile.Id, Owners: model.BusinessOwners, ActorAgentUserId: agentOid),
                 HttpContext.RequestAborted);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> ReconcileBusinessAccount(Guid profileId)
+        {
+            var actor = User.GetCanonicalUserId();
+            var profile = await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == profileId, HttpContext.RequestAborted);
+            if (profile is null || ClientRecordClassification.Resolve(profile.ClientUserId, profile.CrmNotes) != ClientRecordClassification.BusinessClient)
+                return NotFound();
+            var associations = await _db.CommerceBusinessMembers.AsNoTracking().Where(x => x.ClientProfileId == profileId).ToListAsync(HttpContext.RequestAborted);
+            var choices = new List<BusinessAccountReconciliationChoice>();
+            foreach (var member in associations.Where(x => x.Status == "Active" && (x.RoleKey == "owner" || x.RoleKey == "account")))
+            {
+                if (await Infrastructure.Businesses.BusinessWorkspaceAccess.ResolveActorMembershipAsync(_db,
+                    member.CommerceBusinessId, actor, "team", profileId, HttpContext.RequestAborted) is null) continue;
+                var business = await _db.CommerceBusinesses.AsNoTracking().SingleAsync(x => x.Id == member.CommerceBusinessId, HttpContext.RequestAborted);
+                choices.Add(new(business.Id, business.DisplayName, business.Key, business.PrimaryDomain, member.RoleKey == "account"));
+            }
+            if (choices.Count == 0) return NotFound();
+            var snapshots = associations.Select(x => new Infrastructure.Businesses.BusinessAccountAssociationSnapshot(
+                x.Id, x.CommerceBusinessId, x.RoleKey, x.Status, x.UpdatedUtc)).ToArray();
+            return View(new BusinessAccountReconciliationViewModel(profileId, profile.Email, choices, JsonSerializer.Serialize(snapshots)));
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ReconcileBusinessAccount(Guid profileId, Guid businessId, string expectedAssociations)
+        {
+            if (string.IsNullOrWhiteSpace(expectedAssociations) || expectedAssociations.Length > 32000) return BadRequest();
+            Infrastructure.Businesses.BusinessAccountAssociationSnapshot[]? snapshot;
+            try { snapshot = JsonSerializer.Deserialize<Infrastructure.Businesses.BusinessAccountAssociationSnapshot[]>(expectedAssociations); }
+            catch (JsonException) { return BadRequest(); }
+            if (snapshot is null || snapshot.Length == 0 || snapshot.Length > 100) return BadRequest();
+            var service = HttpContext.RequestServices.GetRequiredService<Infrastructure.Businesses.ICommerceBusinessProvisioningService>();
+            try
+            {
+                await service.ReconcileExistingAccountAsync(new(businessId, profileId, User.GetCanonicalUserId(), snapshot), HttpContext.RequestAborted);
+            }
+            catch (UnauthorizedAccessException) { return NotFound(); }
+            catch (DbUpdateConcurrencyException) { return Conflict("The business associations changed. Reload and review them again."); }
+            catch (InvalidOperationException) { return Conflict("This business account cannot be selected until its conflicting associations are reconciled."); }
+            TempData["BusinessAccountReconciliationNotice"] = "Business account selected. Existing content and history were preserved.";
+            return RedirectToAction(nameof(ReconcileBusinessAccount), new { profileId });
         }
 
         [HttpGet]

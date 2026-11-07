@@ -31,12 +31,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (owner.CommerceBusinessId is { } business) query = query.Where(e => e.CommerceBusinessId == business);
         else if (owner.AgentTrackingProfileId is { } agent) query = query.Where(e => e.AgentTrackingProfileId == agent && e.CommerceBusinessId == null);
         else query = query.Where(e => e.CommerceBusinessId == null);
-        var result = new List<AnalyticsEvent>();
-        foreach (var group in (await query.ToListAsync(ct)).GroupBy(e => new { e.CommerceBusinessId, e.AgentTrackingProfileId, e.AgentSlug, e.Host, e.WebsiteContentVersionId,
-            SiteKey = CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "siteKey") }))
-            if (await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(_db, _configuration, group.First(), ct) == owner)
-                result.AddRange(group);
-        return result;
+        var sources = await query.ToListAsync(ct);
+        var owners = await CanonicalAdvertisingEventProjection.ResolveOwnersAsync(_db, _configuration, sources, ct);
+        return sources.Where(source => owners[source] == owner).ToList();
     }
 
     public async Task<List<MetaSignalEvent>> LoadScopedMetaEventsAsync(TimeRangeRequest range, ScopeContext scope,
@@ -109,13 +106,26 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 .ApplySiteScope(scope)
                 .Where(ScopePredicateEvents(scope, scopedAgentIds)));
 
-    public async Task<List<AnalyticsEvent>> LoadFilteredEventsAsync(
+    public Task<List<AnalyticsEvent>> LoadFilteredEventsAsync(
         TimeRangeRequest range,
         ScopeContext scope,
         Guid[]? scopedAgentIds = null,
-        System.Threading.CancellationToken cancellationToken = default)
+        System.Threading.CancellationToken cancellationToken = default) =>
+        LoadFilteredEventsCoreAsync(range, scope, scopedAgentIds, false, cancellationToken);
+
+    // Interaction summaries use the same session evidence and quality authority without
+    // loading event payloads or asking SQL to classify and group the historical corpus.
+    public Task<List<AnalyticsEvent>> LoadFilteredInteractionEventsAsync(
+        TimeRangeRequest range, ScopeContext scope, CancellationToken cancellationToken = default) =>
+        LoadFilteredEventsCoreAsync(range, scope, null, true, cancellationToken);
+
+    private async Task<List<AnalyticsEvent>> LoadFilteredEventsCoreAsync(
+        TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds,
+        bool interactionsOnly, CancellationToken cancellationToken)
     {
-        var rawEvents = await BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds).ToListAsync(cancellationToken);
+        var query = BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds);
+        if (interactionsOnly) query = UnifiedEventMapper.ProjectBehaviorEvidence(query, includeEventType: true);
+        var rawEvents = await query.ToListAsync(cancellationToken);
         return TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, range.QualityMode,
             (await LoadClassificationEvidenceAsync(rawEvents, [], range.QualityMode, scope, scopedAgentIds, cancellationToken)).All);
     }
@@ -325,6 +335,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     internal static Expression<Func<WebsiteLead, bool>> ScopePredicateLeads(ScopeContext scope, Guid[]? scopedAgentIds)
     {
+        // Website/insurance inquiries are not store conversions. Store checkout and
+        // order activity is reported from its canonical events and orders instead.
+        if (scope.StoreBusinessId.HasValue) return e => false;
         if (scope.ScopeType == ScopeType.Business)
             return e => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
                 !scope.HasSiteScope && scope.AgentTrackingProfileId == null && e.CommerceBusinessId == scope.CommerceBusinessId && e.AgentTrackingProfileId == null;

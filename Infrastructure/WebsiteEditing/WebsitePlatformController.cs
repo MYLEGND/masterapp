@@ -56,6 +56,8 @@ public class WebsitePlatformController : ControllerBase
                 cancellationToken);
 
         if (continuation is null ||
+            !continuation.ClientProfileId.HasValue ||
+            continuation.ClientProfileId == Guid.Empty ||
             !continuation.CommerceBusinessId.HasValue ||
             continuation.CommerceBusinessId == Guid.Empty ||
             string.IsNullOrWhiteSpace(continuation.ActorUserId))
@@ -68,7 +70,7 @@ public class WebsitePlatformController : ControllerBase
         if (!await WebsiteBusinessAccess.CanManageAsActorAsync(
                 _db,
                 continuation.CommerceBusinessId.Value,
-                continuation.ClientProfileId,
+                continuation.ClientProfileId.Value,
                 continuation.ActorUserId,
                 actorEmail,
                 cancellationToken))
@@ -334,7 +336,12 @@ public class WebsitePlatformController : ControllerBase
                 .ExecuteUpdateAsync(updates => updates.SetProperty(version => version.CompiledPagesJson, compiledPages), cancellationToken);
         }
         using var compiled = JsonDocument.Parse(compiledPages);
-        if (!compiled.RootElement.GetProperty("pages").TryGetProperty(route, out var page)) return null;
+        if (!compiled.RootElement.GetProperty("pages").TryGetProperty(route, out var page))
+        {
+            // A healthy publication intentionally omits hidden or deleted routes.
+            Response.StatusCode = StatusCodes.Status404NotFound;
+            return null;
+        }
         string Value(string name) => page.GetProperty(name).GetString() ?? "";
         string? Optional(string name) => page.GetProperty(name).ValueKind == JsonValueKind.Null ? null : Value(name);
         using var embedded = JsonDocument.Parse(Value("payload"));
@@ -719,10 +726,6 @@ public class WebsitePlatformController : ControllerBase
         if (state.Revision != request.ExpectedRevision)
             return Conflict(new { error = "revision_conflict" });
 
-        var scope = await HttpContext.RequestServices.GetRequiredService<WebsiteCommerceScopeService>()
-            .ResolveAsync(actor, state, createIfMissing: true, cancellationToken)
-            ?? throw new InvalidOperationException("The commerce scope could not be created.");
-
         var document = Read(state.DraftJson);
         if (document.LegacyMigration is not null)
             return Conflict(new { error = "website_materialization_required", message = "Open Website Studio to materialize this legacy draft before changing store settings." });
@@ -734,8 +737,20 @@ public class WebsitePlatformController : ControllerBase
         if (request.CartIconSizePx.HasValue)
             document.Store.CartIconSizePx = request.CartIconSizePx.Value;
 
-        document = WebsiteContentSanitizer.Sanitize(document);
-        WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+        try
+        {
+            document = WebsiteContentSanitizer.Sanitize(document);
+            WebsiteSystemTemplateAuthority.Apply(actor.SiteKey, document);
+            WebsiteSystemTemplateAuthority.AddStorePage(document);
+        }
+        catch (ArgumentException)
+        {
+            return Conflict(new { error = "store_document_conflict", message = "The Store page must retain its canonical live catalog. Resolve the page conflict before enabling the store." });
+        }
+        var scope = await HttpContext.RequestServices.GetRequiredService<WebsiteCommerceScopeService>()
+            .ResolveAsync(actor, state, createIfMissing: true, cancellationToken)
+            ?? throw new InvalidOperationException("The commerce scope could not be created.");
+        state.ProvisionedStoreBusinessId = scope.CommerceBusinessId;
         state.DraftJson = JsonSerializer.Serialize(document, JsonOptions);
         state.Revision++;
         state.UpdatedUtc = DateTime.UtcNow;
@@ -1998,6 +2013,8 @@ public class WebsitePlatformController : ControllerBase
         try
         {
             document = WebsiteContentSanitizer.Sanitize(request.Document);
+            if (document.Store.Enabled != baseline.Store.Enabled)
+                throw new WebsiteSiteSourceProtectionException("Enable or remove Store through the canonical Store controls.");
             if (document.LegacyMigration is not null ||
                 document.Version != WebsiteStudioContract.CurrentDocumentVersion)
                 return BadRequest(new
@@ -4255,40 +4272,9 @@ public class WebsitePlatformController : ControllerBase
         return profile is null ? null : NormalizeOwner(profile.AgentUserId);
     }
 
-    private async Task<string?> ResolveCanonicalStoreRootAsync(
-        string siteKey,
-        WebsiteCommerceScope scope,
-        CancellationToken cancellationToken)
-    {
-        if (siteKey == WebsiteEditorSiteKeys.Legend)
-            return (_configuration["Commerce:LegendPublicBaseUrl"] ?? "https://mylegnd.com").TrimEnd('/') + "/store";
-
-        if (siteKey == WebsiteEditorSiteKeys.Protect)
-            return (_configuration["Commerce:ProtectPublicBaseUrl"] ?? "https://protect.mylegnd.com").TrimEnd('/') +
-                   "/store/s/" + Uri.EscapeDataString(scope.BusinessKey);
-
-        if (siteKey != WebsiteEditorSiteKeys.Business)
-            return null;
-
-        // Business websites use the same verified custom-domain authority as
-        // the public commerce resolver. Never synthesize a mylegnd.com store
-        // path for a business tenant.
-        var cutoff = DateTime.UtcNow.AddHours(-24);
-        var hostname = await _db.Set<WebsiteDomainBinding>()
-            .AsNoTracking()
-            .Where(binding =>
-                binding.CommerceBusinessId == scope.CommerceBusinessId &&
-                binding.Status == "active" &&
-                binding.CertificateStatus == "active" &&
-                binding.LastCheckedUtc >= cutoff)
-            .OrderBy(binding => binding.CreatedUtc)
-            .Select(binding => binding.Hostname)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return string.IsNullOrWhiteSpace(hostname)
-            ? null
-            : "https://" + hostname.Trim().TrimEnd('.') + "/store";
-    }
+    private Task<string?> ResolveCanonicalStoreRootAsync(string siteKey, WebsiteCommerceScope scope, CancellationToken cancellationToken)
+        => ParfaitApp.Services.CommerceStoreContextService.WebsiteStoreRootAsync(_db, _configuration, siteKey,
+            scope.CommerceBusinessId, scope.BusinessKey, cancellationToken);
 
     private async Task<object> StorePayloadAsync(
         string siteKey,
@@ -4335,12 +4321,10 @@ public class WebsitePlatformController : ControllerBase
             previewUrl = escapedTicket is null
                 ? null
                 : managerBase + "/commerce/manage/preview?ticket=" + escapedTicket,
-            managerUrl = escapedTicket is null
-                ? null
-                : managerBase + "/commerce/manage/products?ticket=" + escapedTicket,
+            managerUrl = ParfaitApp.Services.CommerceStoreContextService.ManagementEntry(root, siteKey == WebsiteEditorSiteKeys.Protect ? scope.BusinessKey : null),
             paymentsUrl = escapedTicket is null
                 ? null
-                : managerBase + "/commerce/manage/payments?ticket=" + escapedTicket
+                : ParfaitApp.Services.CommerceStoreContextService.ManagementEntry(root, siteKey == WebsiteEditorSiteKeys.Protect ? scope.BusinessKey : null)
         };
     }
 

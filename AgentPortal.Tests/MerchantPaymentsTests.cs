@@ -1,3 +1,9 @@
+using Microsoft.EntityFrameworkCore.Storage;
+using Infrastructure.Businesses;
+using Infrastructure.WebsiteEditing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,6 +31,42 @@ using Xunit;
 
 public sealed class MerchantPaymentsTests
 {
+    [Fact] public async Task SessionProviderCallbackUsesRetainedScopeAndReturnsWithoutTicket()
+    {
+        using var f = new Fixture(); var profile = f.SeedOwner(f.Business, "owner-one");
+        f.Db.Set<WebsiteContentState>().Add(new() { SiteKey = WebsiteEditorSiteKeys.Business,
+            OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(f.Business), CommerceBusinessId = f.Business,
+            ProvisionedStoreBusinessId = f.Business, DraftJson = "{}" });
+        f.Db.Add(new WebsiteDomainBinding { CommerceBusinessId = f.Business, Hostname = "store.example.test",
+            Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
+        await f.Db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().Build();
+        using var tickets = new WebsiteEditorTicketProtector(f.Protection);
+        var stores = new CommerceStoreContextService(f.Db, new CommerceBusinessScopeResolver(f.Db), null!,
+            new WebsiteDomainService(f.Db, Mock.Of<System.Net.Http.IHttpClientFactory>(), config), config);
+        using var services = new ServiceCollection().AddSingleton(f.Db).AddSingleton(f.Connections).BuildServiceProvider();
+        var controller = new ParfaitApp.Controllers.CommerceManagementController(tickets, config, stores,
+            null!, null!, null!, null!, null!, null!, null!, null!, null!);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = services } };
+        controller.Request.Path = "/commerce/manage/payments/callback";
+        var actor = new WebsiteEditorTicket(WebsiteEditorSiteKeys.Business, WebsiteEditorSiteKeys.BusinessOwnerKey(f.Business),
+            null, false, DateTime.UtcNow.AddMinutes(10), f.Business, "owner-one", ActorClientProfileId: profile);
+        var continuation = tickets.ProtectStoreProviderContinuation(new(actor, "https://store.example.test", "settings"));
+        Assert.Null(tickets.TryUnprotect(continuation));
+        await f.Connections.BeginAsync(f.Business, profile, "owner-one", null, "Fake", "Production", "ignored", continuation, default);
+        Assert.Equal("https://example.test/commerce/manage/payments/callback", f.Gateway.AuthorizationCallback);
+        var state = f.Gateway.AuthorizationState!;
+        var returned = Assert.IsType<RedirectResult>(await controller.PaymentCallback(state, code: "synthetic-code"));
+        Assert.Equal("https://store.example.test/internal/settings/payments?environment=Production", returned.Url);
+        Assert.Equal(1, f.Gateway.AuthorizationCompletions);
+        Assert.IsType<BadRequestObjectResult>(await controller.PaymentCallback(state, code: "synthetic-code"));
+        Assert.Equal(1, f.Gateway.AuthorizationCompletions);
+        f.Db.CommerceBusinessMembers.Single(x => x.ClientProfileId == profile).Status = "Revoked";
+        await f.Db.SaveChangesAsync();
+        Assert.IsType<UnauthorizedResult>(await controller.PaymentCallback(state, code: "synthetic-code"));
+        Assert.Equal(1, f.Gateway.AuthorizationCompletions);
+    }
+
     [Fact] public async Task OwnerOnboardingRequiresConfirmationThenCanSelectAndDisconnect()
     {
         using var f=new Fixture();var owner=f.SeedOwner(f.Business,"owner-one");
@@ -81,6 +123,9 @@ public sealed class MerchantPaymentsTests
     [InlineData("USD", 0, false, true, "wrong-amount")]
     [InlineData("USD", 0, true, true, "rollback")]
     [InlineData("USD", 0, true, true, "mail-unknown")]
+    [InlineData("USD", 0, true, false, "decline-then-capture")]
+    [InlineData("USD", 0, true, false, "capture-then-late-decline")]
+    [InlineData("USD", 0, true, false, "legacy-capture-blocks-decline")]
     public async Task RepeatedCompletionCommitsInventoryPurchaseAndTenantMailOnce(string currency, long refunded, bool valid, bool legacy, string scenario = "")
     {
         var failure = new CompletionWriteFailure();
@@ -143,7 +188,36 @@ public sealed class MerchantPaymentsTests
                 Assert.Equal(5,(await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
                 Assert.Empty(await EffectStates().ToListAsync());
             }
+            if (scenario == "legacy-capture-blocks-decline")
+            {
+                var declined = await f.Db.CommercePaymentAttempts.SingleAsync(); declined.State = "Failed";
+                var captured = new SubscriptionPayment { CommerceOrderId = f.Order, AmountCents = 1000, Currency = "USD", Status = Domain.Billing.SubscriptionPaymentStatus.Completed, ProviderPaymentId = "retained-capture" };
+                f.Db.SubscriptionPayments.Add(captured); await f.Db.SaveChangesAsync();
+                await Complete(); f.Db.ChangeTracker.Clear();
+                Assert.Equal("Pending", (await f.Db.CommerceOrders.SingleAsync()).PaymentStatus);
+                Assert.Empty(await EffectStates().ToListAsync()); mail.VerifyNoOtherCalls();
+                f.Db.SubscriptionPayments.Remove(await f.Db.SubscriptionPayments.SingleAsync());
+                (await f.Db.CommercePaymentAttempts.SingleAsync()).State = "Captured";
+                await f.Db.SaveChangesAsync();
+            }
+            if (scenario == "decline-then-capture")
+            {
+                var declined = await f.Db.CommercePaymentAttempts.SingleAsync(); declined.State = "Failed"; declined.PaymentReference = null;
+                await f.Db.SaveChangesAsync();
+                await Complete(); await Complete(); f.Db.ChangeTracker.Clear();
+                Assert.Equal("Failed", (await f.Db.CommerceOrders.SingleAsync()).PaymentStatus);
+                Assert.Equal(5, (await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
+                Assert.Empty(await EffectStates().ToListAsync()); Assert.Empty(await f.Db.AnalyticsEvents.ToListAsync());
+                mail.VerifyNoOtherCalls();
+                await f.Checkout.ReconcileAsync(f.Business, f.Order); // Authenticated capture supersedes decline.
+            }
             await Complete();await Complete();
+            if (scenario == "capture-then-late-decline")
+            {
+                var late = await f.Db.CommercePaymentAttempts.SingleAsync(); late.State = "Failed"; await f.Db.SaveChangesAsync();
+                await Complete(); f.Db.ChangeTracker.Clear();
+                Assert.Equal("Paid", (await f.Db.CommerceOrders.SingleAsync()).PaymentStatus);
+            }
             Assert.Equal(4,(await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
             Assert.Equal(1,await f.Db.AnalyticsEvents.CountAsync());
             var purchase=await f.Db.AnalyticsEvents.SingleAsync();Assert.Equal(f.Business,purchase.CommerceBusinessId);
@@ -395,6 +469,106 @@ public sealed class MerchantPaymentsTests
         Assert.Null(readiness.SettlementsEnabled);
     }
 
+    [Fact]
+    public async Task WebsiteOwnerPaymentAuthorizationPreservesNullableIdentityAndRechecksLifecycle()
+    {
+        using var f = new Fixture();
+        var actor = Guid.NewGuid().ToString();
+        var business = new CommerceBusiness { Id=f.Business, Key="owner-store", DisplayName="Owner Store", IsActive=true, Status="Active" };
+        f.Db.Add(business);
+        f.Db.Add(new WebsiteContentState { SiteKey=WebsiteEditorSiteKeys.Legend, OwnerKey=WebsiteEditorSiteKeys.GlobalOwnerKey,
+            CommerceBusinessId=f.Business, ProvisionedStoreBusinessId=f.Business, DraftJson="{}" });
+        var agent = new AgentProfile { AgentUserId=actor, IsActive=true };
+        f.Db.Add(agent); await f.Db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> {
+            ["Founder:Oid"]=actor, ["MerchantPayments:Fake:Production:CallbackUrl"]="https://example.test/commerce/manage/payments/callback"
+        }).Build();
+        var stores = new CommerceStoreContextService(f.Db, new CommerceBusinessScopeResolver(f.Db), null!,
+            new WebsiteDomainService(f.Db, Mock.Of<System.Net.Http.IHttpClientFactory>(), config), config);
+        var service = new MerchantConnectionService(f.Db, f.Protection, new[]{f.Gateway}, config, stores);
+        Assert.NotNull(await service.ListAsync(f.Business, null, actor, null, "Production", default));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>service.ListAsync(f.Business,null,"wrong-owner",null,"Production",default));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>service.ListAsync(Guid.NewGuid(),null,actor,null,"Production",default));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>service.ListAsync(f.Business,Guid.NewGuid(),actor,null,"Production",default));
+        await service.BeginAsync(f.Business,null,actor,null,"Fake","Production","ignored","ticket",default);
+        Assert.Null((await f.Db.CommerceMerchantAuthorizations.SingleAsync()).ClientProfileId);
+        var state = f.Gateway.AuthorizationState!;
+        agent.IsActive=false; await f.Db.SaveChangesAsync();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>service.CompleteAsync(f.Business,null,actor,null,state,"code",default));
+        Assert.Equal(0,f.Gateway.AuthorizationCompletions);
+        agent.IsActive=true; await f.Db.SaveChangesAsync();
+        await service.CompleteAsync(f.Business,null,actor,null,state,"code",default);
+        Assert.Equal(1,f.Gateway.AuthorizationCompletions);
+    }
+
+    [Fact]
+    public async Task PlatformBindingPinsIdentityWithoutCopyingOrRevokingSubscriptionCredential()
+    {
+        using var f = new Fixture();
+        var actor = Guid.NewGuid().ToString();
+        f.Db.Add(new CommerceBusiness { Id=f.Business, Key="platform-store", DisplayName="Platform", IsActive=true, Status="Active" });
+        f.Db.Add(new WebsiteContentState { SiteKey=WebsiteEditorSiteKeys.Legend, OwnerKey=WebsiteEditorSiteKeys.GlobalOwnerKey,
+            CommerceBusinessId=f.Business, ProvisionedStoreBusinessId=f.Business, DraftJson="{}" });
+        f.Db.Add(new AgentProfile { AgentUserId=actor, IsActive=true }); await f.Db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> {
+            ["Founder:Oid"]=actor, ["Square:Environment"]="Production", ["Square:ApplicationId"]="synthetic-app",
+            ["Square:AccessToken"]="synthetic-token", ["Square:LocationId"]="location-one",
+            ["MerchantPayments:Square:Production:Enabled"]="true", ["MerchantPayments:Square:Production:ApplicationId"]="synthetic-app",
+            ["MerchantPayments:Square:Production:ApplicationSecret"]="synthetic-secret",
+            ["MerchantPayments:Square:Production:WebhookSignatureKey"]="synthetic-webhook",
+            ["MerchantPayments:Square:Production:WebhookUrl"]="https://example.test/commerce/payments/webhooks/Square/Production"
+        }).Build();
+        var handler = new PlatformAccountHandler();
+        var factory = new Mock<System.Net.Http.IHttpClientFactory>();
+        factory.Setup(x=>x.CreateClient(It.IsAny<string>())).Returns(()=>new System.Net.Http.HttpClient(handler,false));
+        var gateway = new SquareMerchantPaymentGateway(factory.Object, config);
+        var stores = new CommerceStoreContextService(f.Db, new CommerceBusinessScopeResolver(f.Db), null!,
+            new WebsiteDomainService(f.Db,factory.Object,config),config);
+        var service = new MerchantConnectionService(f.Db,f.Protection,new[]{gateway},config,stores);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>service.BindPlatformAccountAsync(f.Business,null,"other",null,"Production",default));
+        Assert.False(await service.CanUsePlatformAccountAsync(Guid.NewGuid(),actor,default));
+        var id = await service.BindPlatformAccountAsync(f.Business,null,actor,null,"Production",default);
+        var row = await f.Db.CommerceMerchantConnections.SingleAsync(x=>x.Id==id);
+        Assert.Equal("PendingConfirmation",row.State);
+        var credential = JsonSerializer.Deserialize<MerchantCredential>(f.Protection.CreateProtector("Legend.Merchant.Credential.v1",id.ToString("N"),f.Business.ToString("N"),"Square","Production").Unprotect(row.ProtectedCredential))!;
+        Assert.Equal("",credential.AccessToken); Assert.Equal("PlatformBilling",credential.Source);
+        Assert.Equal(id,await service.BindPlatformAccountAsync(f.Business,null,actor,null,"Production",default));
+        var pendingRevision = row.Revision;
+        await Assert.ThrowsAsync<MerchantPaymentException>(()=>service.ConfirmAsync(f.Business,null,actor,null,id,"merchant-one","location-two",row.Revision,default));
+        Assert.Equal(pendingRevision,row.Revision); Assert.Equal("PendingConfirmation",row.State);
+        await service.ConfirmAsync(f.Business,null,actor,null,id,"merchant-one","location-one",row.Revision,default);
+        await service.SetDefaultAsync(f.Business,null,actor,null,id,row.Revision,default);
+        var revision = await f.Db.CommerceMerchantConnectionRevisions.SingleAsync(x=>x.ConnectionId==id && x.Revision==row.Revision);
+        Assert.Equal("synthetic-token",(await service.LoadAccountAsync(revision,default)).Credential.AccessToken);
+        config["Square:AccessToken"]="synthetic-rotated";
+        Assert.Equal("synthetic-rotated",(await service.LoadAccountAsync(revision,default)).Credential.AccessToken);
+        await service.RefreshAsync(f.Business,null,actor,null,id,row.Revision,default);
+        Assert.DoesNotContain("synthetic-rotated",f.Protection.CreateProtector("Legend.Merchant.Credential.v1",id.ToString("N"),f.Business.ToString("N"),"Square","Production").Unprotect(row.ProtectedCredential));
+        handler.Merchant="other-merchant";
+        await Assert.ThrowsAsync<MerchantPaymentException>(()=>service.LoadAccountAsync(revision,default));
+        handler.Merchant="merchant-one";
+        config["Square:ApplicationId"]="different-app";
+        await Assert.ThrowsAsync<MerchantPaymentException>(()=>service.LoadAccountAsync(revision,default));
+        config["Square:ApplicationId"]="synthetic-app";
+        await service.RevokeAsync(f.Business,null,actor,null,id,row.Revision,default);
+        Assert.Equal("Disconnected",row.State); Assert.Null(await service.ResolveActiveAsync(f.Business,"Production",default));
+        Assert.Equal("synthetic-rotated",(await service.LoadAccountAsync(revision,default)).Credential.AccessToken);
+        Assert.Equal(0,handler.Writes);
+    }
+    private sealed class PlatformAccountHandler : System.Net.Http.HttpMessageHandler
+    {
+        public string Merchant="merchant-one";
+        public int Writes;
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request,CancellationToken ct)
+        {
+            if(request.Method != System.Net.Http.HttpMethod.Get) Writes++;
+            var json = request.RequestUri!.AbsolutePath == "/v2/locations"
+                ? JsonSerializer.Serialize(new { locations=new[]{new { id="location-one",merchant_id=Merchant,status="ACTIVE",currency="USD",capabilities=new[]{"CREDIT_CARD_PROCESSING"} }, new { id="location-two",merchant_id=Merchant,status="ACTIVE",currency="USD",capabilities=new[]{"CREDIT_CARD_PROCESSING"} }} })
+                : JsonSerializer.Serialize(new { merchant=new { id=Merchant,status="ACTIVE" } });
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content=new System.Net.Http.StringContent(json) });
+        }
+    }
+
     private sealed class CompletionWriteFailure : SaveChangesInterceptor
     {
         public bool Armed;
@@ -409,12 +583,121 @@ public sealed class MerchantPaymentsTests
         }
     }
 
+    [Theory]
+    [InlineData("CASH")]
+    [InlineData(" cash ")]
+    [InlineData("ExTeRnAl")]
+    [InlineData("\tEXTERNAL\r\n")]
+    public async Task PublicCheckoutCannotRecordOfflinePayment(string token)
+    {
+        using var f = new Fixture();
+        await Assert.ThrowsAsync<MerchantPaymentException>(() => f.Checkout.BeginAsync(f.Business, f.Order,
+            "https://example.test/return", sourceToken: token));
+        Assert.Empty(f.Db.CommercePaymentAttempts); Assert.Equal(0, f.Gateway.Creates);
+    }
+
+    [Fact]
+    public async Task ChangedBrowserConnectionCannotFallThroughToHostedProvider()
+    {
+        using var f = new Fixture();
+        await Assert.ThrowsAsync<MerchantPaymentException>(() => f.Checkout.BeginAsync(f.Business, f.Order,
+            "https://example.test/return", expectedConnectionRevision: Guid.NewGuid()));
+        Assert.Empty(f.Db.CommercePaymentAttempts); Assert.Equal(0, f.Gateway.Creates);
+    }
+
+    [Fact]
+    public async Task ExistingAttemptReconcilesBeforeAnyNewBrowserTokenValidation()
+    {
+        using var f = new Fixture(); f.Gateway.Pending = true;
+        await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return");
+        await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return",
+            sourceToken: "CASH", expectedConnectionRevision: Guid.NewGuid());
+        Assert.Single(f.Db.CommercePaymentAttempts); Assert.Equal(1, f.Gateway.Creates); Assert.Equal(1, f.Gateway.Reads);
+    }
+
+    [Fact]
+    public async Task ProvenDeclineRemainsFailedThroughReconcileAndWebhook()
+    {
+        using var f = new Fixture(); f.Gateway.Failed = true;
+        Assert.Equal("Failed", (await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return")).State);
+        f.Gateway.Failed = false; f.Gateway.Pending = true;
+        Assert.Equal("Failed", (await f.Checkout.ReconcileAsync(f.Business, f.Order))!.State);
+        await f.Checkout.HandleWebhookAsync("Fake", "Production", "signed", new Dictionary<string,string>(), "https://example.test/hook");
+        f.Db.ChangeTracker.Clear();
+        Assert.Equal("Failed", (await f.Checkout.GetAttemptAsync(f.Business, f.Order))!.State);
+        Assert.Equal(1, f.Gateway.Creates); Assert.Single(f.Db.CommercePaymentReceipts);
+        f.Gateway.Pending = false;
+        Assert.Equal("Captured", (await f.Checkout.ReconcileAsync(f.Business, f.Order))!.State);
+    }
+
+    [Theory]
+    [InlineData("Cancelled", "Pending", "None")]
+    [InlineData("Returned", "Pending", "Closed")]
+    [InlineData("Unfulfilled", "Failed", "None")]
+    [InlineData("Unfulfilled", "Pending", "Requested")]
+    public async Task PreparedNonPayableOrderCannotClaimNewProcessorAttempt(string fulfillment, string payment, string returns)
+    {
+        using var f = new Fixture(true);
+        var order = await f.Db.CommerceOrders.SingleAsync(); order.FulfillmentStatus = fulfillment; order.PaymentStatus = payment; order.ReturnStatus = returns;
+        await f.Db.SaveChangesAsync();
+        Assert.Equal("ORDER_NOT_PAYABLE", (await Assert.ThrowsAsync<MerchantPaymentException>(() => f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return"))).Message);
+        Assert.Empty(f.Db.CommercePaymentAttempts); Assert.Equal(0, f.Gateway.Creates);
+    }
+
+    [Fact]
+    public async Task CancellationDuringReadinessIsRecheckedBeforeDurableClaimButExistingReceiptStillReconciles()
+    {
+        using var f = new Fixture(true);
+        f.Gateway.BeforeReadiness = () => { var order = f.Db.CommerceOrders.Single(); order.FulfillmentStatus = "Cancelled"; f.Db.SaveChanges(); };
+        await Assert.ThrowsAsync<MerchantPaymentException>(() => f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return"));
+        Assert.Empty(f.Db.CommercePaymentAttempts); Assert.Equal(0, f.Gateway.Creates);
+        f.Gateway.BeforeReadiness = null;
+        var restored = await f.Db.CommerceOrders.SingleAsync(); restored.FulfillmentStatus = "Unfulfilled"; await f.Db.SaveChangesAsync();
+        await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return");
+        restored = await f.Db.CommerceOrders.SingleAsync(); restored.FulfillmentStatus = "Cancelled"; await f.Db.SaveChangesAsync();
+        Assert.Equal("Captured", (await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return")).State);
+        Assert.Equal(1, f.Gateway.Creates);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClaimCommitRetryInvokesProviderOnceWithSameDurableAttempt(bool afterCommit)
+    {
+        var fault = new ClaimCommitFault(afterCommit);
+        using var f = new Fixture(true, interceptor: fault, retryClaim: true);
+        fault.Armed = true;
+        Assert.Equal("Captured", (await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return")).State);
+        Assert.Equal(1, fault.Failures); Assert.Equal(1, f.Gateway.Creates);
+        var attempt = await f.Db.CommercePaymentAttempts.SingleAsync(); Assert.Equal("Captured", attempt.State);
+        await f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return");
+        Assert.Equal(1, f.Gateway.Creates); Assert.Equal(attempt.Id, (await f.Db.CommercePaymentAttempts.SingleAsync()).Id);
+    }
+
+    public sealed class ClaimRetryFactory(ExecutionStrategyDependencies dependencies) : IExecutionStrategyFactory
+    {
+        public IExecutionStrategy Create() => new ClaimRetryStrategy(dependencies);
+    }
+    private sealed class ClaimRetryStrategy(ExecutionStrategyDependencies dependencies) : ExecutionStrategy(dependencies, 2, TimeSpan.Zero)
+    {
+        protected override bool ShouldRetryOn(Exception exception) => exception is TimeoutException;
+    }
+    private sealed class ClaimCommitFault(bool afterCommit) : DbTransactionInterceptor
+    {
+        public bool Armed; public int Failures;
+        private void Fail(bool committed) { if (Armed && Failures == 0 && committed == afterCommit) { Failures++; throw new TimeoutException("Synthetic lost claim acknowledgment"); } }
+        public override ValueTask<InterceptionResult> TransactionCommittingAsync(System.Data.Common.DbTransaction transaction, TransactionEventData eventData, InterceptionResult result, CancellationToken cancellationToken = default)
+        { Fail(false); return ValueTask.FromResult(result); }
+        public override Task TransactionCommittedAsync(System.Data.Common.DbTransaction transaction, TransactionEndEventData eventData, CancellationToken cancellationToken = default)
+        { Fail(true); return Task.CompletedTask; }
+    }
+
     private sealed class Fixture:IDisposable
     {
         public readonly DbContextOptions<MasterAppDbContext> Options; public readonly IDataProtectionProvider Protection=new EphemeralDataProtectionProvider(); public readonly MasterAppDbContext Db; public readonly FakeGateway Gateway,OtherGateway=new("Other"); public readonly Guid Business=Guid.NewGuid(),Order=Guid.NewGuid();
         public readonly MerchantConnectionService Connections; public readonly MerchantCheckoutService Checkout;
         private readonly SqliteConnection? sqlite;
-        public Fixture(bool relational=false, string provider="Fake", IInterceptor? interceptor=null)
+        public Fixture(bool relational=false, string provider="Fake", IInterceptor? interceptor=null, bool retryClaim=false)
         {
             Gateway = new(provider);
             if(relational)
@@ -422,6 +705,7 @@ public sealed class MerchantPaymentsTests
                 sqlite=new SqliteConnection("Data Source=:memory:;Foreign Keys=False");sqlite.Open();
                 var builder=new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(sqlite);
                 if(interceptor is not null) builder.AddInterceptors(interceptor);
+                if(retryClaim) builder.ReplaceService<IExecutionStrategyFactory, ClaimRetryFactory>();
                 Options=builder.Options;
             }
             else Options=new DbContextOptionsBuilder<MasterAppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).ConfigureWarnings(x=>x.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options;
@@ -455,16 +739,16 @@ public sealed class MerchantPaymentsTests
     private sealed class FakeGateway(string provider="Fake"):IMerchantPaymentGateway
     {
         public string Name=provider; public string Provider=>Name; public string[] Locations=Array.Empty<string>(); public MerchantCapabilities Capabilities=>MerchantCapabilities.Checkout|MerchantCapabilities.Refund|MerchantCapabilities.Reconcile|MerchantCapabilities.Capture;
-        public int Creates,Reads,Refunds,Captures; public bool Available=true,Ready=true,Approved,Pending,SynchronizeReads; private readonly TaskCompletionSource<bool> readsReady=new(TaskCreationOptions.RunContinuationsAsynchronously); public bool ThrowCreate,ThrowRefund; public string? Mismatch,LastAccount;
-        public MerchantReadiness? ReadinessOverride;
+        public int Creates,Reads,Refunds,Captures; public bool Available=true,Ready=true,Approved,Pending,Failed,SynchronizeReads; private readonly TaskCompletionSource<bool> readsReady=new(TaskCreationOptions.RunContinuationsAsynchronously); public bool ThrowCreate,ThrowRefund; public string? Mismatch,LastAccount;
+        public MerchantReadiness? ReadinessOverride; public Action? BeforeReadiness;
         public string? AuthorizationState,AuthorizationCallback; public string ConnectionAccount="merchant-new";public int AuthorizationCompletions;
         public bool IsAvailable(string environment)=>Available;
         public Task<MerchantAuthorization> BeginConnectionAsync(MerchantConnectionRequest r,CancellationToken ct){AuthorizationState=r.State;AuthorizationCallback=r.CallbackUrl;return Task.FromResult(new MerchantAuthorization("https://provider.example.test/authorize",ConnectionAccount));}
         public Task<MerchantConnectionResult> CompleteConnectionAsync(string e,string c,string u,string? a,CancellationToken ct){AuthorizationCompletions++;return Task.FromResult(new MerchantConnectionResult(ConnectionAccount,new MerchantCredential("test-only"),new[]{"checkout"}));}
-        public Task<MerchantReadiness> GetReadinessAsync(MerchantAccount a,CancellationToken ct)=>Task.FromResult(ReadinessOverride ?? new MerchantReadiness(Ready,Ready,new[]{"USD"},new[]{"card"},Locations));
+        public Task<MerchantReadiness> GetReadinessAsync(MerchantAccount a,CancellationToken ct) { BeforeReadiness?.Invoke(); return Task.FromResult(ReadinessOverride ?? new MerchantReadiness(Ready,Ready,new[]{"USD"},new[]{"card"},Locations)); }
         public Task<MerchantCredential> RefreshAsync(MerchantAccount a,CancellationToken ct)=>Task.FromResult(a.Credential);
         public Task RevokeAsync(MerchantAccount a,CancellationToken ct)=>Task.CompletedTask;
-        private MerchantPaymentEvidence Evidence(MerchantAccount a)=>new(Mismatch=="account"?"wrong":a.AccountId,Mismatch=="environment"?"Sandbox":a.Environment,"checkout_test","payment_test",Approved?"Approved":Pending?"Pending":"Captured",Mismatch=="amount"?999:1000,"USD");
+        private MerchantPaymentEvidence Evidence(MerchantAccount a)=>new(Mismatch=="account"?"wrong":a.AccountId,Mismatch=="environment"?"Sandbox":a.Environment,"checkout_test","payment_test",Failed?"Failed":Approved?"Approved":Pending?"Pending":"Captured",Mismatch=="amount"?999:1000,"USD");
         public Task<MerchantPaymentEvidence> CreateCheckoutAsync(MerchantAccount a,MerchantCheckoutRequest r,CancellationToken ct) {Creates++; LastAccount=a.AccountId; if(ThrowCreate)throw new TimeoutException(); return Task.FromResult(Evidence(a));}
         public async Task<MerchantPaymentEvidence> GetPaymentAsync(MerchantAccount a,string r,CancellationToken ct) {var reads=Interlocked.Increment(ref Reads);LastAccount=a.AccountId;if(SynchronizeReads) {if(reads==2)readsReady.TrySetResult(true);await readsReady.Task.WaitAsync(TimeSpan.FromSeconds(10),ct);}return Evidence(a);}
         public Task<MerchantPaymentEvidence> CaptureAsync(MerchantAccount a,string r,string key,CancellationToken ct) {Captures++;throw new TimeoutException();}

@@ -1,0 +1,6 @@
+@model ParfaitApp.Models.CommerceRevenuePerformance
+<div class="pf-revenue-performance is-@Model.Tone">
+    @Model.Label@if (Model.ChangePercent is decimal change) { <text> · @Math.Abs(change).ToString("0.0")%</text> }
+</div>
+<small>@Model.WindowLabel</small>
+<small>$@((Model.CurrentCents / 100m).ToString("0.00")) vs $@((Model.PreviousCents / 100m).ToString("0.00")) · order-date revenue after refunds</small>

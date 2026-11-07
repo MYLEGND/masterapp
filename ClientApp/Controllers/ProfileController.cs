@@ -527,6 +527,7 @@ public class ProfileController : Controller
                     OwnerEmail: email,
                     OwnerDisplayName: businessName,
                     OwnerRoleKey: "account",
+                    CanManageCrm: true,
                     CanManageStorefront: true,
                     CanManageCatalog: false,
                     CanManageOrders: false,

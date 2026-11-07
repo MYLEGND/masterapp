@@ -24,6 +24,25 @@ namespace AgentPortal.Tests;
 public class LeadsControllerTests
 {
     [Fact]
+    public async Task RemoveEditedLeadRetainsMetadataAndRejectsStaleCardMutations()
+    {
+        var db = ControllerTestHelpers.BuildDb();
+        var metadata = ClientCrmMetaSerializer.Serialize(new ClientCrmMeta { AgentNotes = "Retain this note", IsStarred = true });
+        var lead = new WorkstationLeadProfile { LeadId = "qa-edited", AgentUserId = "agent-1", CrmStatus = "Lead", CrmStage = "New", CrmNotes = metadata, CreatedUtc = DateTime.UtcNow, UpdatedUtc = DateTime.UtcNow };
+        db.Add(lead); await db.SaveChangesAsync();
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+        Assert.IsType<RedirectToActionResult>(await controller.Delete(lead.LeadId));
+        Assert.Equal(metadata, lead.CrmNotes);
+        Assert.False(await db.WorkstationLeadProfiles.ActiveLeadQueue().AnyAsync());
+        Assert.Single(await db.Set<CrmHistoryEntry>().Where(x => x.Type == "Archived").ToListAsync());
+        Assert.IsType<NotFoundResult>(await controller.SetStarred(new LeadsController.SetStarredRequest { LeadId = lead.LeadId, IsStarred = false }));
+        await controller.Reorder(new LeadsController.ReorderRequest { Ids = new() { lead.LeadId }, Bucket = "Contacted" });
+        Assert.Equal("New", lead.CrmStage);
+        Assert.Equal(metadata, lead.CrmNotes);
+        Assert.IsType<NotFoundResult>(await controller.Delete(lead.LeadId));
+    }
+
+    [Fact]
     public async Task CreateAction_Redirects_AndPassesActionSurface()
     {
         var db = ControllerTestHelpers.BuildDb();
@@ -431,8 +450,9 @@ public class LeadsControllerTests
 
         var result = await controller.Delete("L-DELETE-1");
 
-        Assert.IsType<ConflictObjectResult>(result);
-        Assert.True(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-DELETE-1"));
+        Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal("Archived", (await db.WorkstationLeadProfiles.SingleAsync(x => x.LeadId == "L-DELETE-1")).CrmStatus);
+        Assert.False(await db.WorkstationLeadProfiles.ActiveLeadQueue().AnyAsync(x => x.LeadId == "L-DELETE-1"));
         Assert.True(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-DELETE-1"));
         Assert.True(await db.WebsiteLeadIntakeLinks.AnyAsync(x => x.WorkstationLeadId == "L-DELETE-1"));
         Assert.True(await db.WebsiteLeads.AnyAsync(x => x.Id == 1001));
@@ -442,7 +462,7 @@ public class LeadsControllerTests
     [InlineData("filed")]
     [InlineData("legacy")]
     [InlineData("prior-owner-note")]
-    public async Task ProtectedHistoryRejectsEntireBulkAndBucketWithoutDeletingUnprotectedRows(string evidence)
+    public async Task ProtectedHistoryIsRetainedWhenBulkAndBucketArchiveTheSelection(string evidence)
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
@@ -465,14 +485,18 @@ public class LeadsControllerTests
             await db.Database.ExecuteSqlRawAsync("INSERT INTO AgentLeadSelfNotes VALUES ('former-owner','protected','2026-10-01','Original synthetic note',NULL,'2026-10-01T12:00:00Z')");
         }
         var controller=ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
-        Assert.IsType<ConflictObjectResult>(await controller.DeleteBulk(new[]{"empty","protected"}));
-        Assert.IsType<ConflictObjectResult>(await controller.DeleteBucket(new LeadsController.DeleteBucketRequest { Bucket="LifeInsurance" }));
+        Assert.IsType<JsonResult>(await controller.DeleteBulk(new[]{"empty","protected"}));
+        Assert.IsType<JsonResult>(await controller.DeleteBucket(new LeadsController.DeleteBucketRequest { Bucket="LifeInsurance" }));
+        Assert.Equal(0, await db.WorkstationLeadProfiles.ActiveLeadQueue().CountAsync());
+        Assert.Equal(2, await db.Set<CrmHistoryEntry>().CountAsync(x => x.Type == "Archived"));
+        if (evidence == "filed") Assert.True(await db.Set<CrmHistoryEntry>().AnyAsync(x => x.Type == "PreservationHold"));
+        if (evidence == "legacy") Assert.Equal("unrecognized legacy content", (await db.WorkstationLeadProfiles.AsNoTracking().SingleAsync(x => x.LeadId == "protected")).CrmNotes);
         Assert.Equal(2,await db.WorkstationLeadProfiles.CountAsync());
         Assert.DoesNotContain(db.ChangeTracker.Entries(),x=>x.State==EntityState.Deleted);
     }
 
     [Fact]
-    public async Task DeleteBulk_Removes_Appointment_Dependents_For_All_Deleted_Leads()
+    public async Task DeleteBulk_ArchivesOwnedLeadsAndPreservesAppointments()
     {
         await using var conn = new SqliteConnection("Data Source=:memory:");
         await conn.OpenAsync();
@@ -569,11 +593,13 @@ public class LeadsControllerTests
         var payload = JsonSerializer.Serialize(json.Value);
         using var doc = JsonDocument.Parse(payload);
         Assert.Equal(2, doc.RootElement.GetProperty("deleted").GetInt32());
-        Assert.False(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-BULK-1"));
-        Assert.False(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-BULK-2"));
+        Assert.Equal("Archived", (await db.WorkstationLeadProfiles.SingleAsync(x => x.LeadId == "L-BULK-1")).CrmStatus);
+        Assert.False(await db.WorkstationLeadProfiles.ActiveLeadQueue().AnyAsync(x => x.LeadId == "L-BULK-1"));
+        Assert.Equal("Archived", (await db.WorkstationLeadProfiles.SingleAsync(x => x.LeadId == "L-BULK-2")).CrmStatus);
+        Assert.False(await db.WorkstationLeadProfiles.ActiveLeadQueue().AnyAsync(x => x.LeadId == "L-BULK-2"));
         Assert.True(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-BULK-OTHER"));
-        Assert.False(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-BULK-1"));
-        Assert.False(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-BULK-2"));
+        Assert.True(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-BULK-1"));
+        Assert.True(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-BULK-2"));
         Assert.True(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-BULK-OTHER"));
     }
 

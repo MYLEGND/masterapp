@@ -40,7 +40,8 @@ public sealed class MarketingSetupCentralizationTests
         Assert.Contains("MarketingConnections.GetAdsAsync(owner", controller, StringComparison.Ordinal);
         Assert.Contains("var adsConnected = setup.Meta.Connected;", controller, StringComparison.Ordinal);
         Assert.Contains("var secureCapi = setup.Meta.CapiConfigured;", controller, StringComparison.Ordinal);
-        Assert.Contains("profile.BookingEnabled = request.BookingEnabled", controller, StringComparison.Ordinal);
+        Assert.Contains(".SaveMarketingAsync(tracking,", controller, StringComparison.Ordinal);
+        Assert.Contains("profile.BookingEnabled = input.BookingEnabled", Read("Infrastructure", "Analytics", "AgentMarketingProfileService.cs"), StringComparison.Ordinal);
         Assert.Contains("metaCapiManagedAutomatically = true", controller, StringComparison.Ordinal);
         Assert.Contains("MetaTestEventCode", controller, StringComparison.Ordinal);
         Assert.Contains("metaTestEventCode = marketing.TestEventCode", controller, StringComparison.Ordinal);
@@ -155,7 +156,7 @@ public sealed class MarketingSetupCentralizationTests
     [Fact]
     public void BusinessAnalytics_UsesTheSameCanonicalMarketingSetupAuthorities()
     {
-        var business = Read("Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
+        var business = Read("Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs");
         var profile = Read("Infrastructure", "WebsiteEditing", "BusinessWebsiteProfileService.cs");
 
         Assert.Contains("[HttpGet(\"analytics/marketing-setup\")]", business, StringComparison.Ordinal);
@@ -215,7 +216,7 @@ public sealed class MarketingSetupCentralizationTests
         var authority = Read("Infrastructure", "Bookings", "MicrosoftCalendarConnectionAuthority.cs");
         var registration = Read("Infrastructure", "Analytics", "MarketingConnectionStore.cs");
         var controller = Read("AgentPortal", "Controllers", "WebsiteAnalyticsController.cs");
-        var business = Read("Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
+        var business = Read("Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs");
         var view = Read("AgentPortal", "Views", "WebsiteAnalytics", "Index.cshtml");
         var js = Read("AgentPortal", "wwwroot", "js", "website-analytics.js");
         var subscriptions = Read("AgentPortal", "Services", "GraphCalendarSubscriptionHostedService.cs");

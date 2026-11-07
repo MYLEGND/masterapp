@@ -11,34 +11,35 @@ using ParfaitApp.Services;
 namespace ParfaitApp.Controllers;
 
 [Route("store/training")]
-public sealed class TrainingSubscriptionsController(CommerceStoreContextService stores, MasterAppDbContext db,
+public sealed class TrainingSubscriptionsController(CommerceStoreContextService stores,
     TrainingEnrollmentService enrollment, IConfiguration configuration) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> Index(CancellationToken ct)
     {
         var store = await stores.ResolvePublicAsync(HttpContext, null, ct);
-        if (store is null || !store.IsParfait) return NotFound();
+        if (store is null || !store.IsParfait || !store.TrainingPagePublished) return NotFound();
         ViewData["CommerceStoreContext"] = store;
         ViewData["TrainingPreview"] = IsPreviewOnly();
-        var plans = await db.CommerceProducts.AsNoTracking().Where(x => x.CommerceBusinessId == store.CommerceBusinessId &&
-            x.IsActive && x.BillingKind == ClientSubscriptionScope.MonthlyTraining).OrderBy(x => x.DisplayOrder).ToListAsync(ct);
+        var plans = await enrollment.PlansAsync(store.CommerceBusinessId, ct);
         return View("~/Views/TrainingSubscriptions/Index.cshtml", plans);
     }
 
     [HttpPost("request")]
     [ValidateAntiForgeryToken]
     [EnableRateLimiting(PlatformRateLimiting.PublicFormPolicy)]
-    public async Task<IActionResult> RequestInvitation(Guid productId, string email, string? promotionCode, bool emailConsent, CancellationToken ct)
+    public async Task<IActionResult> RequestInvitation(Guid productId, string email, string? promotionCode, bool emailConsent, CancellationToken ct, int? expectedMonthlyAmountCents = null)
     {
-        if (IsPreviewOnly()) return StatusCode(405);
         var store = await stores.ResolvePublicAsync(HttpContext, null, ct);
-        if (store is null || !store.IsParfait) return NotFound();
+        if (store is null || !store.IsParfait || !store.TrainingPagePublished) return NotFound();
+        if (IsPreviewOnly()) return StatusCode(405);
         if (!emailConsent || string.IsNullOrWhiteSpace(email)) return BadRequest("Consent and a valid email address are required.");
         try
         {
-            await enrollment.RequestAsync(store.CommerceBusinessId, productId, email, promotionCode, ct);
+            await enrollment.RequestAsync(store.CommerceBusinessId, productId, email, promotionCode, ct, expectedMonthlyAmountCents);
         }
+        catch (TrainingPriceChangedException ex) { return Conflict(ex.Message); }
+        catch (TrainingPromotionCapacityException ex) { return Conflict(ex.Message); }
         catch (ArgumentException) { return BadRequest("Check your email address, plan and promotion code."); }
         catch (InvalidOperationException) { return StatusCode(503, "Enrollment is temporarily unavailable. No payment has been taken. Please try again later."); }
         catch (DbUpdateException) { return StatusCode(409, "A request is already being processed. Check your email before trying again."); }

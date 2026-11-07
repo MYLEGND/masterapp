@@ -22,7 +22,7 @@ namespace AgentPortal.Tests;
 public sealed class AnalyticsIncidentProjectionTests
 {
     [Fact]
-    public async Task Monitor_ReadsOnlyInteractionFields_AndPreservesCountsAndCanonicalFilters()
+    public async Task Monitor_UsesNarrowSessionEvidence_AndPreservesCountsAndCanonicalFilters()
     {
         using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
@@ -55,6 +55,10 @@ public sealed class AnalyticsIncidentProjectionTests
         var internalEvent = Event(landing, "internal"); internalEvent.IsInternal = true; events.Add(internalEvent);
         var devEvent = Event(landing, "dev"); devEvent.Environment = "development"; events.Add(devEvent);
         var botEvent = Event(landing, "bot"); botEvent.UserAgent = "crawler bot"; events.Add(botEvent);
+        events.Add(Event(landing, "tainted-session"));
+        var priorBot = Event(landing, "tainted-session", hours: -49);
+        priorBot.UserAgent = "crawler bot";
+        events.Add(priorBot); // Pre-window evidence must still disqualify the current session.
         db.AnalyticsEvents.AddRange(events);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
@@ -75,18 +79,28 @@ public sealed class AnalyticsIncidentProjectionTests
         Assert.Equal(2m, starts.CurrentValue); // Form starts also count as funnel starts.
         Assert.Equal(1m, starts.PreviousValue);
         Assert.Empty(db.ChangeTracker.Entries());
-        Assert.Equal(2, reads.Commands.Count);
+        Assert.Equal(2, reads.Commands.Count); // Window + relevant session evidence, no historical self-join.
         foreach (var sql in reads.Commands)
         {
-            // Only the outer SELECT is narrowed: canonical quality filtering may
-            // still use other columns within its existing SQL predicates/joins.
             var columns = sql[..sql.IndexOf("\nFROM", StringComparison.Ordinal)];
-            Assert.Equal(4, columns.Split(',').Length);
-            foreach (var required in new[] { "EventType", "SessionId", "VisitorId", "EventId" })
+            foreach (var required in new[] { "EventUtc", "SessionId", "VisitorId", "EventId", "UserAgent" })
                 Assert.Contains("\"" + required + "\"", columns);
-            foreach (var unused in new[] { "MetadataJson", "Url", "UserAgent", "ButtonLabel", "UtmCampaign", "Id" })
-                Assert.DoesNotContain("\"" + unused + "\"", columns);
+            foreach (var unused in new[] { "MetadataJson", "Url", "ButtonLabel", "UtmCampaign", "Id" })
+                Assert.DoesNotContain(".\"" + unused + "\"", columns);
+            Assert.DoesNotContain("GROUP BY", sql, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("JOIN", sql, StringComparison.OrdinalIgnoreCase);
         }
+        Assert.Contains("\"EventType\"", reads.Commands[0]);
+        var canonical = new AnalyticsQueryService(db, config);
+        foreach (var quality in Enum.GetValues<TrafficQualityMode>().Distinct())
+        {
+            var range = new TimeRangeRequest { FromUtc = now.AddHours(-48), ToUtc = now, QualityMode = quality };
+            var full = await canonical.LoadFilteredEventsAsync(range, ScopeContext.Global);
+            var narrow = await canonical.LoadFilteredInteractionEventsAsync(range, ScopeContext.Global);
+            Assert.Equal(full.Select(x => x.EventId).OrderBy(x => x), narrow.Select(x => x.EventId).OrderBy(x => x));
+            Assert.Equal(full.Select(x => x.EventType).OrderBy(x => x), narrow.Select(x => x.EventType).OrderBy(x => x));
+        }
+
     }
 
     [Fact]

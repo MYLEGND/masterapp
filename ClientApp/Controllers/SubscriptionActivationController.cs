@@ -121,7 +121,7 @@ public sealed class SubscriptionActivationController : Controller
     public async Task<IActionResult> Continue(string token, string protectedContinuationState, string returnUrl = "/profile")
     {
         var validation = await _continuationService.ValidateProtectedStateAsync(protectedContinuationState, HttpContext.RequestAborted);
-        if (!validation.Success || validation.Continuation is null)
+        if (!validation.Success || validation.Continuation is null || !validation.Continuation.ClientProfileId.HasValue)
         {
             return View("Unavailable", new SubscriptionActivationNoticeViewModel
             {
@@ -135,7 +135,7 @@ public sealed class SubscriptionActivationController : Controller
         try
         {
             identity = await _entraLifecycle.SynchronizeClientIdentityAsync(
-                validation.Continuation.ClientProfileId,
+                validation.Continuation.ClientProfileId.Value,
                 HttpContext.RequestAborted);
         }
         catch

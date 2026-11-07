@@ -36,5 +36,9 @@
         <h2>@cardTitle</h2>
         <p>@cardCopy</p>
         <a class="pf-secondary-action pf-auth-action" href="@primaryHref">@primaryLabel</a>
+        <form method="post" action="/internal/login">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="pf-action pf-auth-action">Use another Microsoft account</button>
+        </form>
     </div>
 </section>

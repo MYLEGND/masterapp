@@ -1,0 +1,30 @@
+@model AgentPortal.Models.BusinessAccountReconciliationViewModel
+@{ ViewData["Title"] = "Business account"; }
+<main class="dashboard-page-shell client-create-page"><div class="client-create-shell"><div class="client-create-panel">
+<header class="client-create-header"><div><h1 class="client-create-title">Business account</h1>
+<p class="client-create-subtitle">Choose the business this client account manages: @Model.Email.</p></div></header>
+<div class="client-create-body">
+@if (TempData["BusinessAccountReconciliationNotice"] is string notice)
+{
+    <p role="status">@notice</p>
+}
+<form method="post" asp-action="ReconcileBusinessAccount">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="profileId" value="@Model.ProfileId" />
+    <input type="hidden" name="expectedAssociations" value="@Model.ExpectedAssociations" />
+    <fieldset>
+        <legend>Existing business</legend>
+        @foreach (var choice in Model.Choices)
+        {
+            <label class="d-block mb-3">
+                <input type="radio" name="businessId" value="@choice.BusinessId" checked="@choice.Selected" required />
+                @choice.Name <small>— @choice.Key@(string.IsNullOrWhiteSpace(choice.Domain) ? "" : " · " + choice.Domain)</small>
+            </label>
+        }
+    </fieldset>
+    <p class="client-create-section-copy">Existing content and history are preserved. Personal-owner access stays unchanged.</p>
+    <button type="submit" class="client-create-button client-create-button-primary">Confirm business account</button>
+    <a asp-action="Index" class="client-create-button client-create-button-secondary">Back to clients</a>
+</form>
+
+</div></div></div></main>

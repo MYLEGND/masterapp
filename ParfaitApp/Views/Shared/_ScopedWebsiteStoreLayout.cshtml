@@ -1,3 +1,5 @@
+@inject Microsoft.AspNetCore.Mvc.ViewFeatures.IFileVersionProvider StoreFileVersions
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment StoreEnvironment
 @using System.Text.Encodings.Web
 @using System.Text.RegularExpressions
 @{
@@ -7,6 +9,15 @@
         ?? throw new InvalidOperationException("Published website shell is unavailable.");
     var suffix = commerce.WebsiteShellSuffix
         ?? throw new InvalidOperationException("Published website shell is unavailable.");
+    var theme = commerce.Theme;
+    var themeForegrounds = new List<string>();
+    if (!string.IsNullOrWhiteSpace(theme.GoldStrong ?? theme.Gold))
+        themeForegrounds.Add("--web-on-accent:" + ParfaitApp.Services.CommerceThemeContrast.Foreground(theme.GoldStrong ?? theme.Gold, theme.NavyDeep ?? theme.Navy, "#6f4b3b"));
+    if (!string.IsNullOrWhiteSpace(theme.NavyDeep ?? theme.Navy))
+        themeForegrounds.Add("--web-on-secondary:" + ParfaitApp.Services.CommerceThemeContrast.Foreground(theme.NavyDeep ?? theme.Navy, theme.Surface, "#1f120d"));
+    if (!string.IsNullOrWhiteSpace(theme.SurfaceElevated ?? theme.Surface))
+        themeForegrounds.Add("--web-on-elevated:" + ParfaitApp.Services.CommerceThemeContrast.Foreground(theme.SurfaceElevated ?? theme.Surface, theme.Text, "#ffffff"));
+    prefix = prefix.Replace("</head>", $"<style>:root{{{string.Join(";", themeForegrounds)}}}</style></head>", StringComparison.OrdinalIgnoreCase);
     var canonical = $"{Context.Request.Scheme}://{Context.Request.Host}{Context.Request.PathBase}{Context.Request.Path}{Context.Request.QueryString}";
     var encodedCanonical = HtmlEncoder.Default.Encode(canonical);
     prefix = prefix.Replace("__LEGEND_CANONICAL_URL__", encodedCanonical, StringComparison.Ordinal);
@@ -17,6 +28,9 @@
         "<title>.*?</title>",
         $"<title>{HtmlEncoder.Default.Encode(pageTitle)}</title>",
         RegexOptions.IgnoreCase | RegexOptions.Singleline);
+    var stylesheet = Infrastructure.Commerce.CommerceStorefrontPresentation.VersionedAsset(StoreEnvironment, StoreFileVersions, Context.Request.PathBase, "css/storefront.css");
+    prefix = prefix.Replace("href=\"/store-assets/css/storefront.css\"", $"href=\"{HtmlEncoder.Default.Encode(stylesheet)}\"", StringComparison.Ordinal);
+    var storefrontScript = Infrastructure.Commerce.CommerceStorefrontPresentation.VersionedAsset(StoreEnvironment, StoreFileVersions, Context.Request.PathBase, "js/storefront.js");
     IgnoreSection("Styles");
 }
 @Html.Raw(prefix)
@@ -39,7 +53,7 @@ window.PARFAIT_COMMERCE_CONTEXT = @Html.Raw(System.Text.Json.JsonSerializer.Seri
     cartIcon = commerce.CartIcon
 }, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
 </script>
-<script src="/store-assets/js/storefront.js"></script>
+<script src="@storefrontScript"></script>
 @await RenderSectionAsync("Scripts", required: false)
 @await Html.PartialAsync("_ParfaitCommerceTracking")
 @Html.Raw(suffix)

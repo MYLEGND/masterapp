@@ -13,6 +13,13 @@ function isPlatformHost(hostname) {
   return host === PLATFORM_ZONE || host.endsWith("." + PLATFORM_ZONE);
 }
 
+const INTERNAL_ASSETS = new Set([
+  '/design/legend-web-foundation.css', '/design/legend-app-shell.css', '/_content/Shared/css/dashboard-home-shared.css', '/_content/Shared/js/legend-modal.js',
+  '/css/internal.css', '/css/website-analytics.css', '/js/website-analytics.js',
+  '/js/website-analytics-kpi-modal.js', '/js/website-analytics-ai.js', '/js/website-analytics-incidents.js',
+  '/lib/bootstrap/dist/css/bootstrap.min.css', '/lib/bootstrap/dist/js/bootstrap.bundle.min.js'
+]);
+
 function isCommerceTransportPath(pathname) {
   const path = pathname || "/";
   return path === "/store" ||
@@ -75,9 +82,14 @@ export function buildBridgeRequest(request, env) {
   const commerce = isCommerceTransportPath(incoming.pathname);
   const sharedCommerce = commerce && isSharedStorefrontPath(incoming.pathname) &&
     isApprovedCommerceCutover(incoming.hostname, env);
+  // LEGEND product uploads are written by the scoped manager on the website
+  // origin. Read their bytes from that same owner, not Parfait's separate disk.
+  const legendProductMedia = (incoming.hostname === 'mylegnd.com' || incoming.hostname === 'www.mylegnd.com') &&
+    incoming.pathname.startsWith('/uploads/parfait-products/');
+  const websiteTransport = sharedCommerce || !commerce || legendProductMedia;
   const origin = validatedOrigin(
-    sharedCommerce || !commerce ? env?.LEGEND_WEBSITE_ORIGIN : env?.LEGEND_COMMERCE_ORIGIN,
-    sharedCommerce || !commerce ? DEFAULT_WEBSITE_ORIGIN : DEFAULT_COMMERCE_ORIGIN
+    websiteTransport ? env?.LEGEND_WEBSITE_ORIGIN : env?.LEGEND_COMMERCE_ORIGIN,
+    websiteTransport ? DEFAULT_WEBSITE_ORIGIN : DEFAULT_COMMERCE_ORIGIN
   );
   if (!origin) {
     return { error: new Response("Website routing is temporarily unavailable.", { status: 503 }) };
@@ -113,7 +125,7 @@ function isCompanyDocument(url) {
   const path=companyDocumentPath(url);
   return (url.hostname === 'mylegnd.com' || url.hostname === 'www.mylegnd.com') &&
     /^\/(?:[a-z0-9_-]+\/)*[a-z0-9_-]*$/.test(path) &&
-    !/^\/(?:api|business-preview|commerce|store|store-assets|uploads|parfait-analytics)(?:\/|$)/.test(path) &&
+    !/^\/(?:api|internal|business-preview|commerce|store|store-assets|uploads|parfait-analytics)(?:\/|$)/.test(path) &&
     !url.searchParams.has('legendEdit');
 }
 
@@ -125,6 +137,25 @@ export async function handleWebsiteRouting(request, env, fetchImpl = fetch) {
   if (incoming.protocol !== "https:") {
     incoming.protocol = "https:";
     return Response.redirect(incoming.toString(), 308);
+  }
+
+  if (INTERNAL_ASSETS.has(incoming.pathname) && !['GET', 'HEAD'].includes(request.method) &&
+      (!isPlatformHost(hostname) || COMMERCE_PLATFORM_HOSTS.has(hostname)))
+    return new Response('Method not allowed.', { status: 405 });
+
+  // Private scoped workspace requests never pass through public CMS rendering or caching.
+  if ((incoming.pathname === "/internal" || incoming.pathname.startsWith("/internal/") ||
+      INTERNAL_ASSETS.has(incoming.pathname) && ["GET", "HEAD"].includes(request.method)) &&
+      (!isPlatformHost(hostname) || COMMERCE_PLATFORM_HOSTS.has(hostname))) {
+    const bridged = buildBridgeRequest(request, env);
+    if (bridged.error) return bridged.error;
+    // A zero cacheTtl still forces edge caching and can discard Set-Cookie.
+    // Private Store forms and sessions must bypass storage entirely.
+    const response = await fetchImpl(bridged.request, { cache: "no-store" });
+    const headers = new Headers(response.headers);
+    headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
+    headers.set("Pragma", "no-cache");
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
   }
 
   if (isCompanyDocument(incoming)) {

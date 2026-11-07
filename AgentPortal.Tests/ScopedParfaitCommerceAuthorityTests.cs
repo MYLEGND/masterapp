@@ -18,7 +18,11 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.Contains("~/Views/InternalModules/Products.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("~/Views/InternalModules/Orders.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("~/Views/InternalModules/Automations.cshtml", controller, StringComparison.Ordinal);
-        Assert.Contains("~/Views/InternalModules/Analytics.cshtml", controller, StringComparison.Ordinal);
+        Assert.Contains("BusinessAnalyticsControllerBase", controller, StringComparison.Ordinal);
+        Assert.Contains("~/Views/WebsiteAnalytics/Index.cshtml", ReadSource("Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs"), StringComparison.Ordinal);
+        Assert.Contains("base.Analytics(", ReadSource("ParfaitApp", "Controllers", "InternalModulesController.cs"), StringComparison.Ordinal);
+        foreach (var retired in new[] { "Views/InternalModules/Analytics.cshtml", "wwwroot/css/parfait-agentportal-analytics.css", "wwwroot/js/parfait-agentportal-analytics.js" })
+            Assert.False(File.Exists(Path.Combine(root, "ParfaitApp", retired)));
         Assert.Contains("~/Views/Dashboard/Index.cshtml", controller, StringComparison.Ordinal);
         Assert.Contains("store.CommerceBusinessId", controller, StringComparison.Ordinal);
         Assert.DoesNotContain("CommerceManagementWorkspaceViewModel", controller, StringComparison.Ordinal);
@@ -34,7 +38,8 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.Contains("GetAllProducts(Guid businessId)", products, StringComparison.Ordinal);
         Assert.Contains("GetAllOrders(Guid businessId)", orders, StringComparison.Ordinal);
         Assert.Contains("GetWorkspaceViewModel(Guid businessId)", automations, StringComparison.Ordinal);
-        Assert.Contains("GetCustomerAutomationsPath(key)", automations, StringComparison.Ordinal);
+        Assert.Contains("CustomerAutomationStateJson", automations, StringComparison.Ordinal);
+        Assert.DoesNotContain("CommerceAutomationFileStore.WriteAtomic", automations, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -47,9 +52,8 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         var routingConfig = ReadSource("Legend-Cloudflare", "wrangler.website-routing.jsonc");
 
         Assert.Contains("ResolveCanonicalStoreRootAsync", platform, StringComparison.Ordinal);
-        Assert.Contains("Commerce:LegendPublicBaseUrl", platform, StringComparison.Ordinal);
-        Assert.Contains("WebsiteDomainBinding", platform, StringComparison.Ordinal);
-        Assert.Contains("managerBase + \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
+        Assert.Contains("CommerceStoreContextService.ManagementEntry(root", platform, StringComparison.Ordinal);
+        Assert.DoesNotContain("managerBase + \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
         Assert.Contains("managerBase + \"/commerce/manage/preview?ticket=\"", platform, StringComparison.Ordinal);
         Assert.DoesNotContain(": \"/commerce/manage/products?ticket=\"", platform, StringComparison.Ordinal);
         Assert.Contains("WebsiteEditorDataProtection:BlobUri", tickets, StringComparison.Ordinal);
@@ -107,7 +111,17 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         var automations = ReadSource("CommerceCore", "Services", "ParfaitCustomerAutomationService.cs");
         var hosted = ReadSource("CommerceCore", "Services", "ParfaitCustomerAutomationHostedService.cs");
 
-        Assert.DoesNotContain("_automations.CaptureCheckoutLead(", checkout, StringComparison.Ordinal);
+        // Explicit opt-in is captured by the scoped durable preparation callback;
+        // the retired unsolicited lead-capture endpoint remains gone below.
+        var preparation = checkout[checkout.IndexOf("paymentStart = _orders.BeginCheckoutPayment(", StringComparison.Ordinal)..];
+        preparation = preparation[..preparation.IndexOf("} : null);", StringComparison.Ordinal)];
+        Assert.Contains("request.MarketingEmailConsent ? order =>", preparation, StringComparison.Ordinal);
+        Assert.Contains("_automations.RecordMarketingOptIn(store.CommerceBusinessId, order", preparation, StringComparison.Ordinal);
+        Assert.Contains("_automations.CaptureCheckoutLead(store.CommerceBusinessId,", preparation, StringComparison.Ordinal);
+        Assert.Equal(1, checkout.Split("_automations.CaptureCheckoutLead(").Length - 1);
+        var orders = ReadSource("CommerceCore", "Services", "ParfaitOrderService.cs");
+        Assert.Contains("prepareBeforePayment?.Invoke(prepared)", orders, StringComparison.Ordinal);
+        Assert.Contains("preparationTransaction?.Commit()", orders, StringComparison.Ordinal);
         Assert.Contains("StatusCodes.Status410Gone", checkout, StringComparison.Ordinal);
         var completion = ReadSource("CommerceCore", "Services", "MerchantPaymentCompletionService.cs");
         Assert.Contains("_completion.CompleteLegacyAsync(paymentResult.PaymentRecord!.Id, store.CommerceBusinessId, ct)", checkout, StringComparison.Ordinal);
@@ -141,7 +155,15 @@ public sealed class ScopedParfaitCommerceAuthorityTests
         Assert.Contains("_ParfaitCommerceTracking", scopedLayout, StringComparison.Ordinal);
         Assert.Contains("TryExtractPublishedWebsiteShell", storeContext, StringComparison.Ordinal);
         Assert.Contains("version.CompiledPagesJson", storeContext, StringComparison.Ordinal);
-        Assert.Contains("--web-gold-strong", storefrontCss, StringComparison.Ordinal);
+        // Both public shells use the authored strong accent before gold, with the
+        // same contrast authority supplying the foreground consumed by storefront CSS.
+        Assert.Contains("--sp-theme-primary: var(--web-gold-strong, var(--web-gold, var(--sp-cocoa-700)))", storefrontCss, StringComparison.Ordinal);
+        Assert.Contains("theme?.GoldStrong ?? theme?.Gold ?? commerce?.AccentColor", legacyLayout, StringComparison.Ordinal);
+        Assert.Contains("CommerceThemeContrast.Foreground(primary, secondary, \"#6f4b3b\")", legacyLayout, StringComparison.Ordinal);
+        Assert.Contains("--sp-theme-on-accent:{onAccent}", legacyLayout, StringComparison.Ordinal);
+        Assert.Contains("CommerceThemeContrast.Foreground(theme.GoldStrong ?? theme.Gold, theme.NavyDeep ?? theme.Navy, \"#6f4b3b\")", scopedLayout, StringComparison.Ordinal);
+        Assert.Contains("--web-on-accent:", scopedLayout, StringComparison.Ordinal);
+        Assert.Contains("--sp-theme-on-accent: var(--web-on-accent, var(--web-navy-deep, #fff))", storefrontCss, StringComparison.Ordinal);
         Assert.Contains("--web-navy-deep", storefrontCss, StringComparison.Ordinal);
         Assert.DoesNotContain("navbar-brand", scopedLayout, StringComparison.Ordinal);
         Assert.DoesNotContain("site-header", scopedLayout, StringComparison.Ordinal);

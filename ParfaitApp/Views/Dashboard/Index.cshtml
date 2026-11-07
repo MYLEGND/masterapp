@@ -4,10 +4,10 @@
     Layout = "_InternalLayout";
 
     var commerceManagerTicket = ViewData["CommerceManagerTicket"] as string;
-    var scopedManager = !string.IsNullOrWhiteSpace(commerceManagerTicket);
+    var scopedManager = ViewData["CommerceManagerScoped"] as bool? == true || !string.IsNullOrWhiteSpace(commerceManagerTicket);
     var scopedStore = ViewData["CommerceStoreContext"] as ParfaitApp.Services.CommerceStoreContext;
     string CommerceUrl(string internalPath, string scopedPath) => scopedManager
-        ? scopedPath + "?ticket=" + Uri.EscapeDataString(commerceManagerTicket!)
+        ? Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, scopedPath, commerceManagerTicket)
         : internalPath;
     var storeUrl = scopedStore?.StoreRootPath ?? "/store";
     var productsUrl = CommerceUrl("/internal/commerce/products", "/commerce/manage/products");
@@ -16,7 +16,8 @@
     var analyticsUrl = CommerceUrl("/internal/analytics", "/commerce/manage/analytics");
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
 
-    var storeReady = Model.HasCheckoutUrl && Model.HasMetaPixel && Model.HasMetaConnection;
+    var paymentConfigured = ViewData["PaymentConfigured"] as bool?;
+    var storeReady = paymentConfigured == true && Model.HasCheckoutUrl && Model.HasMetaPixel && Model.HasMetaConnection;
     var orderAttention = Model.OpenFulfillmentCount > 0 || Model.PendingOrderCount > 0;
 }
 
@@ -30,11 +31,7 @@
         <div class="pf-dashboard-head-actions">
             <a class="pf-secondary-action" href="@storeUrl" target="_blank" rel="noopener">View Store</a>
             <a class="pf-secondary-action" href="@analyticsUrl">Analytics</a>
-            @if (scopedManager)
-            {
-                <a class="pf-secondary-action" href="@analyticsUrl">Marketing + Meta</a>
-            }
-            else
+            @if (!scopedManager)
             {
                 <a class="pf-secondary-action" href="/internal/settings/business-profile">Business Profile</a>
             }
@@ -44,13 +41,14 @@
     <section class="pf-dashboard-kpis" aria-label="Store overview">
         <article class="pf-dashboard-kpi">
             <span>Store status</span>
-            <strong>@(storeReady ? "Ready" : "Review")</strong>
+            <strong>@(storeReady ? "Configured" : paymentConfigured == false ? "Payments inactive" : "Review")</strong>
             <small>@Model.BusinessType</small>
         </article>
         <article class="pf-dashboard-kpi">
-            <span>Revenue after refunds</span>
+            <span>Revenue after refunds · all time</span>
             <strong>@Money(Model.RevenueCents)</strong>
             <small>@Model.PaidOrderCount paid · @Money(Model.AverageOrderValueCents) average</small>
+            <partial name="_RevenuePerformance" model="Model.RevenuePerformance" />
         </article>
         <article class="pf-dashboard-kpi">
             <span>Orders</span>

@@ -9,6 +9,10 @@
         @await Html.PartialAsync("~/Views/Shared/_WebsiteQuickFind.cshtml", new Shared.Crm.WebsiteQuickFindLink(
             "Edit website", business.BusinessName, root + "/website-session", preview, business.WebsiteLiveUrl ?? preview, "business"))
     }
+    if (!string.IsNullOrEmpty(business.StoreManagementUrl))
+    {
+        <a class="explore-item" data-tone="ops" href="@business.StoreManagementUrl" target="_blank" rel="noopener"><span>Manage Store</span><small>@business.BusinessName</small></a>
+    }
     if (business.CanCrm)
     {
         <a class="explore-item" data-tone="ops" href="@root/leads"><span>@business.LeadLabel CRM</span><small>@business.BusinessName</small></a>

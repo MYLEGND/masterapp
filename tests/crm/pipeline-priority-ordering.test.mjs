@@ -22,7 +22,7 @@ for (const page of ['clients', 'leads']) {
   });
 
   test(`${page}: star action is isolated from card-open behavior`, () => {
-    assert.match(source, /data-star-contact=/);
+    assert.match(source, /window\.LegendCrmContactCard\.render/);
     assert.match(source, /e\.stopImmediatePropagation\(\)/);
     assert.match(source, /if \(e\.target\.closest\("\[data-star-contact\]"\)\) return;/);
   });

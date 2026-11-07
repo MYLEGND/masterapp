@@ -69,10 +69,19 @@ internal static partial class CandidateContract
         var batch = new CatalogBatch();
         var original = relevant.ToArray();
         if (original.Any(m => !ValidStructures(m))) throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
+        var storeEntries = original.Where(m => IsStoreMigration(m.Id)).ToArray();
+        if (!storeEntries.Select(m => m.Id).SequenceEqual(StoreMigrations.Take(storeEntries.Length)) ||
+            storeEntries.SkipWhile(m => applied.Contains(m.Id)).Any(m => applied.Contains(m.Id)))
+            throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
         var entries = EffectiveBrowserSchema(original, applied);
         foreach (var migration in entries)
         {
             var isApplied = applied.Contains(migration.Id, StringComparer.Ordinal);
+            if (IsStoreMigration(migration.Id))
+            {
+                PlanStore(batch, migration, isApplied, applied, cancellation);
+                continue;
+            }
             if (migration.Id == BrowserMigration)
             {
                 PlanBrowser(batch, migration, isApplied, applied.Contains(CoordinationMigration), cancellation);

@@ -105,6 +105,7 @@ public sealed class ParfaitBusinessPlatformService : IParfaitBusinessPlatformSer
                 LegalName: input.LegalName,
                 BusinessType: input.BusinessType,
                 OwnerEmail: input.OwnerEmail,
+                CanManageCrm: true,
                 Key: input.Key,
                 PrimaryDomain: input.PrimaryDomain,
                 OwnerDisplayName: input.OwnerEmail,
@@ -178,6 +179,7 @@ public sealed class ParfaitBusinessPlatformService : IParfaitBusinessPlatformSer
                 NormalizedEmail = normalized.ToUpperInvariant(),
                 DisplayName = normalized,
                 RoleKey = "platform-owner",
+                CanManageCrm = true,
                 Status = "Active"
             });
             changed = true;

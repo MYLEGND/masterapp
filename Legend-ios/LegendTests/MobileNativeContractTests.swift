@@ -7,6 +7,25 @@ import SwiftUI
 
 @MainActor
 final class MobileNativeContractTests: XCTestCase {
+    func testChannelUnreadTotalsAreIndependentOfVisibleRows() throws {
+        let json = #"{"badge":{"unreadCount":134,"revision":1,"updatedUtc":"2026-11-03T10:00:00Z"},"notifications":[],"workChannelsVersion":1,"engineeringChannelsVersion":1,"channelUnreadCounts":{"work":120,"engineering":12,"personal":2}}"#
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let snapshot = try decoder.decode(MobileNotificationSnapshot.self, from: Data(json.utf8))
+        XCTAssertEqual(snapshot.channelUnreadCounts?["work"], 120)
+        XCTAssertEqual(snapshot.channelUnreadCounts?["engineering"], 12)
+        XCTAssertTrue(snapshot.notifications.isEmpty)
+    }
+
+    func testEngineeringPushHasItsOwnConsumeOnceDestination() {
+        LegendPushNotificationNavigation.requestNotifications(engineering: true)
+        XCTAssertTrue(LegendPushNotificationNavigation.consumePendingEngineering())
+        XCTAssertFalse(LegendPushNotificationNavigation.consumePendingNotifications())
+        XCTAssertFalse(LegendPushNotificationNavigation.consumePendingEngineering())
+        LegendPushNotificationNavigation.requestNotifications(work: true)
+        XCTAssertFalse(LegendPushNotificationNavigation.consumePendingEngineering())
+        XCTAssertTrue(LegendPushNotificationNavigation.consumePendingWork())
+    }
+
     func testUnreadBadgeUsesCircularEdgeAtInboxAndPinnedSizes() throws {
         for size: CGFloat in [46, 72] {
             let center = LegendMessagingUnreadBadge.center(avatarSize: size)
@@ -729,6 +748,8 @@ final class MobileNativeContractTests: XCTestCase {
     }
 
     func testAuthorizedDualRoleSwitchReusesTheCurrentBearerWithoutSigningOut() async throws {
+        let cache = LegendLaunchCache(directoryName: "MobileNativeContractTests-\(UUID().uuidString)")
+        defer { cache.clear() }
         let store = InMemoryTokenStore(
             storedTokens: OAuthTokenSet(
                 accessToken: "stored-access-token",
@@ -740,7 +761,9 @@ final class MobileNativeContractTests: XCTestCase {
             tokenStore: store,
             authorizer: TestAuthorizer(),
             tokenExchanger: TestTokenExchanger(),
-            sessionService: service)
+            sessionService: service,
+            launchCache: cache,
+            biometricSecurity: AcceptingBiometricSecurity())
 
         coordinator.restore()
         try await waitForState(

@@ -49,6 +49,8 @@ public sealed class ParfaitTeamManagementViewModel
 
 public sealed class ParfaitTeamMemberViewModel
 {
+    public long ExpectedUpdatedTicks { get; set; }
+    public bool IsProtected { get; set; }
     public Guid Id { get; set; }
     public string Email { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
@@ -82,6 +84,7 @@ public sealed class ParfaitTeamCreateMemberInput
 
 public sealed class ParfaitTeamUpdateMemberInput
 {
+    public long ExpectedUpdatedTicks { get; set; }
     [StringLength(120)]
     public string? DisplayName { get; set; }
 
@@ -107,3 +110,6 @@ public sealed class ParfaitPageAccessResult
     public string Message { get; init; } = string.Empty;
     public ParfaitInternalPageDefinition? Page { get; init; }
 }
+
+// Presentation only; each membership authority supplies its own factual values.
+public sealed record ParfaitTeamCardPresentation(string ModalId, string DisplayName, string Email, string RoleLabel, System.Collections.Generic.IReadOnlyList<System.Collections.Generic.KeyValuePair<string, string>> Facts);

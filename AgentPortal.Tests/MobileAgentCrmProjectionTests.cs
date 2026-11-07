@@ -99,6 +99,31 @@ public sealed class MobileAgentCrmProjectionTests
         Assert.Empty((await service.GetAgentLeadsAsync(other)).Leads);
     }
 
+    [Fact]
+    public async Task AssignedBusinessCrmRecordDoesNotRequireSocialSubscriptionAndUsesLinkedEntityName()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), FirstName = "Personal",
+            LastName = "Contact", CrmStatus = "Active", Phone = "6025550123",
+            CrmNotes = ClientCrmMetaSerializer.Serialize(new ClientCrmMeta { RecordType = "BusinessClient" }) };
+        var business = new CommerceBusiness { Key = "fixture-business", DisplayName = "Fixture Business" };
+        db.ClientProfiles.Add(profile);
+        db.CommerceBusinesses.Add(business);
+        db.AgentClients.Add(new AgentClient { AgentUserId = "agent-a", ClientUserId = profile.ClientUserId });
+        db.CommerceBusinessMembers.Add(new CommerceBusinessMember { CommerceBusinessId = business.Id,
+            ClientProfileId = profile.Id, RoleKey = "account", Status = "Active" });
+        await db.SaveChangesAsync();
+        var actor = new MobileResolvedActor(new MessagingActor("agent-a", MessagingParticipantTypes.Agent), Guid.NewGuid(), "Agent");
+        var client = Assert.Single((await CreateService(db).GetAgentClientsAsync(actor)).Clients);
+        Assert.Equal("Fixture Business", client.EntityName);
+        Assert.Equal("Personal Contact", client.DisplayName);
+        var record = await new AgentPortal.Services.MobileAgentCrmService(db).RecordAsync(actor, "clients", profile.Id.ToString(), default);
+        Assert.Equal("BusinessClient", record!.RecordType);
+        Assert.Equal(client.EntityName, record.EntityName);
+        Assert.Null(await new AgentPortal.Services.MobileAgentCrmService(db).RecordAsync(
+            actor with { Actor = new MessagingActor("unrelated-agent", MessagingParticipantTypes.Agent) }, "clients", profile.Id.ToString(), default));
+    }
+
     private static MobileHomeService CreateService(Infrastructure.Data.MasterAppDbContext db) =>
         new(
             db,

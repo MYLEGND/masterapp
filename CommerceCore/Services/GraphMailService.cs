@@ -24,17 +24,20 @@ public class GraphMailService : IGraphMailService
         _db = db;
     }
 
-    private (string StoreName, string? OrdersInbox, bool IsParfait) ResolveMerchant(ParfaitOrderRecord order)
+    private (string StoreName, string? OrdersInbox, bool IsParfait) ResolveMerchant(ParfaitOrderRecord order) =>
+        ResolveBusinessMerchant(order.CommerceBusinessId);
+
+    private (string StoreName, string? OrdersInbox, bool IsParfait) ResolveBusinessMerchant(Guid businessId)
     {
         // Production orders must resolve the original SQL tenant, not a default
         // "Shop Parfait" label or a globally configured orders inbox.
-        if (order.CommerceBusinessId == Guid.Empty)
+        if (businessId == Guid.Empty)
             throw new InvalidOperationException("Order commerce business identity is required for mail delivery.");
         if (_db is null)
             throw new InvalidOperationException("Canonical commerce business authority is unavailable.");
 
         var merchant = _db.CommerceBusinesses.AsNoTracking().SingleOrDefault(x =>
-            x.Id == order.CommerceBusinessId && x.IsActive && x.Status == "Active")
+            x.Id == businessId && x.IsActive && x.Status == "Active")
             ?? throw new InvalidOperationException("Order business is unavailable.");
 
         var isParfait = string.Equals(merchant.Key, "parfait", StringComparison.OrdinalIgnoreCase);
@@ -179,14 +182,16 @@ $@"
         await SendMailAsync(graph, senderUpn, inboxes, $"[{siteName}] New paid order {order.OrderNumber}", html, ct);
     }
 
-    public async Task SendAutomationEmailAsync(string toEmail, string subject, string htmlBody, CancellationToken ct = default)
+    public async Task SendAutomationEmailAsync(Guid businessId, string toEmail, string subject, string htmlBody, CancellationToken ct = default)
     {
         var senderUpn = ResolveSenderUpn();
         if (string.IsNullOrWhiteSpace(senderUpn))
             throw new InvalidOperationException("Missing SenderUpn/Contact:SenderEmail config.");
 
         var graph = BuildClient();
-        await SendMailAsync(graph, senderUpn, [toEmail.Trim()], subject.Trim(), htmlBody, ct);
+        var merchant = ResolveBusinessMerchant(businessId);
+        await SendMailAsync(graph, senderUpn, [toEmail.Trim()], subject.Trim(), htmlBody, ct,
+            merchant.StoreName, merchant.OrdersInbox, disableAutomaticRetries: true);
     }
 
     public async Task SendParfaitTeamInviteAsync(
@@ -196,7 +201,8 @@ $@"
         IReadOnlyCollection<string> allowedPageTitles,
         string loginUrl,
         string invitedBy,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? identityRedemptionUrl = null)
     {
         var senderUpn = ResolveSenderUpn(
             _config["GraphMail:ParfaitTeamSenderUpn"],
@@ -208,17 +214,28 @@ $@"
             throw new InvalidOperationException("Missing SenderUpn/Contact:SenderEmail config.");
 
         var graph = BuildClient();
+        var html = BuildTeamInvitationHtml(toEmail, displayName, roleLabel, allowedPageTitles,
+            loginUrl, invitedBy, siteName, identityRedemptionUrl);
+        await SendMailAsync(graph, senderUpn, [toEmail.Trim()], "Your Parfait internal invite", html, ct);
+    }
+
+    private static string BuildTeamInvitationHtml(string toEmail, string displayName, string roleLabel,
+        IReadOnlyCollection<string> allowedPageTitles, string loginUrl, string invitedBy,
+        string siteName, string? identityRedemptionUrl)
+    {
         var enc = HtmlEncoder.Default;
         var safeName = enc.Encode(string.IsNullOrWhiteSpace(displayName) ? toEmail.Trim() : displayName.Trim());
         var safeRole = enc.Encode(roleLabel.Trim());
         var safeInvitedBy = enc.Encode(string.IsNullOrWhiteSpace(invitedBy) ? "Parfait Admin" : invitedBy.Trim());
         var safeUrl = enc.Encode(loginUrl.Trim());
         var accessSummary = allowedPageTitles.Count == 0
-            ? "Dashboard"
+            ? "Your assigned permissions"
             : string.Join(", ", allowedPageTitles.Select(title => title.Trim()).Where(title => !string.IsNullOrWhiteSpace(title)));
         var safeAccessSummary = enc.Encode(accessSummary);
 
-        var html =
+        var setup = string.IsNullOrWhiteSpace(identityRedemptionUrl) ? "" :
+            $"<p>First complete <a href='{enc.Encode(identityRedemptionUrl.Trim())}'>Microsoft account setup</a>, then use the acceptance link below.</p>";
+        return
 $@"
 <div style='font-family:Inter,Arial,sans-serif;line-height:1.65;color:#111;'>
   <h2 style='margin:0 0 10px;'>You&apos;re invited to Parfait Internal</h2>
@@ -234,13 +251,14 @@ $@"
     <p style='margin:0;'><strong>Starting access:</strong> {safeAccessSummary}</p>
   </div>
 
+  {setup}
   <p style='margin:16px 0 12px;'>
-    Sign in with your <strong>@mylegnd.com</strong> Microsoft account to open your Parfait internal workspace.
+    Sign in with the invited Microsoft account, then accept this invitation.
   </p>
 
   <p style='margin:0 0 18px;'>
     <a href='{safeUrl}' style='display:inline-block;padding:12px 18px;border-radius:999px;background:#4f3425;color:#fff;text-decoration:none;font-weight:700;'>
-      Open Parfait Internal
+      Accept invitation
     </a>
   </p>
 
@@ -249,7 +267,6 @@ $@"
   </p>
 </div>";
 
-        await SendMailAsync(graph, senderUpn, [toEmail.Trim()], $"Your Parfait internal invite", html, ct);
     }
 
     private static IReadOnlyList<string> ResolveRecipients(params string?[] rawValues)
@@ -297,11 +314,20 @@ $@"
         IReadOnlyCollection<string> recipients,
         string subject,
         string htmlBody,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? senderName = null,
+        string? replyTo = null,
+        bool disableAutomaticRetries = false)
     {
         var msg = new Message
         {
             Subject = subject,
+            From = string.IsNullOrWhiteSpace(senderName) ? null : new Recipient {
+                EmailAddress = new EmailAddress { Address = senderUpn, Name = senderName }
+            },
+            ReplyTo = string.IsNullOrWhiteSpace(replyTo) ? null : [new Recipient {
+                EmailAddress = new EmailAddress { Address = replyTo }
+            }],
             Body = new ItemBody
             {
                 ContentType = BodyType.Html,
@@ -322,6 +348,11 @@ $@"
             SaveToSentItems = true
         };
 
-        await graph.Users[senderUpn].SendMail.PostAsync(body, cancellationToken: ct);
+        await graph.Users[senderUpn].SendMail.PostAsync(body, request =>
+        {
+            // The durable commerce receipt owns retry decisions for this non-idempotent send.
+            if (disableAutomaticRetries)
+                request.Options.Add(new Microsoft.Kiota.Http.HttpClientLibrary.Middleware.Options.RetryHandlerOption { MaxRetry = 0 });
+        }, cancellationToken: ct);
     }
 }

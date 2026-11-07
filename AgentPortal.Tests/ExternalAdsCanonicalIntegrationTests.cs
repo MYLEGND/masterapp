@@ -526,7 +526,7 @@ public sealed class ExternalAdsCanonicalIntegrationTests
         var reporting = Read(root, "Infrastructure", "Analytics", "MarketingExternalAdsReportingService.cs");
         var projection = Read(root, "Infrastructure", "Analytics", "MarketingProviderSetupProjection.cs");
         var controller = Read(root, "AgentPortal", "Controllers", "WebsiteAnalyticsController.cs");
-        var business = Read(root, "Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
+        var business = Read(root, "Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs");
         var view = Read(root, "AgentPortal", "Views", "WebsiteAnalytics", "Index.cshtml");
         var js = Read(root, "AgentPortal", "wwwroot", "js", "website-analytics.js");
 

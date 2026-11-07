@@ -1,5 +1,6 @@
 using Infrastructure.Data;
 using Infrastructure.WebsiteRuntime;
+using Infrastructure.WebsiteEditing;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Services;
@@ -8,14 +9,14 @@ namespace Legend.Commerce;
 
 /// <summary>
 /// Serve migrated product image bytes only for a published, verified business
-/// website preview. Middleware and storage share the canonical tenant ID;
+/// website or published LEGEND Store. Middleware and storage share the canonical tenant ID;
 /// never expose arbitrary local files or resolve catalog media cross-tenant.
 /// </summary>
 public sealed class CommercePreviewMediaMiddleware(RequestDelegate next)
 {
     private const string Prefix = "/uploads/parfait-products/";
 
-    public async Task InvokeAsync(HttpContext context, MasterAppDbContext db, ParfaitStoragePaths storage)
+    public async Task InvokeAsync(HttpContext context, MasterAppDbContext db, ParfaitStoragePaths storage, CommerceStoreContextService stores)
     {
         var path = context.Request.Path.Value ?? "";
         if (!path.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase))
@@ -24,12 +25,25 @@ public sealed class CommercePreviewMediaMiddleware(RequestDelegate next)
             return;
         }
 
-        // No direct-origin / provider hostname access; admission is set only
-        // after verified business binding and published content checks.
-        if (!context.Items.TryGetValue(CommerceSharedHostPreviewGate.PreviewMediaBusinessIdItem, out var admitted)
-            || admitted is not Guid businessId || businessId == Guid.Empty
-            || !(HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+        if (!(HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
             || !IsSafeImagePath(path))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        // Custom-domain preview/cutover admission stays with its existing gate.
+        // LEGEND media uses the same authenticated host and immutable publication
+        // resolver as its public catalog; never infer a tenant from the file path.
+        var businessId = context.Items.TryGetValue(CommerceSharedHostPreviewGate.PreviewMediaBusinessIdItem, out var admitted)
+            && admitted is Guid id ? id : Guid.Empty;
+        if (businessId == Guid.Empty &&
+            PublicWebsiteRuntimeScopeResolver.IsLegendHost(stores.ResolveEffectivePublicHost(context)))
+        {
+            var store = await stores.ResolvePublicAsync(context, null, context.RequestAborted);
+            businessId = store?.CommerceBusinessId ?? Guid.Empty;
+        }
+        if (businessId == Guid.Empty)
         {
             context.Response.StatusCode = StatusCodes.Status404NotFound;
             return;

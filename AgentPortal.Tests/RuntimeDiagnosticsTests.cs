@@ -307,6 +307,38 @@ public sealed class RuntimeDiagnosticsTests
         finally { Environment.SetEnvironmentVariable("FOUNDER_OID", previous); }
     }
 
+    [Fact]
+    public async Task OutstandingListExcludesResolvedButIncludesRecurrenceAndRetainsHistory()
+    {
+        var previous = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        const string oid = "005f0d0e-cc5c-4b60-93f6-bb9b1b9f9588";
+        Environment.SetEnvironmentVariable("FOUNDER_OID", oid);
+        try
+        {
+            using var db = ControllerTestHelpers.BuildDb();
+            using var services = new ServiceCollection().BuildServiceProvider();
+            var rows = new[] {
+                new RuntimeDiagnosticIncident { Disposition="Observed" },
+                new RuntimeDiagnosticIncident { Disposition="ManuallyClosed" },
+                new RuntimeDiagnosticIncident { Disposition="Dismissed" },
+                new RuntimeDiagnosticIncident { Disposition="ManuallyClosed", Recurred=true }
+            };
+            foreach(var row in rows) {row.Id=Guid.NewGuid();row.DeduplicationKey=row.Id.ToString();row.ExpiresUtc=DateTime.UtcNow.AddDays(1);db.Add(row);}
+            await db.SaveChangesAsync();
+            var controller = new FounderDiagnosticsController(db) { ControllerContext=new() {HttpContext=new DefaultHttpContext {RequestServices=services,User=ControllerTestHelpers.BuildUser(oid)}}};
+            controller.TempData = Moq.Mock.Of<Microsoft.AspNetCore.Mvc.ViewFeatures.ITempDataDictionary>();
+            var outstanding=Assert.IsType<ViewResult>(await controller.Index());
+            var active=Assert.IsAssignableFrom<System.Collections.Generic.IEnumerable<RuntimeDiagnosticIncident>>(outstanding.Model).ToArray();
+            Assert.Equal(2,active.Length);Assert.Contains(active,x=>x.Id==rows[3].Id);
+            var resolved=Assert.IsType<ViewResult>(await controller.Index(state:"resolved"));
+            Assert.Equal(2,Assert.IsAssignableFrom<System.Collections.Generic.IEnumerable<RuntimeDiagnosticIncident>>(resolved.Model).Count());
+            var all=Assert.IsType<ViewResult>(await controller.Index(state:"all"));
+            Assert.Equal(4,Assert.IsAssignableFrom<System.Collections.Generic.IEnumerable<RuntimeDiagnosticIncident>>(all.Model).Count());
+            Assert.Equal(4,await db.RuntimeDiagnosticIncidents.CountAsync());
+        }
+        finally {Environment.SetEnvironmentVariable("FOUNDER_OID",previous);}
+    }
+
     private static EndpointDataSource[] Routes() => new EndpointDataSource[]
     {
         new DefaultEndpointDataSource(new RouteEndpoint(_ => Task.CompletedTask,

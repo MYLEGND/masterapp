@@ -164,7 +164,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
                 Name = product.Name,
                 Slug = product.Slug,
                 Size = selectedSize.Size,
-                Badge = product.Badge,
+                Badge = product.Badge ?? string.Empty,
                 RequestedQuantity = requestedQuantity,
                 Quantity = effectiveQuantity,
                 UnitPriceCents = product.PriceCents,
@@ -308,6 +308,9 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     {
         lock (Lock)
         {
+            if (product.BillingKind == Domain.Billing.ClientSubscriptionScope.MonthlyTraining &&
+                !_db.CommerceBusinesses.Any(x => x.Id == businessId && x.Key == ParfaitBusinessScopeService.ParfaitBusinessKey))
+                throw new InvalidOperationException("Training subscriptions are available only for the Parfait store.");
             if (product.BillingKind == Domain.Billing.ClientSubscriptionScope.MonthlyTraining && product.IsActive &&
                 !_rollout.TrainingSubscriptionsEnabled)
                 throw new InvalidOperationException("Training plans must remain inactive until training enrollment is available.");
@@ -325,6 +328,10 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
                     .ToList();
 
             var normalized = NormalizeProduct(product, existingImages, ResolveTenantBadge(businessId));
+            if (normalized.Images.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count() != normalized.Images.Count ||
+                normalized.InventoryBySize.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count() != normalized.InventoryBySize.Count ||
+                normalized.DiscountCodes.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count() != normalized.DiscountCodes.Count)
+                throw new InvalidOperationException("Product child identifiers must be unique within each collection.");
 
             if (existing is null)
             {
@@ -422,14 +429,14 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     public async Task UploadImagesAsync(Guid businessId, string productId, IReadOnlyList<IFormFile> files)
     {
         if (files.Count == 0)
-            return;
+            throw new ArgumentException("Choose at least one image to upload.");
 
         var product = _db.CommerceProducts
             .Include(x => x.Images)
             .SingleOrDefault(x => x.CommerceBusinessId == businessId && x.ExternalProductKey == productId);
 
         if (product is null)
-            return;
+            throw new ArgumentException("The product no longer exists in this store. Reload the catalog before uploading.");
 
         var businessKey = GetBusinessKey(businessId);
         var productFolder = _storagePaths.GetUploadDirectory(businessKey, product.ExternalProductKey);
@@ -437,9 +444,9 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         Directory.CreateDirectory(productFolder);
 
         var nextOrder = product.Images.Count == 0 ? 10 : product.Images.Max(image => image.DisplayOrder) + 10;
-        var added = false;
-
-        foreach (var file in files.Where(file => file.Length > 0))
+        var uploads = new List<(byte[] Bytes, string Extension)>();
+        // Validate the whole selection before writing any file or tracking a row.
+        foreach (var file in files)
         {
             await using var source = new MemoryStream();
             await file.CopyToAsync(source);
@@ -454,14 +461,20 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
 
             var extension = UploadValidator.CanonicalExtensionForContentType(validation.DetectedContentType)
                 ?? throw new ArgumentException("The product image container is not recognized.");
+            uploads.Add((bytes, extension));
+        }
+
+        foreach (var upload in uploads)
+        {
             var imageId = Guid.NewGuid().ToString("N");
-            var safeFileName = $"{imageId}{extension}";
+            var safeFileName = $"{imageId}{upload.Extension}";
             var physicalPath = Path.Combine(productFolder, safeFileName);
 
-            await File.WriteAllBytesAsync(physicalPath, bytes);
+            await File.WriteAllBytesAsync(physicalPath, upload.Bytes);
 
-            product.Images.Add(new CommerceProductImage
+            var image = new CommerceProductImage
             {
+                CommerceProductId = product.Id,
                 ExternalImageKey = imageId,
                 FileName = safeFileName,
                 ImageUrl = _storagePaths.GetImageUrl(businessKey, product.ExternalProductKey, safeFileName),
@@ -472,13 +485,14 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
                 ObjectPositionX = 50,
                 ObjectPositionY = 50,
                 Zoom = 1.0m
-            });
+            };
+            product.Images.Add(image);
+            _db.CommerceProductImages.Add(image);
 
             nextOrder += 10;
-            added = true;
         }
 
-        if (added)
+        if (uploads.Count > 0)
         {
             EnsureOnePrimaryImage(product);
             product.UpdatedUtc = DateTime.UtcNow;
@@ -674,7 +688,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
             Slug = product.Slug,
             Description = product.Description,
             PriceLabel = product.PriceLabel,
-            Badge = product.Badge,
+            Badge = product.Badge ?? string.Empty,
             PriceCents = product.PriceCents,
             CompareAtPriceCents = product.CompareAtPriceCents,
             IsFeatured = product.IsFeatured,
@@ -724,11 +738,12 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
             Code = discount.Code,
             DiscountType = discount.DiscountType,
             Amount = discount.Amount,
+            UsageLimit = discount.UsageLimit,
             IsActive = discount.IsActive
         };
     }
 
-    private static void ApplyProduct(CommerceProduct entity, ParfaitProductEditorViewModel product)
+    private void ApplyProduct(CommerceProduct entity, ParfaitProductEditorViewModel product)
     {
         entity.ExternalProductKey = product.Id;
         entity.BillingKind = product.BillingKind;
@@ -736,7 +751,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         entity.Slug = product.Slug;
         entity.Description = product.Description;
         entity.PriceLabel = product.PriceLabel;
-        entity.Badge = product.Badge;
+        entity.Badge = product.Badge ?? string.Empty;
         entity.PriceCents = product.PriceCents;
         entity.CompareAtPriceCents = product.CompareAtPriceCents;
         entity.IsFeatured = product.IsFeatured;
@@ -749,61 +764,81 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         SyncDiscounts(entity, product.DiscountCodes);
     }
 
-    private static void SyncImages(CommerceProduct entity, IReadOnlyList<ParfaitProductImageEditorViewModel> images)
+    private void SyncImages(CommerceProduct entity, IReadOnlyList<ParfaitProductImageEditorViewModel> images)
     {
         var normalized = NormalizeImages(images, entity.Name);
-        entity.Images.Clear();
+        foreach (var removed in entity.Images.Where(row => !normalized.Any(item => item.Id == row.ExternalImageKey)).ToList())
+            _db.Remove(removed);
 
         foreach (var image in normalized)
         {
-            entity.Images.Add(new CommerceProductImage
+            var row = entity.Images.SingleOrDefault(item => item.ExternalImageKey == image.Id);
+            if (row is null)
             {
-                ExternalImageKey = image.Id,
-                ImageUrl = image.ImageUrl,
-                FileName = image.FileName,
-                AltText = image.AltText,
-                IsPrimary = image.IsPrimary,
-                DisplayOrder = image.DisplayOrder,
-                ObjectFit = image.ObjectFit,
-                ObjectPositionX = image.ObjectPositionX,
-                ObjectPositionY = image.ObjectPositionY,
-                Zoom = image.Zoom
-            });
+                row = new CommerceProductImage { CommerceProductId = entity.Id, ExternalImageKey = image.Id };
+                entity.Images.Add(row);
+                _db.Add(row);
+            }
+            row.ImageUrl = image.ImageUrl;
+            row.FileName = image.FileName;
+            row.AltText = image.AltText;
+            row.IsPrimary = image.IsPrimary;
+            row.DisplayOrder = image.DisplayOrder;
+            row.ObjectFit = image.ObjectFit;
+            row.ObjectPositionX = image.ObjectPositionX;
+            row.ObjectPositionY = image.ObjectPositionY;
+            row.Zoom = image.Zoom;
         }
     }
 
-    private static void SyncInventory(CommerceProduct entity, List<ParfaitProductSizeInventoryEditorViewModel> inventory)
+    private void SyncInventory(CommerceProduct entity, List<ParfaitProductSizeInventoryEditorViewModel> inventory)
     {
-        entity.InventoryItems.Clear();
+        var normalized = NormalizeInventory(inventory);
+        foreach (var removed in entity.InventoryItems.Where(row => !normalized.Any(item => item.Id == row.ExternalInventoryKey)).ToList())
+            _db.Remove(removed);
 
-        foreach (var item in NormalizeInventory(inventory))
+        foreach (var item in normalized)
         {
-            entity.InventoryItems.Add(new CommerceProductInventoryItem
+            var row = entity.InventoryItems.SingleOrDefault(existing => existing.ExternalInventoryKey == item.Id);
+            if (row is null)
             {
-                ExternalInventoryKey = item.Id,
-                Size = item.Size,
-                IsEnabled = item.IsEnabled,
-                StockQuantity = item.StockQuantity,
-                LowStockThreshold = item.LowStockThreshold,
-                DisplayOrder = item.DisplayOrder
-            });
+                row = new CommerceProductInventoryItem { CommerceProductId = entity.Id, ExternalInventoryKey = item.Id };
+                entity.InventoryItems.Add(row);
+                _db.Add(row);
+            }
+            row.Size = item.Size;
+            row.IsEnabled = item.IsEnabled;
+            row.StockQuantity = item.StockQuantity;
+            row.LowStockThreshold = item.LowStockThreshold;
+            row.DisplayOrder = item.DisplayOrder;
         }
     }
 
-    private static void SyncDiscounts(CommerceProduct entity, List<ParfaitProductDiscountCodeEditorViewModel> discounts)
+    private void SyncDiscounts(CommerceProduct entity, List<ParfaitProductDiscountCodeEditorViewModel> discounts)
     {
-        entity.Discounts.Clear();
-
-        foreach (var discount in NormalizeDiscountCodes(discounts))
+        var normalized = NormalizeDiscountCodes(discounts);
+        foreach (var removed in entity.Discounts.Where(row => !normalized.Any(item => item.Id == row.ExternalDiscountKey)).ToList())
         {
-            entity.Discounts.Add(new CommerceProductDiscount
+            if (_db.ClientSubscriptionOffers.Any(x => x.TrainingDiscountId == removed.Id)) removed.IsActive = false;
+            else _db.Remove(removed);
+        }
+
+        foreach (var discount in normalized)
+        {
+            var row = entity.Discounts.SingleOrDefault(item => item.ExternalDiscountKey == discount.Id);
+            if (row is null)
             {
-                ExternalDiscountKey = discount.Id,
-                Code = discount.Code,
-                DiscountType = discount.DiscountType,
-                Amount = discount.Amount,
-                IsActive = discount.IsActive
-            });
+                if (entity.Discounts.Any(existing => string.Equals(existing.Code, discount.Code, StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidOperationException("Update the existing promotion instead of replacing its identity.");
+                row = new CommerceProductDiscount { CommerceProductId = entity.Id, ExternalDiscountKey = discount.Id };
+                entity.Discounts.Add(row);
+                _db.Add(row);
+            }
+            row.Code = discount.Code;
+            row.DiscountType = discount.DiscountType;
+            row.Amount = discount.Amount;
+            row.UsageLimit = discount.UsageLimit;
+            row.IsActive = discount.IsActive;
         }
     }
 
@@ -882,7 +917,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
             DisplayPriceCents = displayPriceCents > 0 || displayDiscountCents > 0 ? displayPriceCents : product.PriceCents,
             DisplayCompareAtPriceCents = displayDiscountCents > 0 ? product.PriceCents : 0,
             DisplayDiscountLabel = displayDiscount is not null && displayDiscountCents > 0 ? displayDiscount.SummaryLabel : "",
-            Badge = product.Badge,
+            Badge = product.Badge ?? string.Empty,
             IsFeatured = product.IsFeatured,
             Images = product.Images.OrderBy(image => image.DisplayOrder).Select(image => new ParfaitStoreProductImageViewModel
             {
@@ -915,6 +950,8 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         if (product.BillingKind == Domain.Billing.ClientSubscriptionScope.MonthlyTraining &&
             (product.PriceCents <= 0 || product.PriceCents > Domain.Billing.ClientSubscriptionOfferPricing.CustomMaximumCents))
             throw new InvalidOperationException("Enter a monthly training price between $0.01 and $2,500.");
+        if (product.DiscountCodes.Any(x => x.UsageLimit.HasValue) && product.BillingKind != Domain.Billing.ClientSubscriptionScope.MonthlyTraining)
+            throw new InvalidOperationException("Member limits apply only to monthly training promotions.");
         var slug = string.IsNullOrWhiteSpace(product.Slug) ? product.Name : product.Slug;
         slug = slug.Trim().ToLowerInvariant().Replace(" ", "-");
 
@@ -1022,17 +1059,16 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
 
     private static List<ParfaitProductDiscountCodeEditorViewModel> NormalizeDiscountCodes(List<ParfaitProductDiscountCodeEditorViewModel>? codes)
     {
-        return (codes ?? [])
-            .Select(NormalizeDiscountCode)
-            .Where(code => !string.IsNullOrWhiteSpace(code.Code) && code.Amount > 0)
-            .GroupBy(code => code.Code, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .OrderBy(code => code.Code)
-            .ToList();
+        var normalized = (codes ?? []).Select(NormalizeDiscountCode)
+            .Where(code => !string.IsNullOrWhiteSpace(code.Code) && code.Amount > 0).ToList();
+        if (normalized.GroupBy(code => code.Code, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
+            throw new InvalidOperationException("Each promotion code must be unique.");
+        return normalized.OrderBy(code => code.Code).ToList();
     }
 
     private static ParfaitProductDiscountCodeEditorViewModel NormalizeDiscountCode(ParfaitProductDiscountCodeEditorViewModel code)
     {
+        if (code.UsageLimit is <= 0) throw new InvalidOperationException("A member limit must be greater than zero.");
         var discountType = string.Equals(code.DiscountType, "Fixed", StringComparison.OrdinalIgnoreCase) ? "Fixed" : "Percent";
         var amount = discountType == "Fixed"
             ? Math.Round(Math.Max(0m, code.Amount), 2, MidpointRounding.AwayFromZero)
@@ -1044,6 +1080,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
             Code = ParfaitProductCatalogDefaults.NormalizeDiscountCode(code.Code),
             DiscountType = discountType,
             Amount = amount,
+            UsageLimit = code.UsageLimit,
             IsActive = code.IsActive
         };
     }
@@ -1051,6 +1088,8 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     private static ParfaitCommerceSettingsViewModel NormalizeCommerceSettings(ParfaitCommerceSettingsViewModel settings)
     {
         var normalizedDiscount = NormalizeDiscountCode(settings.GlobalDiscount ?? new ParfaitProductDiscountCodeEditorViewModel());
+        if (normalizedDiscount.UsageLimit.HasValue)
+            throw new InvalidOperationException("Member limits belong to individual monthly training promotions.");
 
         return new ParfaitCommerceSettingsViewModel
         {

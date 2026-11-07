@@ -31,6 +31,8 @@ public sealed class CommerceCanonicalInternalBrandIsolationTests
         var products = Read("ParfaitApp", "Views", "InternalModules", "Products.cshtml");
         Assert.Contains("scopedStoreContext?.BusinessKey", products, StringComparison.Ordinal);
         Assert.Contains("productImageFallback", products, StringComparison.Ordinal);
+        Assert.DoesNotContain("https://www.mylegnd.com/favicon.jpg", products, StringComparison.Ordinal);
+        Assert.Contains("No product photo", products, StringComparison.Ordinal);
         Assert.Contains("productSkuFallback", products, StringComparison.Ordinal);
         Assert.DoesNotContain("primaryImage?.ImageUrl ?? \"/images/favicon/parfait-logo.png\"",
             products, StringComparison.Ordinal);
@@ -43,7 +45,8 @@ public sealed class CommerceCanonicalInternalBrandIsolationTests
         Assert.Contains("View(\"~/Views/InternalModules/Products.cshtml\"", controller, StringComparison.Ordinal);
         Assert.Contains("View(\"~/Views/InternalModules/Orders.cshtml\"", controller, StringComparison.Ordinal);
         Assert.Contains("\"~/Views/InternalModules/Automations.cshtml\"", controller, StringComparison.Ordinal);
-        Assert.Contains("View(\"~/Views/InternalModules/Analytics.cshtml\"", controller, StringComparison.Ordinal);
+        Assert.Contains("BusinessAnalyticsControllerBase", controller, StringComparison.Ordinal);
+        Assert.Contains("~/Views/WebsiteAnalytics/Index.cshtml", Read("Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs"), StringComparison.Ordinal);
         Assert.Contains("CommerceManagerTicket", controller, StringComparison.Ordinal);
     }
 

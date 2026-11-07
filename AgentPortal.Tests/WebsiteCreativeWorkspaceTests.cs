@@ -99,6 +99,23 @@ public sealed class WebsiteCreativeWorkspaceTests
             document,
             Actions());
 
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    [InlineData(WebsiteEditorSiteKeys.Business)]
+    public void PageRemovalAndPublicationVisibilityRetainCanonicalContent(string site)
+    {
+        var document = Baseline();
+        var hidden = WebsiteDocumentMutationService.Apply(document, site, Actions(), Capabilities(document),
+            [new WebsiteMutationOperation { Type="updatePage", PagePath="/old", Navigation=new WebsitePageNavigation { IsPublished=false } }]);
+        Assert.False(hidden.Document.Pages["/old"].Navigation.IsPublished);
+        Assert.NotEmpty(hidden.Document.Pages["/old"].Composition);
+        var removed = WebsiteDocumentMutationService.Apply(hidden.Document, site, Actions(), Capabilities(hidden.Document),
+            [new WebsiteMutationOperation { Type="removePage", PagePath="/old" }]);
+        Assert.True(removed.Document.Pages["/old"].Navigation.IsDeleted);
+        Assert.NotEmpty(removed.Document.Pages["/old"].Composition);
+    }
+
     [Fact]
     public void ProtectTrainingRetirementPreservesRecoveryAndOtherFixedPages()
     {

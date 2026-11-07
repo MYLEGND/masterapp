@@ -466,6 +466,73 @@ public class AnalyticsQueryServiceMarketingHealthTests
         Assert.Contains("nvarchar(max)", sql);
     }
 
+    [Fact]
+    public void BrowserStoreAttributionComesFromVerifiedContextNotSubmittedMetadata()
+    {
+        var store = Guid.NewGuid();
+        var forged = Guid.NewGuid();
+        var row = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
+        {
+            EventName = "page_view", EventId = Guid.NewGuid().ToString(), SiteKey = "legend",
+            StoreBusinessId = store, Metadata = new { commerceBusinessId = forged }
+        });
+        Assert.Equal(store.ToString("D"), MasterAppDbContext.JsonValue(row.MetadataJson, "$.commerceBusinessId"));
+        Assert.Null(row.CommerceBusinessId);
+        var ordinary = UnifiedEventMapper.ToAnalytics(new UnifiedEventContext
+        {
+            EventName = "page_view", EventId = Guid.NewGuid().ToString(), SiteKey = "legend",
+            Metadata = new { commerceBusinessId = forged }
+        });
+        Assert.Null(MasterAppDbContext.JsonValue(ordinary.MetadataJson, "$.commerceBusinessId"));
+        var projected = MetaSignalAnalyticsBridgeMetadata.Build(row, "PageView", "synthetic-dedup", "ecommerce", null, null, null);
+        Assert.Equal(store.ToString("D"), MasterAppDbContext.JsonValue(projected, "$.commerceBusinessId"));
+        var unbound = MetaSignalAnalyticsBridgeMetadata.Build(ordinary, "PageView", "synthetic-other", "website", null, null, null);
+        Assert.Null(MasterAppDbContext.JsonValue(unbound, "$.commerceBusinessId"));
+    }
+
+    [Theory]
+    [InlineData("business")]
+    [InlineData("legend")]
+    [InlineData("protect")]
+    public void StoreDimensionExcludesWebsiteAndOtherStoreActivityWithoutChangingOwner(string kind)
+    {
+        var business = Guid.NewGuid();
+        var agent = Guid.NewGuid();
+        var owner = kind switch
+        {
+            "business" => ScopeContext.ForBusiness(business),
+            "protect" => ScopeContext.ForAgent(agent),
+            _ => ScopeContext.ForSite("legend", "founder")
+        };
+        var scope = owner.ForStore(business);
+        Assert.Equal(owner.Workspace, scope.Workspace);
+        Assert.Equal(owner.ScopeType, scope.ScopeType);
+        string Metadata(Guid? store) => JsonSerializer.Serialize(new
+        {
+            siteKey = kind, reportingOwner = "founder", commerceBusinessId = store
+        });
+        var rows = new[] { Metadata(business), Metadata(Guid.NewGuid()), Metadata(null),
+            "{broken", JsonSerializer.Serialize(new { AnalyticsMetadata = new { commerceBusinessId = business } }) };
+        var events = rows.Select(metadata => new AnalyticsEvent
+        {
+            CommerceBusinessId = kind == "business" ? business : null,
+            AgentTrackingProfileId = kind == "protect" ? agent : null,
+            MetadataJson = metadata
+        }).ToArray();
+        var signals = rows.Select(metadata => new MetaSignalEvent
+        {
+            CommerceBusinessId = kind == "business" ? business : null,
+            AgentTrackingProfileId = kind == "protect" ? agent : null,
+            MetadataJson = metadata
+        }).ToArray();
+        Assert.Same(events[0], Assert.Single(SiteScoped(events.AsQueryable(), scope)));
+        Assert.Same(signals[0], Assert.Single(SiteScoped(signals.AsQueryable(), scope)));
+        Assert.Empty(new[] { new WebsiteLead { CommerceBusinessId = business } }.AsQueryable()
+            .Where(OwnerPredicate<WebsiteLead>("ScopePredicateLeads", scope)));
+        Assert.Null(owner.StoreBusinessId);
+        Assert.Throws<ArgumentException>(() => owner.ForStore(Guid.Empty));
+    }
+
     private static IQueryable<T> SiteScoped<T>(IQueryable<T> query, ScopeContext scope)
     {
         var owner = typeof(AnalyticsQueryService).Assembly.GetType("Infrastructure.Analytics.AnalyticsScopeQueryExtensions")!;

@@ -39,6 +39,9 @@ public sealed class ClientIdentityContinuationService
         Guid? subscriptionId = null,
         CancellationToken cancellationToken = default)
     {
+        if (!IsClientAccountPurpose(purpose) || clientProfileId == Guid.Empty)
+            throw new ArgumentException("A client account continuation requires a supported purpose and profile.");
+
         var nowUtc = DateTime.UtcNow;
         var expiresUtc = nowUtc.Add(purpose == ClientIdentityContinuationPurpose.Activation
             ? TimeSpan.FromMinutes(30)
@@ -134,6 +137,10 @@ public sealed class ClientIdentityContinuationService
         if (continuation is null)
             return new ClientIdentityContinuationValidationResult(false, "UNKNOWN_CONTINUATION", "The sign-in continuation is no longer valid.");
 
+        if (!IsClientAccountPurpose(continuation.Purpose) ||
+            !continuation.ClientProfileId.HasValue || continuation.ClientProfileId == Guid.Empty)
+            return new ClientIdentityContinuationValidationResult(false, "INVALID_CONTINUATION", "The sign-in continuation is no longer valid.");
+
         if (continuation.ConsumedUtc.HasValue)
             return new ClientIdentityContinuationValidationResult(false, "USED_CONTINUATION", "This sign-in continuation has already been used.");
 
@@ -157,6 +164,11 @@ public sealed class ClientIdentityContinuationService
             return null;
         }
     }
+
+    private static bool IsClientAccountPurpose(ClientIdentityContinuationPurpose purpose) =>
+        purpose is ClientIdentityContinuationPurpose.Activation
+            or ClientIdentityContinuationPurpose.SignIn
+            or ClientIdentityContinuationPurpose.TrainingBilling;
 
     private static string NormalizeEmail(string? email) =>
         string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();

@@ -4873,6 +4873,8 @@ def fast_track_scope(paths):
     # Infrastructure/Domain/Shared ProjectReference dependencies. Keep exact
     # ownership: an unknown sibling is not silently admitted.
     shared_server = {
+        'Infrastructure/Mobile/MobileHomeService.cs',
+        'Infrastructure/Notifications/NotificationEngine.cs',
         # Filed CRM history shares the existing Domain/Infrastructure graph.
         'Domain/Entities/CrmHistoryEntry.cs',
         'Domain/Entities/WebsiteLeadIntakeLink.cs',
@@ -4907,6 +4909,7 @@ def fast_track_scope(paths):
         'Domain/Entities/SubscriptionPaymentCompletionEffect.cs',
         'Domain/Entities/SubscriptionPaymentRefund.cs',
         'Infrastructure/Billing/BillingReconciliationService.cs',
+        'Domain/Entities/ClientIdentityContinuation.cs',
         'Domain/Entities/ClientSubscriptionOffer.cs',
         'Domain/Entities/MarketingConnection.cs',
         'Domain/Entities/ReceptionistCoordination.cs',
@@ -4915,18 +4918,28 @@ def fast_track_scope(paths):
         'Infrastructure/Billing/BillingServiceCollectionExtensions.cs',
         'Infrastructure/Billing/BillingStateMapper.cs',
         'Infrastructure/Billing/MasterAppBillingOrchestrator.cs',
+        'Infrastructure/Billing/TrainingPromotionReservations.cs',
         'Infrastructure/Bookings/BusinessBookingAccess.cs',
         'Infrastructure/Bookings/MicrosoftCalendarConnectionAuthority.cs',
         'Infrastructure/Bookings/ReceptionistBookingAuthority.cs',
         'Infrastructure/Bookings/ReceptionistBookingContracts.cs',
         'Infrastructure/Bookings/ReceptionistBookingReadinessReader.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.cs',
+        'Infrastructure/Businesses/BusinessAnalyticsControllerBase.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceActionsController.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceCommitmentsController.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.Receptionist.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.ReceptionistManagement.cs',
         'Infrastructure/Businesses/CommerceBusinessProvisioningService.cs',
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs',
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Management.cs',
         'Infrastructure/Households/HouseholdMembershipService.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceService.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceService.Team.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceService.Training.cs',
+        'Infrastructure/Identity/ClientEntraLifecycleService.cs',
+        'SHARED/Analytics/ScopeContext.cs',
+        'SHARED/Crm/BusinessWorkspaceModels.cs',
         'Infrastructure/Identity/RestrictedAiAccessBoundary.cs',
         'Infrastructure/Infrastructure.csproj',
         'Infrastructure/Diagnostics/RoutineSqlPolling.cs',
@@ -5003,10 +5016,38 @@ def fast_track_scope(paths):
         expression = re.escape(pattern).replace(r'\*\*/', '(?:.*/)?')
         expression = expression.replace(r'\*\*', '.*').replace(r'\*', '[^/]*').replace(r'\?', '[^/]')
         return re.fullmatch(expression, path) is not None
+    # Reviewed native application sources are not inputs to server packages.
+    # Keep this exact: new native files still require ownership review.
+    native_only = {
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/LegendActivityProjection.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/MobileContracts.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/navigation/LegendNotificationNavigation.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/network/LegendApi.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/push/LegendFirebaseMessagingService.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/data/LegendRepositories.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/feature/LegendFeatureViewModels.kt',
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/ui/LegendApp.kt',
+        'Legend-Android/app/src/test/java/com/mylegnd/legend/registered/WorkNotificationsContractTest.kt',
+        'Legend-ios/Legend/App/LegendPushNotificationDelegate.swift',
+        'Legend-ios/Legend/Features/Home/LegendApplicationShell.swift',
+        'Legend-ios/Legend/Features/Home/LegendDailyActivity.swift',
+        'Legend-ios/Legend/Features/Home/MobileHomeModels.swift',
+        'Legend-ios/Legend/Features/Messaging/MessagingModels.swift',
+        'Legend-ios/Legend/Features/Notifications/MobileNotificationStore.swift',
+        'Legend-ios/Legend/Features/Root/LegendApplicationBootstrapCoordinator.swift',
+        'Legend-ios/Legend/Features/Social/LegendSocialHomeSection.swift',
+        'Legend-ios/LegendTests/LegendTests.swift',
+        'Legend-ios/LegendTests/MobileNativeContractTests.swift',
+    }
     def owners(path):
+        if path in native_only:
+            return set()
         if path == 'Directory.Build.props' or path in shared_server:
             return set(dotnet)
-        if path.startswith(('CommerceCore/', 'Infrastructure/Commerce/')):
+        if path.startswith('CommerceCore/'):
+            # Portal now references LegendCommerce; Client has no dependency.
+            return set(commerce) | {'portal'}
+        if path.startswith('Infrastructure/Commerce/'):
             return set(commerce)
         if path.startswith('Infrastructure/WebsiteRuntime/'):
             return {'protect'}
@@ -7389,6 +7430,9 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
                 latest[resource]=proof['reference']
             continue
         request = _fast_track_policy().read_request(run['head_sha'])
+        if _fast_track_policy().source_integration_requested(run['head_sha']):
+            fast_track_source_integration_parent(repository, run, token)
+            continue  # Authenticated nonentry; never advance resource baselines.
         if _fast_track_policy().tool_promotion_requested(run['head_sha']):
             if fast_track_promotion_parent(repository,run,token) is None:
                 raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PROMOTION_UNPROVEN')
@@ -7567,6 +7611,11 @@ def fast_track_selection(before, head):
     if not re.fullmatch('[a-f0-9]{40}', head) or not re.fullmatch('[a-f0-9]{40}', before):
         raise ValueError('FAST_TRACK_SELECTION_IDENTITY_UNPROVEN')
     policy = _fast_track_policy()
+    if policy.source_integration_requested(head):
+        admission = fast_track_source_admission(allow_nonpublishing=True)
+        proof = policy.source_integration(before, head, admission)
+        return dict(matrix={'include': []}, selected=False, commerce=False, schema=False,
+            routing=False, impacts={}, baseline=before, productionEligible=False, promotion=proof)
     promotion = policy.tool_promotion_requested(head)
     transition = None
     if promotion:
@@ -7635,6 +7684,33 @@ def fast_track_promotion_parent(repository, run, token):
     before = request.get('trustedToolPromotion', {}).get('baseRevision')
     admission = fast_track_merged_source_proof(repository, revision, token)
     expected = policy.trusted_tool_promotion(before, revision, admission)
+    _fast_track_nonpublishing_receipt(repository, run, token, expected)
+    return before
+
+
+def fast_track_source_integration_parent(repository, run, token):
+    """Prove nonentry only; this is never tool-promotion or recovery authority."""
+    policy = _fast_track_policy()
+    revision = run.get('head_sha', '')
+    if (not policy.source_integration_requested(revision) or not is_fast_track_producer(repository, run)
+        or run.get('status') != 'completed' or run.get('conclusion') != 'success'
+        or type(run.get('run_attempt')) is not int or not 1 <= run['run_attempt'] <= 100):
+        raise ValueError('SOURCE_INTEGRATION_HISTORY_UNPROVEN')
+    request = policy.read_request(revision)
+    marker = request.get('sourceIntegration')
+    before = marker.get('baseRevision') if isinstance(marker, dict) else None
+    expected = policy.source_integration(before, revision,
+        fast_track_merged_source_proof(repository, revision, token))
+    # A successful retry cannot hide an earlier entered/ambiguous attempt.
+    for attempt in range(1, run['run_attempt'] + 1):
+        _fast_track_nonpublishing_receipt(repository, dict(run, run_attempt=attempt), token, expected)
+    return before
+
+
+def _fast_track_nonpublishing_receipt(repository, run, token, expected):
+    """Shared exact artifact and job nonentry proof, without authority inheritance."""
+    import tempfile
+    revision = run['head_sha']
     name = f"fast-track-admission-{run['id']}-{run['run_attempt']}"
     inventory = api_get(repository, f"actions/runs/{run['id']}/artifacts?per_page=100", token)
     rows = inventory.get('artifacts')
@@ -7680,7 +7756,7 @@ def fast_track_promotion_parent(repository, run, token):
             value = json.loads(receipt.read_text())
     if value != dict(expected, producingRun=run['id'], producingAttempt=run['run_attempt']):
         raise ValueError('TRUSTED_TOOL_PROMOTION_RECEIPT_IDENTITY_CHANGED')
-    return before
+    return True
 
 
 def _live_identity_diagnostic(reason, *, run=None, expected_job=None, **details):
@@ -7882,6 +7958,8 @@ def assert_fast_track_release_execution(*, allow_nonpublishing=False, target=Non
     name, runner = _fast_track_job_name(env), env.get('RUNNER_NAME', '')
     if not runner:
         raise RuntimeError('FAST_TRACK_ACTIVE_JOB_UNPROVEN')
+    if not allow_nonpublishing and _fast_track_policy().source_integration_requested(revision):
+        raise RuntimeError('FAST_TRACK_SOURCE_INTEGRATION_NONPUBLISHING')
     if not allow_nonpublishing and _fast_track_policy().tool_promotion_requested(revision):
         raise RuntimeError('FAST_TRACK_TRUSTED_TOOL_PROMOTION_NONPUBLISHING')
     expected = dict(id=int(run_id), run_attempt=int(attempt), path='.github/workflows/' + FAST_TRACK_RELEASE_WORKFLOW,
@@ -11748,6 +11826,18 @@ REVIEWED_CANONICAL_PAYMENT_RUNTIME_PAIRS = frozenset({
      'e097be398e774e6226b9a7cb72b41b7eec92eb8a3043af8e16e412381ca0051f')
 })
 
+
+# Exact Store descriptors; these pins do not authorize runtime/tool promotion.
+REVIEWED_STORE_ENTRIES = (
+    ('20261102062753_ScopedStoreContinuations',
+     'e18146d03a4e95e07bb8a16258a0f04b81bebdd9123870d047f77fa78f123be9'),
+    ('20261102064637_ExplicitBusinessCrmCapability',
+     '218a95dc91fa8d68acff565639529275109bbc67a29e613d298df9cc59fb411b'),
+    ('20261102085754_ScopedStoreProvisioningEvidence',
+     '5af28a808d8b47adda99aa7ef033554c0abb0a54a6084d4652a034348a77e5f6'),
+    ('20261102160514_ScopedStoreMembershipInvitations',
+     'e61bb077eb328f1682b7aeb77b532867e7475e9dc816c2629c8d10a8538891c5'),
+)
 
 REVIEWED_CRM_ENTRY = 'b2654e654640d238a5eb818558bd0ce149a5aefc78d3189489aef0b736447ac4'
 # Exact proposed runtime closures; promotion still requires independent review,

@@ -8,13 +8,14 @@
     var productImageFallback = scopedStoreContext is not null && !scopedStoreContext.IsParfait
         ? (!string.IsNullOrWhiteSpace(scopedStoreContext.LogoUrl)
             ? scopedStoreContext.LogoUrl
-            : "https://www.mylegnd.com/favicon.jpg")
+            : null)
         : "/images/favicon/parfait-logo.png";
     var productSkuFallback = scopedStoreContext?.BusinessKey?.ToUpperInvariant() ?? "PARFAIT";
-    var isScopedCommerceManager = !string.IsNullOrWhiteSpace(commerceManagerTicket);
+    var isScopedCommerceManager = (ViewData["CommerceManagerScoped"] as bool? == true || !string.IsNullOrWhiteSpace(commerceManagerTicket));
+    var supportsTrainingProducts = !isScopedCommerceManager || scopedStoreContext?.IsParfait == true;
     string CommerceAction(string internalPath, string scopedPath) =>
         isScopedCommerceManager
-            ? scopedPath + "?ticket=" + Uri.EscapeDataString(commerceManagerTicket!)
+            ? Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, scopedPath, commerceManagerTicket, scopedPath == "/commerce/manage/products" ? "GET" : "POST")
             : internalPath;
     var commerceSettingsAction = CommerceAction("/internal/commerce/products/settings", "/commerce/manage/settings/commerce");
     var productSaveAction = CommerceAction("/internal/commerce/products", "/commerce/manage/product");
@@ -252,9 +253,15 @@
 
                         <label>Billing type <select class="form-select" name="BillingKind">
                             <option value="OneTime" selected="@(newProduct.BillingKind == "OneTime")">One-time product</option>
+                            @if (supportsTrainingProducts)
+                            {
                             <option value="MonthlyTraining" selected="@(newProduct.BillingKind == "MonthlyTraining")">Monthly training subscription</option>
+                            }
                         </select></label>
+                        @if (supportsTrainingProducts)
+                        {
                         <p class="pf-full">Training prices and product discount codes apply to every monthly renewal for new enrollments. Existing subscribers keep their accepted terms. Global merchandise discounts and stock do not apply to training.</p>
+                        }
                         <label class="pf-full">Description <textarea class="form-control" name="Description" rows="4" required>@newProduct.Description</textarea></label>
                     </div>
                 </details>
@@ -332,6 +339,7 @@
                                             </select>
                                         </label>
                                         <label>Amount <input class="form-control" name="DiscountCodes[@index].Amount" data-field="Amount" type="number" min="0" step="0.01" value="@(code.Amount > 0 ? code.Amount.ToString("0.##") : "10")" /></label>
+                                        <label>Training member limit <input class="form-control" name="DiscountCodes[@index].UsageLimit" data-field="UsageLimit" type="number" min="1" value="@code.UsageLimit" placeholder="Unlimited" /></label>
                                         <label class="pf-check"><input type="checkbox" name="DiscountCodes[@index].IsActive" data-field="IsActive" value="true" @(code.IsActive ? "checked" : "") /> Active</label>
                                         <div class="pf-discount-actions">
                                             <button type="button" class="pf-text-button" data-pf-generate-code>Generate</button>
@@ -403,7 +411,10 @@
                          aria-haspopup="dialog"
                          aria-label="Open @product.Name product editor">
                     <div class="pf-product-summary-main">
-                        <img src="@primaryUrl" alt="@product.Name" />
+                        @if (!string.IsNullOrWhiteSpace(primaryUrl))
+                        { <img src="@primaryUrl" alt="@product.Name" /> }
+                        else
+                        { <span>No product photo</span> }
                         <div class="pf-product-summary-copy">
                             <h3>@product.Name</h3>
                             <span>@product.Slug</span>
@@ -476,7 +487,10 @@
                         <div class="pf-modal-grid">
                             <section class="pf-media-panel">
                                 <div class="pf-primary-preview">
-                                    <img src="@primaryUrl" alt="@product.Name" style="@ImageDisplayStyle(primaryImage?.ObjectFit, primaryImage?.ObjectPositionX ?? 50, primaryImage?.ObjectPositionY ?? 50, primaryImage?.Zoom ?? 1.0m)" />
+                                    @if (!string.IsNullOrWhiteSpace(primaryUrl))
+                                    { <img src="@primaryUrl" alt="@product.Name" style="@ImageDisplayStyle(primaryImage?.ObjectFit, primaryImage?.ObjectPositionX ?? 50, primaryImage?.ObjectPositionY ?? 50, primaryImage?.Zoom ?? 1.0m)" /> }
+                                    else
+                                    { <span>No product photo</span> }
                                 </div>
 
                                 <form method="post"
@@ -491,6 +505,8 @@
                                         Upload Photos
                                         <input type="file" name="images" accept="image/*" multiple data-pf-upload-input />
                                     </label>
+                                    <span class="pf-inline-save-status" data-pf-save-status role="status" aria-live="polite"></span>
+                                    <button type="submit" class="pf-secondary-action" data-pf-upload-retry hidden>Retry upload</button>
                                 </form>
 
                                 <div class="pf-photo-grid"
@@ -552,11 +568,25 @@
                                             <label>Slug <input class="form-control" name="Slug" value="@product.Slug" required /></label>
                                             <label>Price <input class="form-control pf-money-display" type="number" min="0" step="0.01" value="@MoneyField(product.PriceCents)" /><input type="hidden" name="PriceCents" value="@product.PriceCents" class="pf-money-hidden" /></label>
                                             <label>Badge <input class="form-control" name="Badge" value="@product.Badge" /></label>
+                                            @if (!supportsTrainingProducts && product.BillingKind == "MonthlyTraining")
+                                            {
+                                                <input type="hidden" name="BillingKind" value="MonthlyTraining" />
+                                                <p class="pf-full">This existing training subscription is not supported for this store. Its billing type is preserved; contact support before changing it.</p>
+                                            }
+                                            else
+                                            {
                                             <label>Billing type <select class="form-select" name="BillingKind">
                                                 <option value="OneTime" selected="@(product.BillingKind == "OneTime")">One-time product</option>
+                                                @if (supportsTrainingProducts)
+                                                {
                                                 <option value="MonthlyTraining" selected="@(product.BillingKind == "MonthlyTraining")">Monthly training subscription</option>
+                                                }
                                             </select></label>
+                                            }
+                                            @if (supportsTrainingProducts)
+                                            {
                                             <p class="pf-full">Training prices and product discount codes apply to every monthly renewal for new enrollments. Existing subscribers keep their accepted terms. Global merchandise discounts and stock do not apply to training.</p>
+                                            }
                                             <label class="pf-full">Description <textarea class="form-control" name="Description" rows="5" required>@product.Description</textarea></label>
                                         </div>
 
@@ -636,6 +666,7 @@
                                                             </select>
                                                         </label>
                                                         <label>Amount <input class="form-control" name="DiscountCodes[@index].Amount" data-field="Amount" type="number" min="0" step="0.01" value="@(code.Amount > 0 ? code.Amount.ToString("0.##") : "10")" /></label>
+                                        <label>Training member limit <input class="form-control" name="DiscountCodes[@index].UsageLimit" data-field="UsageLimit" type="number" min="1" value="@code.UsageLimit" placeholder="Unlimited" /></label>
                                                         <label class="pf-check"><input type="checkbox" name="DiscountCodes[@index].IsActive" data-field="IsActive" value="true" @(code.IsActive ? "checked" : "") /> Active</label>
                                                         <div class="pf-discount-actions">
                                                             <button type="button" class="pf-text-button" data-pf-generate-code>Generate</button>
@@ -717,6 +748,7 @@
 
                         <div class="pf-modal-footer">
                             <button type="button" class="pf-secondary-action" data-pf-close>Cancel</button>
+                            <span class="pf-inline-save-status" data-pf-save-status role="status" aria-live="polite"></span>
                             <button type="submit" class="pf-action">Save Image Position</button>
                         </div>
                     </form>
@@ -753,6 +785,7 @@
             </select>
         </label>
         <label>Amount <input class="form-control" data-field="Amount" type="number" min="0" step="0.01" value="10" /></label>
+        <label>Training member limit <input class="form-control" data-field="UsageLimit" type="number" min="1" placeholder="Unlimited" /></label>
         <label class="pf-check"><input type="checkbox" data-field="IsActive" value="true" checked /> Active</label>
         <div class="pf-discount-actions">
             <button type="button" class="pf-text-button" data-pf-generate-code>Generate</button>
@@ -943,7 +976,7 @@
                 target.classList.add(`is-${tone}`);
             }
 
-            if (!message) {
+            if (!message || tone === "error" || tone === "saving") {
                 return;
             }
 
@@ -1008,6 +1041,11 @@
             const currentStack = document.querySelector(`[data-pf-product-stack="${productId}"]`);
             const nextStack = doc.querySelector(`[data-pf-product-stack="${productId}"]`);
             if (currentStack && nextStack) {
+                // Keep the live editor and its pending save state. A media response
+                // must never replace fields the owner has changed in the meantime.
+                const currentEditor = currentStack.querySelector("[data-pf-product-edit-form]");
+                const nextEditor = nextStack.querySelector("[data-pf-product-edit-form]");
+                if (currentEditor && nextEditor) nextEditor.replaceWith(currentEditor);
                 currentStack.replaceWith(nextStack);
                 initializeRoot(nextStack);
                 replaced = true;
@@ -1033,7 +1071,9 @@
 
             const payload = await response.text();
             if (!response.ok) {
-                throw new Error(payload || "Request failed.");
+                let message = "The change could not be saved. Your edits are still here; try again.";
+                try { const problem = JSON.parse(payload); if (problem.message) message = problem.message; } catch { }
+                throw new Error(message);
             }
 
             return payload;
@@ -1066,16 +1106,14 @@
 
                 if (refresh && productId) {
                     const replaced = replaceProductUiFromHtml(productId, html, { openModalId: `editProduct${productId}` });
-                    if (!replaced) {
-                        window.location.reload();
-                        return true;
-                    }
+                    if (!replaced) throw new Error("The store session changed. Sign in again before saving; your edits are still here.");
 
                     const freshForm = document.querySelector(`[data-pf-product-stack="${productId}"] [data-pf-product-edit-form]`);
                     renderSaveState(freshForm, "Saved", "success");
                 } else {
                     if (productId) {
-                        replaceProductSummaryFromHtml(productId, html);
+                        if (!replaceProductSummaryFromHtml(productId, html))
+                            throw new Error("The store session changed. Sign in again before saving; your edits are still here.");
                     }
                     renderSaveState(form, "Saved", "success");
                 }
@@ -1083,7 +1121,7 @@
                 return true;
             } catch (error) {
                 console.error(error);
-                renderSaveState(form, "Save failed", "error");
+                renderSaveState(form, error.message || "Save failed", "error");
                 return false;
             } finally {
                 state.saving = false;
@@ -1116,15 +1154,25 @@
         };
 
         const submitRefreshForm = async (form, productId, openModalId) => {
+            const state = getFormState(form);
+            if (state.saving) return;
+            state.saving = true;
+            const body = new FormData(form);
+            const controls = [...form.querySelectorAll('input[type="file"], button[type="submit"]')];
+            controls.forEach(control => control.disabled = true);
+            const retry = form.querySelector("[data-pf-upload-retry]");
+            if (retry) retry.hidden = true;
+            renderSaveState(form, "Uploading and saving…", "saving");
             try {
-                const html = await submitFormRequest(form);
-                const replaced = replaceProductUiFromHtml(productId, html, { openModalId });
-                if (!replaced) {
-                    window.location.reload();
-                }
+                const html = await submitRequest(form.action, body);
+                if (!replaceProductUiFromHtml(productId, html, { openModalId }))
+                    throw new Error("The store session changed. Sign in again before uploading.");
             } catch (error) {
-                console.error(error);
-                window.location.reload();
+                renderSaveState(form, error.message || "Upload failed. Please try again.", "error");
+                if (retry) retry.hidden = false;
+            } finally {
+                controls.forEach(control => control.disabled = false);
+                state.saving = false;
             }
         };
 
@@ -1133,7 +1181,7 @@
             const token = stack?.querySelector('input[name="__RequestVerificationToken"]')?.value;
 
             if (!token) {
-                window.location.reload();
+                renderSaveState(stack?.querySelector("[data-pf-product-edit-form]"), "Sign in again before saving. Your edits are still here.", "error");
                 return;
             }
 
@@ -1153,11 +1201,10 @@
                 const html = await submitRequest(url, formData);
                 const replaced = replaceProductUiFromHtml(productId, html, { openModalId });
                 if (!replaced) {
-                    window.location.reload();
+                    throw new Error("The store session changed. Sign in again before saving.");
                 }
             } catch (error) {
-                console.error(error);
-                window.location.reload();
+                renderSaveState(stack?.querySelector("[data-pf-product-edit-form]"), error.message || "The change could not be saved.", "error");
             }
         };
 
@@ -1616,7 +1663,6 @@
                 }
 
                 submitRefreshForm(form, productId, `editProduct${productId}`);
-                target.value = "";
                 return;
             }
 
@@ -1652,7 +1698,7 @@
                 return;
             }
 
-            if (form.matches("[data-pf-image-editor-form]")) {
+            if (form.matches("[data-pf-image-editor-form], [data-pf-upload-form]")) {
                 event.preventDefault();
                 const productId = form.getAttribute("data-pf-product-id");
                 if (!productId) {

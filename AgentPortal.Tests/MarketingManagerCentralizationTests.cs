@@ -168,7 +168,7 @@ public sealed class MarketingManagerCentralizationTests
     {
         var root = Root();
         var agent = Read(root, "AgentPortal", "Controllers", "WebsiteAnalyticsController.cs");
-        var business = Read(root, "Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
+        var business = Read(root, "Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs");
         var manager = Read(root, "Infrastructure", "Analytics", "MarketingManagerService.cs");
         var performance = Read(root, "Infrastructure", "Analytics", "UnifiedMarketingPerformanceService.cs");
 
@@ -255,7 +255,7 @@ public sealed class MarketingManagerCentralizationTests
         var view = Read(root, "AgentPortal", "Views", "WebsiteAnalytics", "Index.cshtml");
         var js = Read(root, "AgentPortal", "wwwroot", "js", "website-analytics.js");
         var agent = Read(root, "AgentPortal", "Controllers", "WebsiteAnalyticsController.cs");
-        var business = Read(root, "Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
+        var business = Read(root, "Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs");
 
         var postHelper = js.IndexOf("async function fetchPostJson(", StringComparison.Ordinal);
         var scopeHelper = js.IndexOf("function advertisingScopeParams()", StringComparison.Ordinal);

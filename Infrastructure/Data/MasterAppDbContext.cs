@@ -766,6 +766,8 @@ public class MasterAppDbContext : DbContext
         modelBuilder.Entity<CommerceBusinessSettings>(e =>
         {
             e.HasKey(x => x.Id);
+            e.Property(x => x.ShippingConfigurationJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT").IsConcurrencyToken();
+            e.Property(x => x.CustomerAutomationStateJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT").IsConcurrencyToken();
             e.Property(x => x.GlobalDiscountCode).HasMaxLength(80);
             e.Property(x => x.GlobalDiscountType).IsRequired().HasMaxLength(40);
             e.Property(x => x.TaxPercent).HasPrecision(9, 4);
@@ -780,6 +782,7 @@ public class MasterAppDbContext : DbContext
         modelBuilder.Entity<CommerceBusinessMember>(e =>
         {
             e.Property(x => x.OwnershipPercentage).HasPrecision(5, 2);
+            e.Property(x => x.UpdatedUtc).IsConcurrencyToken();
             e.HasKey(x => x.Id);
             e.Property(x => x.Email).IsRequired().HasMaxLength(320);
             e.Property(x => x.NormalizedEmail).IsRequired().HasMaxLength(320);
@@ -901,6 +904,7 @@ public class MasterAppDbContext : DbContext
 
         modelBuilder.Entity<CommerceOrder>(e =>
         {
+            e.Property(x => x.ShippingLabelStateJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT").IsConcurrencyToken();
             e.HasKey(x => x.Id);
             e.Property(x => x.OrderNumber).IsRequired().HasMaxLength(80);
             e.Property(x => x.Status).IsRequired().HasMaxLength(40);
@@ -968,6 +972,8 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.TrainingPlanName).HasMaxLength(256);
             e.Property(x => x.TrainingBenefits).HasMaxLength(12000);
             e.Property(x => x.TrainingPromotionCode).HasMaxLength(120);
+            e.HasOne<CommerceProductDiscount>().WithMany().HasForeignKey(x => x.TrainingDiscountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => new { x.TrainingDiscountId, x.ClientProfileId });
             e.Property(x => x.Currency).HasMaxLength(8).IsRequired();
             e.Property(x => x.BillingAnchorSelectionMode).HasConversion<string>().HasMaxLength(40).IsRequired();
             e.Property(x => x.FreeTrialDays).HasDefaultValue(0);
@@ -1153,13 +1159,26 @@ public class MasterAppDbContext : DbContext
         modelBuilder.Entity<ClientIdentityContinuation>(e =>
         {
             e.HasKey(x => x.Id);
-            e.ToTable("ClientIdentityContinuations");
+            e.ToTable("ClientIdentityContinuations", t => t.HasCheckConstraint(
+                "CK_ClientIdentityContinuations_PurposeBinding",
+                "(([Purpose] IN ('Activation', 'SignIn', 'WebsiteEditor', 'TrainingBilling') AND [ClientProfileId] IS NOT NULL AND [ClientProfileId] <> '00000000-0000-0000-0000-000000000000') OR " +
+                "([Purpose] = 'BusinessMembership' AND [ClientProfileId] IS NOT NULL AND [CommerceBusinessId] IS NOT NULL AND [CommerceBusinessMemberId] IS NOT NULL AND [ActorUserId] IS NOT NULL) OR " +
+                "([Purpose] = 'StoreManagement' AND [CommerceBusinessId] IS NOT NULL AND [CommerceBusinessId] <> '00000000-0000-0000-0000-000000000000' AND " +
+                "[ActorUserId] IS NOT NULL AND LTRIM(RTRIM([ActorUserId])) <> '' AND " +
+                "[DestinationOrigin] IS NOT NULL AND LTRIM(RTRIM([DestinationOrigin])) <> '' AND " +
+                "[WebsiteSiteKey] IS NOT NULL AND LTRIM(RTRIM([WebsiteSiteKey])) <> '' AND " +
+                "[WebsiteOwnerKey] IS NOT NULL AND LTRIM(RTRIM([WebsiteOwnerKey])) <> '' AND " +
+                "[BrowserCorrelationHash] IS NOT NULL AND LTRIM(RTRIM([BrowserCorrelationHash])) <> ''))"));
             e.Property(x => x.Purpose).HasConversion<string>().HasMaxLength(32).IsRequired();
             e.Property(x => x.TokenHash).HasMaxLength(128).IsRequired();
             e.Property(x => x.IntendedNormalizedEmail).HasMaxLength(320).IsRequired();
             e.Property(x => x.ReturnUrl).HasMaxLength(2048).IsRequired();
             e.Property(x => x.ActorUserId).HasMaxLength(450);
             e.Property(x => x.ActorEmail).HasMaxLength(320);
+            e.Property(x => x.DestinationOrigin).HasMaxLength(512);
+            e.Property(x => x.WebsiteSiteKey).HasMaxLength(64);
+            e.Property(x => x.WebsiteOwnerKey).HasMaxLength(450);
+            e.Property(x => x.BrowserCorrelationHash).HasMaxLength(128);
 
             e.HasIndex(x => x.TokenHash).IsUnique();
             e.HasIndex(x => new { x.ClientProfileId, x.ExpiresUtc });

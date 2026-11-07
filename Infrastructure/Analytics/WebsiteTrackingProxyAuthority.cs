@@ -73,14 +73,19 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
             if (store is null) return BadRequest(new { error = "commerce_scope_required" });
             var db = HttpContext.RequestServices.GetRequiredService<MasterAppDbContext>();
             var version = store.WebsiteContentVersionId.HasValue
-                ? await db.Set<Domain.Entities.WebsiteContentVersion>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == store.WebsiteContentVersionId, ct) : null;
+                ? WebsiteContentStore.ReadImmutablePublication(() => db.Set<Domain.Entities.WebsiteContentVersion>().AsNoTracking()
+                    .Where(x => x.Id == store.WebsiteContentVersionId && x.SnapshotRetiredUtc == null)
+                    .Select(x => new Domain.Entities.WebsiteContentVersion { Id = x.Id, StateId = x.StateId, DocumentJson = x.DocumentJson })
+                    .SingleOrDefault(), ct) : null;
+            if (store.WebsiteContentVersionId.HasValue && version is null)
+                return BadRequest(new { error = "commerce_publication_unavailable" });
             var origin = new Uri(Request.Headers.Origin.ToString());
             var typedBusinessId = store.WebsiteSiteKey is WebsiteEditorSiteKeys.Protect or WebsiteEditorSiteKeys.Legend
                 ? (Guid?)null : store.CommerceBusinessId;
             var scope = new PublicWebsiteRuntimeScope(store.WebsiteSiteKey, store.BusinessKey, typedBusinessId, version, origin.IdnHost);
             if (CanonicalizePublishedBinding(req, scope) is IActionResult bindingError)
                 return bindingError;
-            return await PersistPublicWebsiteEventAsync(req, scope, ct, store.AgentTrackingProfileId);
+            return await PersistPublicWebsiteEventAsync(req, scope, ct, store.AgentTrackingProfileId, store.CommerceBusinessId);
         }
 
         if (req.SiteKey is WebsiteEditorSiteKeys.Legend or WebsiteEditorSiteKeys.Business)
@@ -370,7 +375,7 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
     private async Task<IActionResult> PersistPublicWebsiteEventAsync(
         AnalyticsEventRequest req,
         PublicWebsiteRuntimeScope scope,
-        CancellationToken cancellationToken, Guid? agentTrackingProfileId = null)
+        CancellationToken cancellationToken, Guid? agentTrackingProfileId = null, Guid? storeBusinessId = null)
     {
         if (!AnalyticsEventCatalog.TryGet(req.EventType, out var definition) || !definition.AllowBrowser)
             return BadRequest(new { error = "invalid_event_type" });
@@ -380,6 +385,7 @@ public abstract class WebsiteTrackingProxyAuthority : ControllerBase
         {
             SiteKey = scope.SiteKey,
             CommerceBusinessId = scope.CommerceBusinessId,
+            StoreBusinessId = storeBusinessId,
             AgentTrackingProfileId = agentTrackingProfileId,
             WebsiteContentVersionId = scope.PublishedVersion?.Id,
             WebsiteBindingId = string.IsNullOrWhiteSpace(req.WebsiteBindingId) ? null : req.WebsiteBindingId.Trim(),

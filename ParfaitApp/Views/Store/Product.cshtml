@@ -67,17 +67,9 @@
             size.StatusTone
         })
         .ToList();
-    var displayPriceCents = Model.DisplayPriceCents > 0 || Model.HasDisplaySalePrice
-        ? Model.DisplayPriceCents
-        : Model.PriceCents;
     var hasPrice = Model.PriceCents > 0;
-    var priceMajor = Math.Abs(displayPriceCents / 100).ToString();
-    var priceMinor = Math.Abs(displayPriceCents % 100).ToString("00");
 }
 
-@section Styles {
-    <link rel="stylesheet" href="/store-assets/css/storefront.css" asp-append-version="true" />
-}
 
 <section class="sp-store-page">
     <div class="sp-shell sp-product-shell">
@@ -90,11 +82,18 @@
                 }
 
                 <div class="sp-gallery-frame">
+                    @if (!string.IsNullOrWhiteSpace(selectedImage?.ImageUrl ?? Model.PrimaryImageUrl))
+                    {
                     <img id="spMainProductImage"
                          class="sp-gallery-main-image"
                          src="@(selectedImage?.ImageUrl ?? Model.PrimaryImageUrl)"
                          alt="@(selectedImage?.AltText ?? Model.Name)"
                          style="@ImageDisplayStyle(selectedImage?.ObjectFit ?? Model.PrimaryImageObjectFit, selectedImage?.ObjectPositionX ?? Model.PrimaryImageObjectPositionX, selectedImage?.ObjectPositionY ?? Model.PrimaryImageObjectPositionY, selectedImage?.Zoom ?? Model.PrimaryImageZoom)" />
+                    }
+                    else
+                    {
+                        <span class="sp-product-no-photo" role="img" aria-label="No product photo">No product photo</span>
+                    }
                 </div>
 
                 @if (images.Count > 1)
@@ -134,7 +133,7 @@
 
         <section class="sp-product-info-panel sp-surface">
             <a class="sp-back-link sp-product-back-link" href="@storeRoot">← Back to collection</a>
-            @if (!string.IsNullOrWhiteSpace(Model.Badge))
+            @if (!string.IsNullOrWhiteSpace(Model.Badge) && !string.Equals(Model.Badge.Trim(), Model.Name?.Trim(), StringComparison.OrdinalIgnoreCase))
             {
                 <div class="sp-product-kicker sp-product-badge">@Model.Badge</div>
             }
@@ -147,11 +146,7 @@
                 }
                 @if (hasPrice)
                 {
-                    <span class="sp-product-price sp-product-price-value" aria-label="@Model.DisplayPriceLabel">
-                        <span class="sp-product-price-currency">$</span>
-                        <span class="sp-product-price-major">@priceMajor</span>
-                        <span class="sp-product-price-minor">.@priceMinor</span>
-                    </span>
+                    <span class="sp-product-price sp-product-price-value">@Model.DisplayPriceLabel</span>
                 }
                 else
                 {
@@ -356,7 +351,7 @@
                     quantity: 1
                 });
 
-                } catch { addButton.textContent = "Please try again"; addButton.disabled = false; return; }
+                } catch (error) { availability.textContent = error.message || "Unable to update your cart. Please try again."; availability.setAttribute("role", "status"); addButton.textContent = "Try again"; addButton.disabled = false; return; }
                 addButton.textContent = "Added to Cart";
                 setTimeout(() => {
                     setAvailability(sizeSelect.value);

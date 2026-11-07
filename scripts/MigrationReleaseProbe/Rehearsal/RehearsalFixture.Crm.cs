@@ -99,7 +99,7 @@ internal static partial class RehearsalFixture
         {
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             await db.Database.ExecuteSqlRawAsync(mutation, ct);
-            try { await CandidateContract.Verify(db, contract, applied, ct); throw new InvalidOperationException("CRM schema drift accepted"); }
+            try { await VerifyFixtureContract(db, contract, applied, ct); throw new InvalidOperationException("CRM schema drift accepted"); }
             catch (ProbeObservationFailure error) when (error.Message == "PHYSICAL_SCHEMA_DRIFT") { }
             finally { await transaction.RollbackAsync(ct); }
         }

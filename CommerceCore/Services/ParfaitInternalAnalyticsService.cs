@@ -65,7 +65,7 @@ public sealed class ParfaitInternalAnalyticsService
         CancellationToken ct = default) =>
         GetWorkspaceSummaryAsync(
             businessId,
-            ScopeContext.ForBusiness(businessId),
+            ScopeContext.ForBusiness(businessId).ForStore(businessId),
             MarketingOwnerScope.Business(businessId),
             preset,
             fromUtc,
@@ -91,7 +91,7 @@ public sealed class ParfaitInternalAnalyticsService
             toUtc,
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
-        var scope = analyticsScope;
+        var scope = analyticsScope.ForStore(businessId);
         // Fresh scoped queries deliberately bypass the cache; zero relative TTL is invalid.
         return await BuildWorkspaceSummaryAsync(businessId, marketingOwner, range, scope, ct);
     }
@@ -166,7 +166,7 @@ public sealed class ParfaitInternalAnalyticsService
         CancellationToken ct = default) =>
         GetDashboardAsync(
             businessId,
-            ScopeContext.ForBusiness(businessId),
+            ScopeContext.ForBusiness(businessId).ForStore(businessId),
             MarketingOwnerScope.Business(businessId),
             preset,
             fromUtc,
@@ -196,10 +196,22 @@ public sealed class ParfaitInternalAnalyticsService
             toUtc,
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
-        var scope = analyticsScope;
+        var scope = analyticsScope.ForStore(businessId);
         return await BuildDashboardAsync(businessId, marketingOwner, range, scope,
             fromUtc, toUtc, viewerTimeZoneId, viewerTimeZoneOffsetMinutes, ct);
     }
+
+    // Shared scoped reporting projection; excludes provider credentials and customer contact data.
+    public static object StoreReport(ParfaitInternalAnalyticsViewModel model) => new
+        {
+            model.RangeLabel, orderCount = model.Orders, model.PaidOrders, model.Purchases, model.RevenueCents,
+            model.AverageOrderValueCents, model.PaidOrdersWithoutPurchaseEvent, model.PurchaseEventsWithoutPaidOrder,
+            model.CartAbandonmentSessions, model.TopProducts,
+            actions = model.ActionBreakdowns.Select(x => new { x.Label, x.Count, x.UniqueSessions, x.UniqueVisitors, x.ConversionRate }),
+            orders = model.RecentOrders.Select(x => new { x.OrderNumber, x.CreatedUtc, x.PaymentStatus,
+                x.FulfillmentStatus, x.ReturnStatus, x.TotalCents, x.NetRevenueCents, x.ItemSummary }),
+            events = model.RecentEvents.Select(x => new { x.EventUtc, x.EventType, x.ProductName, x.Quantity, x.OrderNumber, x.Source })
+        };
 
     private async Task<ParfaitInternalAnalyticsViewModel> BuildDashboardAsync(
         Guid businessId,

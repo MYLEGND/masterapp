@@ -25,12 +25,25 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
         return items.GroupBy(x => x.BusinessId).Select(group =>
         {
             var first = group.First();
-            return first with { CanCrm = group.Any(x => x.CanCrm), CanAnalytics = group.Any(x => x.CanAnalytics), CanCustomize = group.Any(x => x.CanCustomize), CanWebsite = group.Any(x => x.CanWebsite) };
+            return first with { CanCrm = group.Any(x => x.CanCrm), CanAnalytics = group.Any(x => x.CanAnalytics), CanCustomize = group.Any(x => x.CanCustomize), CanWebsite = group.Any(x => x.CanWebsite), StoreManagementUrl = group.Select(x => x.StoreManagementUrl).FirstOrDefault(x => x is not null) };
         }).OrderBy(x => x.BusinessName).ToList();
     }
 
     public async Task<List<BusinessWorkspaceNavigationItem>> NavigationAsync(Guid profileId, string actor, string? email, CancellationToken ct, Guid? selectedBusinessId = null)
     {
+        if (!selectedBusinessId.HasValue)
+        {
+            var bindings = await db.CommerceBusinessMembers.AsNoTracking().Where(x => x.ClientProfileId == profileId &&
+                x.RoleKey == "account" && x.Status == "Active").Take(2).ToListAsync(ct);
+            if (bindings.Count > 1) return new();
+            if (bindings.Count == 1)
+            {
+                var binding = bindings[0];
+                if (await db.CommerceBusinessMembers.CountAsync(x => x.CommerceBusinessId == binding.CommerceBusinessId &&
+                    x.RoleKey == "account" && x.Status == "Active", ct) != 1) return new();
+                selectedBusinessId = binding.CommerceBusinessId;
+            }
+        }
         var ids = await db.CommerceBusinessMembers.AsNoTracking().Where(x => x.ClientProfileId == profileId && x.Status == "Active" &&
                 (!selectedBusinessId.HasValue || x.CommerceBusinessId == selectedBusinessId))
             .Select(x => x.CommerceBusinessId).Distinct().ToListAsync(ct);
@@ -41,7 +54,10 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
             var analyticsBusiness = await BusinessWorkspaceAccess.ResolveAsync(db, id, profileId, actor, email, "analytics", ct);
             var settings = await BusinessWorkspaceAccess.ResolveAsync(db, id, profileId, actor, email, "settings", ct);
             var website = await BusinessWorkspaceAccess.ResolveAsync(db, id, profileId, actor, email, "website", ct);
-            var business = crm ?? analyticsBusiness ?? settings ?? website;
+            var storeAccess = await BusinessWorkspaceAccess.ResolveActorMembershipAsync(db, id, actor, "catalog", profileId, ct)
+                ?? await BusinessWorkspaceAccess.ResolveActorMembershipAsync(db, id, actor, "orders", profileId, ct)
+                ?? await BusinessWorkspaceAccess.ResolveActorMembershipAsync(db, id, actor, "team", profileId, ct);
+            var business = crm ?? analyticsBusiness ?? settings ?? website ?? (storeAccess is null ? null : await db.CommerceBusinesses.FindAsync(new object[] { id }, ct));
             if (business is null) continue;
             var preferences = (await SettingsAsync(id, ct)).Preferences;
             var cutoff = DateTime.UtcNow.AddHours(-24);
@@ -49,7 +65,12 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
                 x.Status == "active" && x.CertificateStatus == "active" && x.LastCheckedUtc >= cutoff)
                 .OrderBy(x => x.CreatedUtc).Select(x => x.Hostname).FirstOrDefaultAsync(ct);
             result.Add(new(id, business.DisplayName, preferences.LeadLabel, preferences.ClientLabel,
-                crm is not null, analyticsBusiness is not null, settings is not null, website is not null, liveDomain is null ? null : "https://" + liveDomain));
+                crm is not null, analyticsBusiness is not null, settings is not null, website is not null, liveDomain is null ? null : "https://" + liveDomain,
+                (storeAccess is not null || analyticsBusiness is not null || settings is not null || website is not null)
+                    ? business.Key == ParfaitApp.Services.ParfaitBusinessScopeService.ParfaitBusinessKey
+                        ? ParfaitApp.Services.CommerceStoreContextService.StandaloneParfaitManagementEntry(configuration)
+                        : await ParfaitApp.Services.CommerceStoreContextService.PublishedManagementEntryAsync(db, configuration,
+                            WebsiteEditorSiteKeys.Business, WebsiteEditorSiteKeys.BusinessOwnerKey(id), ct) : null));
         }
         return result;
     }
@@ -57,9 +78,9 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
     public async Task<object?> AnalyticsDataAsync(Guid businessId, string section, TimeRangeRequest range, TrafficType trafficType,
         string? metric = null, string? visitorId = null, string? sessionId = null,
         string? quoteType = null, string? campaign = null, string? pageMode = null, string? scoreTier = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default, ScopeContext? reportingScope = null)
     {
-        var scope = ScopeContext.ForBusiness(businessId);
+        var scope = ResolveReportingScope(businessId, reportingScope);
         if (section is "kpi-detail" or "visitor-timeline")
         {
             var trust = new AgentPortal.Services.Analytics.VisitorTrustScoringService();
@@ -98,6 +119,16 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
         };
     }
 
+    private static ScopeContext ResolveReportingScope(Guid businessId, ScopeContext? reportingScope)
+    {
+        if (reportingScope is null) return ScopeContext.ForBusiness(businessId);
+        if (businessId == Guid.Empty || reportingScope.StoreBusinessId != businessId ||
+            (reportingScope.CommerceBusinessId.HasValue && reportingScope.CommerceBusinessId != businessId) ||
+            (reportingScope.ScopeType == ScopeType.Global && !reportingScope.HasSiteScope))
+            throw new ArgumentException("The reporting scope must identify this store.", nameof(reportingScope));
+        return reportingScope;
+    }
+
     private IQueryable<WorkstationLeadProfile> Contacts(Guid id) => id != Guid.Empty
         ? db.WorkstationLeadProfiles.Where(x => x.CommerceBusinessId == id && x.AgentUserId == "")
         : db.WorkstationLeadProfiles.Where(x => false);
@@ -112,6 +143,7 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
         if (search.Length > 0) query = query.Where(x => x.FirstName.Contains(search) || x.LastName.Contains(search) || x.Email.Contains(search) || x.Phone.Contains(search));
         var model = new BusinessWorkspaceModel { BusinessId = business.Id, BusinessName = business.DisplayName, Kind = kind, Search = search, Page = page, Total = await query.CountAsync(ct) };
         model.Preferences = (await SettingsAsync(business.Id, ct)).Preferences;
+        model.Training = await TrainingAsync(business.Id, search, page, null, ct);
         var rows = await query.OrderBy(x => x.CrmOrder).ThenBy(x => x.LeadId).ToListAsync(ct);
         model.Contacts = rows.Select(x => Project(x, model.Preferences)).ToList();
         model.CanonicalContacts = rows.Select(x => ProjectCanonical(x, model.Preferences)).ToList();
@@ -163,11 +195,11 @@ public sealed partial class BusinessWorkspaceService(MasterAppDbContext db, IAna
     public async Task<BusinessWorkspaceModel> AnalyticsAsync(
         CommerceBusiness business,
         TimeRangeRequest range,
-        CancellationToken ct)
+        CancellationToken ct, ScopeContext? reportingScope = null)
     {
         ArgumentNullException.ThrowIfNull(range);
         var days = range.Preset switch { "7d" => 7, "90d" => 90, _ => 30 };
-        var scope = ScopeContext.ForBusiness(business.Id);
+        var scope = ResolveReportingScope(business.Id, reportingScope);
         var settings = await SettingsAsync(business.Id, ct);
         var model = new BusinessWorkspaceModel { BusinessId = business.Id, BusinessName = business.DisplayName, Tab = "analytics", Days = days,
             Summary = await analytics.GetSummaryAsync(range, scope), Health = await analytics.GetMarketingHealthAsync(range, scope) };

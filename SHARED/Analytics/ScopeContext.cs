@@ -17,6 +17,17 @@ public sealed class ScopeContext
     public Guid? CommerceBusinessId { get; init; }
     public string? SiteKey { get; init; }
     public string? ReportingOwner { get; init; }
+    // A reporting dimension, never a replacement for the authenticated owner.
+    public Guid? StoreBusinessId { get; init; }
+
+    public ScopeContext ForStore(Guid businessId) => businessId != Guid.Empty
+        ? new ScopeContext
+        {
+            ScopeType = ScopeType, AgentTrackingProfileId = AgentTrackingProfileId,
+            CommerceBusinessId = CommerceBusinessId, SiteKey = SiteKey,
+            ReportingOwner = ReportingOwner, StoreBusinessId = businessId
+        }
+        : throw new ArgumentException("A canonical store business is required.", nameof(businessId));
 
     // Invalid/empty scopes intentionally have no owner key. Site/global reports can
     // aggregate owners and must never be treated as a single marketing destination.

@@ -41,17 +41,19 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
             // A published website may also own the canonical Parfait checkout,
             // which is a server route rather than a compiled CMS page. Both
             // authorities must agree on the business before admitting its form.
-            if (NormalizePath(sourcePath) == "/store/checkout")
+            if (NormalizePath(sourcePath) is "/store/checkout" or "/store/training")
             {
                 var commerceStores = context.RequestServices?.GetService<ParfaitApp.Services.CommerceStoreContextService>();
                 var checkoutStore = commerceStores is null ? null :
                     await commerceStores.ResolveAnalyticsAsync(context, sourcePath, cancellationToken);
                 if (checkoutStore?.IsParfait == true)
                 {
-                    if (checkoutStore.CommerceBusinessId != business.CommerceBusinessId ||
-                        checkoutStore.CheckoutPath != NormalizePath(sourcePath)) return null;
+                    if ((NormalizePath(sourcePath) == "/store/training" && !checkoutStore.TrainingPagePublished) ||
+                        checkoutStore.CommerceBusinessId != business.CommerceBusinessId ||
+                        (NormalizePath(sourcePath) != "/store/training" && checkoutStore.CheckoutPath != NormalizePath(sourcePath))) return null;
                     return business with { IsCommerceApp = true, CommerceCheckoutPath = checkoutStore.CheckoutPath };
                 }
+                if (NormalizePath(sourcePath) == "/store/training") return null;
             }
             return business;
         }
@@ -92,6 +94,7 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
             var store = await stores.ResolveAnalyticsAsync(context, sourcePath, cancellationToken);
             if (store?.IsParfait == true && store.CommerceBusinessId != Guid.Empty)
             {
+                if (NormalizePath(sourcePath) == "/store/training" && !store.TrainingPagePublished) return null;
                 WebsiteContentVersion? version = null;
                 if (store.WebsiteContentVersionId is Guid versionId && versionId != Guid.Empty)
                     version = await db.Set<WebsiteContentVersion>().AsNoTracking()
@@ -185,6 +188,7 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
 
         if (scope.IsCommerceApp)
             return IsContactPath(normalized, allowAgentPrefix: false) ||
+                   (normalized == "/store/training" && PublishedDocumentContainsPath(scope.PublishedVersion, normalized, WebsiteEditorSiteKeys.Business)) ||
                    (!string.IsNullOrWhiteSpace(scope.CommerceCheckoutPath) &&
                     string.Equals(normalized, scope.CommerceCheckoutPath, StringComparison.OrdinalIgnoreCase));
 
@@ -205,7 +209,7 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
         }
     }
 
-    private static bool PublishedDocumentContainsPath(
+    public static bool PublishedDocumentContainsPath(
         WebsiteContentVersion? version,
         string normalizedPath,
         string siteKey)
@@ -230,9 +234,10 @@ public sealed class PublicWebsiteRuntimeScopeResolver(MasterAppDbContext db, Web
             var document = WebsiteContentSanitizer.ReadPersisted(
                 version.DocumentJson,
                 new JsonSerializerOptions(JsonSerializerDefaults.Web));
-            return document.Pages.Keys.Any(path =>
+            return document.Pages.Any(page =>
+                page.Value.Navigation is { IsPublished: true, IsDeleted: false } &&
                 string.Equals(
-                    path.Length > 1 ? path.TrimEnd('/') : path,
+                    page.Key.Length > 1 ? page.Key.TrimEnd('/') : page.Key,
                     route,
                     StringComparison.OrdinalIgnoreCase));
         }

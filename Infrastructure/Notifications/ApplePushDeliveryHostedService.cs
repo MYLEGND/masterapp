@@ -33,7 +33,8 @@ internal sealed record ApplePushDeliveryRequest(
     int BadgeCount,
     Guid? ConversationId,
     Shared.Calling.LegendCallSnapshot? Call = null,
-    NotificationSenderPresentation? Sender = null);
+    NotificationSenderPresentation? Sender = null,
+    string Channel = "personal");
 
 internal sealed record ApplePushDeliveryResult(
     ApplePushDeliveryOutcome Outcome,
@@ -255,6 +256,7 @@ internal sealed class ApplePushGateway : IApplePushGateway
                     sender = request.Sender,
                     notificationId = request.NotificationId,
                     conversationId = request.ConversationId,
+                    channel = request.Channel,
                     unreadCount = Math.Max(0, request.BadgeCount)
                 }, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
                 Encoding.UTF8,
@@ -574,6 +576,7 @@ internal sealed class ApplePushDeliveryHostedService : BackgroundService
                     notification.RecipientParticipantType,
                     notification.Title,
                     notification.Detail,
+                    notification.Kind,
                     notification.ConversationId,
                     notification.IsRead,
                     notification.IsCleared,
@@ -636,7 +639,8 @@ internal sealed class ApplePushDeliveryHostedService : BackgroundService
                     candidate.ConversationId,
                     Sender: await engine.GetSenderPresentationAsync(
                         new MessagingActor(candidate.RecipientUserId, candidate.RecipientParticipantType),
-                        candidate.NotificationId, cancellationToken)),
+                        candidate.NotificationId, cancellationToken),
+                    Channel: NotificationChannel.ForKind(candidate.Kind)),
                 cancellationToken);
             ApplyResult(delivery, result, now);
 
@@ -687,6 +691,7 @@ internal sealed class ApplePushDeliveryHostedService : BackgroundService
         string RecipientParticipantType,
         string Title,
         string Detail,
+        string Kind,
         Guid? ConversationId,
         bool IsRead,
         bool IsCleared,

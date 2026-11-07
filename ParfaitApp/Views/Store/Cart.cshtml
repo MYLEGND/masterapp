@@ -9,9 +9,6 @@
     var storeName = commerce?.StoreName ?? "Parfait";
 }
 
-@section Styles {
-    <link rel="stylesheet" href="/store-assets/css/storefront.css" asp-append-version="true" />
-}
 
 <section class="sp-store-page sp-store-page--cart">
     <div class="sp-shell sp-transaction-page">
@@ -30,7 +27,6 @@
         <section class="sp-flow-card sp-transaction-stack-card sp-transaction-stack-card--cart">
             <div class="sp-flow-head sp-cart-panel-head">
                 <div>
-                    <span class="sp-flow-label">Cart Details</span>
                     <h2>Selected Items</h2>
                 </div>
                 <span class="sp-count-chip">
@@ -45,7 +41,6 @@
             <div class="sp-transaction-summary-block sp-transaction-summary-block--cart">
                 <div class="sp-summary-head sp-summary-head--compact">
                     <div>
-                        <span class="sp-flow-label">Checkout Ready</span>
                         <h2>Totals & Promo</h2>
                     </div>
                 </div>
@@ -89,7 +84,6 @@
                         <span class="sp-button-main">Secure Checkout</span>
                         <small class="sp-button-note">Encrypted payment</small>
                     </a>
-                    <a class="sp-button sp-button--ghost" href="@storeRoot">Back To Shop</a>
                 </div>
             </div>
         </section>
@@ -156,42 +150,7 @@
                 statusHost.className = `sp-cart-status is-${tone}`;
             };
 
-            const syncCartWithQuote = quote => {
-                const current = store.readCart();
-                const next = [];
-                let changed = false;
 
-                current.forEach(entry => {
-                    const quoted = quote.items.find(item => item.key === entry.key);
-                    if (!quoted || Number(quoted.quantity || 0) <= 0) {
-                        changed = true;
-                        return;
-                    }
-
-                    const nextQuantity = Number(quoted.quantity || 0);
-                    if (Number(entry.quantity || 0) !== nextQuantity) {
-                        changed = true;
-                    }
-
-                    next.push({
-                        ...entry,
-                        quantity: nextQuantity,
-                        priceCents: Number(quoted.unitPriceCents || entry.priceCents || 0),
-                        compareAtPriceCents: Number(quoted.compareAtPriceCents || entry.compareAtPriceCents || 0),
-                        imageUrl: quoted.imageUrl || entry.imageUrl,
-                        name: quoted.name || entry.name,
-                        slug: quoted.slug || entry.slug,
-                        badge: quoted.badge || entry.badge,
-                        size: quoted.size || entry.size
-                    });
-                });
-
-                if (changed) {
-                    store.writeCart(next);
-                }
-
-                return changed;
-            };
 
             const renderEmptyState = () => {
                 itemsHost.innerHTML = `
@@ -208,7 +167,7 @@
                 itemsHost.innerHTML = items.map(item => `
                     <article class="sp-cart-item">
                         <a class="sp-cart-media" href="${productUrl(item)}" aria-label="View ${item.name || "product"}">
-                            <img src="${item.imageUrl || "/store-assets/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
+                            ${item.imageUrl ? `<img src="${item.imageUrl}" alt="${item.name || "Product"}" />` : '<span class="sp-product-no-photo" role="img" aria-label="No product photo">No product photo</span>'}
                         </a>
                         <div class="sp-cart-body">
                             <div class="sp-cart-top">
@@ -341,7 +300,9 @@
                             && Number.isSafeInteger(item.lineTotalCents) && item.lineTotalCents >= 0)) {
                         throw new Error("Invalid quote response");
                     }
-                    const changed = syncCartWithQuote(quote);
+                    const applied = await store.applyQuote(quote, cart.revision);
+                    if (applied.stale) { requestQuote(); return; }
+                    const changed = applied.changed;
 
                     if (changed) {
                         statusMessage = "Cart adjusted to available stock.";
@@ -359,7 +320,7 @@
                 }
             };
 
-            itemsHost.addEventListener("click", event => {
+            itemsHost.addEventListener("click", async event => {
                 const button = event.target.closest("[data-action]");
                 if (!button) return;
 
@@ -368,13 +329,15 @@
                 const item = cart.find(entry => entry.key === key);
                 if (!item) return;
 
+                try {
                 if (action === "increase") {
-                    store.updateQuantity(key, Number(item.quantity || 0) + 1);
+                    await store.adjustQuantity(key, 1);
                 } else if (action === "decrease") {
-                    store.updateQuantity(key, Number(item.quantity || 0) - 1);
+                    await store.adjustQuantity(key, -1);
                 } else if (action === "remove") {
-                    store.removeItem(key);
+                    await store.removeItem(key);
                 }
+                } catch (error) { setStatus(error.message || "Your cart could not be updated.", "danger"); }
             });
 
             applyDiscountButton?.addEventListener("click", () => {

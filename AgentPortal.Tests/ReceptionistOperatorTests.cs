@@ -847,7 +847,7 @@ public sealed partial class ReceptionistOperatorTests
         Assert.Equal(f.Clock.Now.AddSeconds(360), call.MustStopUtc);
         var replay = await f.ReserveBudgetAsync(binding, call.BrowserCreationId!.Value);
         Assert.False(replay.MayCreate); Assert.Equal("creation_already_claimed", replay.Reason);
-        f.Clock.Now = call.MustStopUtc.AddSeconds(1);
+        f.Clock.Now = DateTime.SpecifyKind(call.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
         var later = await f.ReserveBudgetAsync(binding, Guid.NewGuid());
         Assert.False(later.MayCreate); Assert.Equal("owner_concurrency_limit", later.Reason);
         await db.Entry(reservation).ReloadAsync(); Assert.Equal(.56m, reservation.CashReserved);
@@ -1025,9 +1025,7 @@ public sealed partial class ReceptionistOperatorTests
             fields[$"Evidence[{i}].Sha256"] = item?.Sha256 ?? ""; fields[$"Evidence[{i}].ObservedUtc"] = item?.ObservedUtc?.ToString("O") ?? "";
         }
         var viewPath = "SHARED/Views/Shared/ReceptionistManagement.cshtml";
-        var root = new DirectoryInfo(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") ?? AppContext.BaseDirectory);
-        while (!File.Exists(Path.Combine(root.FullName, viewPath)) && root.Parent is not null) root = root.Parent;
-        var view = await File.ReadAllTextAsync(Path.Combine(root.FullName, viewPath));
+        var view = await File.ReadAllTextAsync(FindSourceFile(viewPath));
         foreach (var name in fields.Keys.Where(x => !x.StartsWith("Evidence[", StringComparison.Ordinal)))
             Assert.Contains("name=\"" + name + "\"", view);
         foreach (var name in numericNames.Where(x => x.EndsWith(risk ? "Maximum" : "Estimate", StringComparison.Ordinal)))
@@ -1073,7 +1071,7 @@ public sealed partial class ReceptionistOperatorTests
         await using var db = f.Database();
         var before = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId);
         var costsBefore = await db.Set<ReceptionistCostReservation>().AsNoTracking().Where(x => x.CallId == callId).ToArrayAsync();
-        f.Clock.Now = before.MustStopUtc.AddSeconds(1);
+        f.Clock.Now = DateTime.SpecifyKind(before.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
         var package = (await f.ForAsync("retire_stale_test_call", callId: callId)) with { ExpectedProviderSessionId = "synthetic-retire-session" };
         var metadata = await f.Operator.PrepareRetirementAsync(f.Owner.Key, package.ConfigurationId, callId);
         Assert.Equal(package.ConfigurationSha256, metadata.ConfigurationSha256);
@@ -1129,6 +1127,36 @@ public sealed partial class ReceptionistOperatorTests
     }
 
     [Fact]
+    public async Task RetirementReleasesConcurrencyButPreservesUnresolvedReservations()
+    {
+        await using var f = await Fixture.CreateAsync();
+        await f.AcceptAsync(); await f.EnableOwnerAsync();
+        var ingress = (await f.Admission.GetIngressBindingAsync("openai", Fixture.Ingress))!;
+        var callId = (await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-capacity-retire"))).CallId!.Value;
+        await f.Admission.RecordProviderStateAsync(callId, "accepted", "synthetic-accepted");
+        Assert.True((await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-capacity-open"))).Reserved);
+        await using var db = f.Database();
+        var call = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId);
+        var holds = await db.Set<ReceptionistCostReservation>().AsNoTracking().Where(x => x.CallId == callId).ToArrayAsync();
+        Assert.NotEmpty(holds);
+        f.Clock.Now = DateTime.SpecifyKind(call.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
+        var blocked = await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-capacity-before"));
+        Assert.False(blocked.Reserved); Assert.Equal("owner_concurrency_limit", blocked.Reason);
+        var package = (await f.ForAsync("retire_stale_test_call", callId: callId)) with { ExpectedProviderSessionId = "synthetic-capacity-retire" };
+        var identity = f.Publish(package);
+        var plan = await f.Operator.PlanAsync(identity.Key, identity.Hash);
+        Assert.True(plan.CanApply);
+        Assert.True((await f.Operator.ApplyAsync(f.Request(plan))).ReadBackVerified);
+        var after = await db.Set<ReceptionistCostReservation>().AsNoTracking().Where(x => x.CallId == callId).ToArrayAsync();
+        Assert.Equal(JsonSerializer.Serialize(holds), JsonSerializer.Serialize(after));
+        Assert.All(after, x => { Assert.False(x.CashFinal); Assert.False(x.ConsumptionFinal); });
+        Assert.Null((await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId)).ProviderClosedUtc);
+        Assert.True((await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-capacity-after"))).Reserved);
+        var full = await f.Admission.ReserveAsync(f.IngressFor(ingress, "synthetic-capacity-full"));
+        Assert.False(full.Reserved); Assert.Equal("owner_concurrency_limit", full.Reason);
+    }
+
+    [Fact]
     public async Task RetirementRejectsWrongSubjectUnexpiredLeaseAndPendingWork()
     {
         await using var f = await Fixture.CreateAsync();
@@ -1139,7 +1167,7 @@ public sealed partial class ReceptionistOperatorTests
         var initial = (await f.ForAsync("retire_stale_test_call", callId: callId)) with { ExpectedProviderSessionId = "synthetic-scope" };
         var unexpired = f.Publish(initial); Assert.False((await f.Operator.PlanAsync(unexpired.Key, unexpired.Hash)).CanApply);
         await using var db = f.Database(); var row = await db.Set<ReceptionistCall>().SingleAsync(x => x.Id == callId);
-        f.Clock.Now = row.MustStopUtc.AddSeconds(1);
+        f.Clock.Now = DateTime.SpecifyKind(row.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
         var wrong = f.Publish((await f.ForAsync("retire_stale_test_call", callId: callId)) with { ExpectedProviderSessionId = "wrong-session" });
         Assert.False((await f.Operator.PlanAsync(wrong.Key, wrong.Hash)).CanApply);
         row.SidebandLeaseToken = Guid.NewGuid(); row.SidebandLeaseExpiresUtc = f.Clock.Now.AddMinutes(1); row.SidebandObservationOnly = false;
@@ -1165,7 +1193,7 @@ public sealed partial class ReceptionistOperatorTests
         await f.Admission.RecordProviderStateAsync(callId, "accepted", "synthetic-accepted");
         await using var db = f.Database();
         var call = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId);
-        f.Clock.Now = call.MustStopUtc.AddSeconds(1);
+        f.Clock.Now = DateTime.SpecifyKind(call.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
         var package = (await f.ForAsync("retire_stale_test_call", callId: callId)) with { ExpectedProviderSessionId = "synthetic-race" };
         var id = f.Publish(package); var plan = await f.Operator.PlanAsync(id.Key, id.Hash); Assert.True(plan.CanApply);
         Assert.NotNull(await f.Admission.AcquireObservationLeaseAsync(callId, "synthetic-observer", TimeSpan.FromSeconds(10)));
@@ -1221,7 +1249,7 @@ public sealed partial class ReceptionistOperatorTests
         await f.Admission.RecordProviderStateAsync(callId, "accepted", "synthetic-accepted");
         await using var db = f.Database();
         var call = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId);
-        f.Clock.Now = call.MustStopUtc.AddSeconds(1);
+        f.Clock.Now = DateTime.SpecifyKind(call.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
         var evidence = "synthetic-operator-evidence";
         var draft = new ReceptionistRetirementDraft(f.Owner.Key, call.ConfigurationVersionId, callId,
             evidence, ReceptionistConfigurationCodec.Hash(evidence), f.Clock.Now, "Expired controlled test requires local retirement");
@@ -1269,7 +1297,7 @@ public sealed partial class ReceptionistOperatorTests
             await f.Admission.RecordProviderStateAsync(callId, "accepted", "synthetic-accepted");
             await using var db = f.Database();
             var call = await db.Set<ReceptionistCall>().AsNoTracking().SingleAsync(x => x.Id == callId);
-            f.Clock.Now = call.MustStopUtc.AddSeconds(1);
+            f.Clock.Now = DateTime.SpecifyKind(call.MustStopUtc, DateTimeKind.Utc).AddSeconds(1);
             var provider = new RetirementProviderProbe();
             using var dependencies = new ServiceCollection().AddSingleton(f.Options).AddSingleton<IOpenAiReceptionistClient>(provider).BuildServiceProvider();
             var operation = new ReceptionistOperatorService(f.Store, new ReceptionistAdmissionService(f.Options, f.Clock, dependencies),
@@ -1318,16 +1346,29 @@ public sealed partial class ReceptionistOperatorTests
         var controller = typeof(AgentPortal.Controllers.FounderEngineeringController);
         foreach (var name in new[] { "PrepareSavedRetirement", "PreviewSavedRetirement", "ReviewSavedRetirement", "PlanReceptionist", "ApplyReceptionist" })
             Assert.NotNull(controller.GetMethod(name)!.GetCustomAttribute<ValidateAntiForgeryTokenAttribute>());
-        var root = new DirectoryInfo(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") ?? AppContext.BaseDirectory);
         const string viewPath = "AgentPortal/Views/FounderEngineering/Receptionist.cshtml";
-        while (!File.Exists(Path.Combine(root.FullName, viewPath)) && root.Parent is not null) root = root.Parent;
-        var view = await File.ReadAllTextAsync(Path.Combine(root.FullName, viewPath));
+        var view = await File.ReadAllTextAsync(FindSourceFile(viewPath));
         foreach (var action in new[] { "PrepareSavedRetirement", "PreviewSavedRetirement", "ReviewSavedRetirement", "PlanReceptionist", "ApplyReceptionist" })
             Assert.Contains("asp-action=\"" + action + "\"", view);
         foreach (var name in new[] { "ExpectedOwnerKey", "ConfigurationId", "CallId", "EvidenceReference", "EvidenceSha256", "EvidenceObservedUtc", "Reason" })
             Assert.Contains("name=\"" + name + "\"", view);
         Assert.Contains("Provider closure", view, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Accounting may still block", view);
+    }
+
+    private static string FindSourceFile(string relativePath)
+    {
+        // Test outputs may live outside the checkout; the test runner can start at its root.
+        foreach (var start in new[] { Environment.GetEnvironmentVariable("GITHUB_WORKSPACE"), Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
+        {
+            if (string.IsNullOrWhiteSpace(start)) continue;
+            for (var directory = new DirectoryInfo(start); directory is not null; directory = directory.Parent)
+            {
+                var candidate = Path.Combine(directory.FullName, relativePath);
+                if (File.Exists(candidate)) return candidate;
+            }
+        }
+        throw new FileNotFoundException("Could not locate the repository source file for this test.", relativePath);
     }
 
     private sealed class RetirementProviderProbe : IOpenAiReceptionistClient

@@ -433,6 +433,8 @@ public sealed class WebsiteInquiryIsolationTests
     [InlineData("/Contact", false)]
     [InlineData("/store/checkout", false)]
     [InlineData("/store/checkout", true)]
+    [InlineData("/store/training", false)]
+    [InlineData("/store/training", true)]
     public async Task ParfaitInquiryUsesCanonicalBusinessInquiryLeadCrmAnalyticsAndPrimaryEmail(string sourcePath, bool publishedDomain)
     {
         using var f = new Fixture("https://shopparfait.com");
@@ -454,12 +456,12 @@ public sealed class WebsiteInquiryIsolationTests
             CommerceBusinessId = businessId,
             WorkspacePreferencesJson = new Shared.Crm.BusinessWorkspacePreferences().Write()
         });
-        if (publishedDomain)
+        if (publishedDomain || sourcePath == "/store/training")
         {
-            f.Db.Add(new WebsiteDomainBinding { CommerceBusinessId = businessId, Hostname = "shopparfait.com", Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
-            var state = new WebsiteContentState { OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(businessId), SiteKey = WebsiteEditorSiteKeys.Business, PublishedVersionId = Guid.Parse("8c369adc-4f12-4f68-9ff0-a48898972b71") };
+            if (publishedDomain) f.Db.Add(new WebsiteDomainBinding { CommerceBusinessId = businessId, Hostname = "shopparfait.com", Status = "active", CertificateStatus = "active", LastCheckedUtc = DateTime.UtcNow });
+            var state = new WebsiteContentState { CommerceBusinessId = businessId, OwnerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(businessId), SiteKey = WebsiteEditorSiteKeys.Business, PublishedVersionId = Guid.Parse("8c369adc-4f12-4f68-9ff0-a48898972b71") };
             f.Db.Add(state);
-            f.Db.Add(new WebsiteContentVersion { Id = state.PublishedVersionId.Value, StateId = state.Id, CompiledPagesJson = "{\"pages\":{\"/contact\":{\"html\":\"published\"}}}" });
+            f.Db.Add(new WebsiteContentVersion { Id = state.PublishedVersionId.Value, StateId = state.Id, CompiledPagesJson = "{\"pages\":{\"/contact\":{\"html\":\"published\"}}}", DocumentJson = "{\"pages\":{\"/store/training\":{\"navigation\":{\"isPublished\":true}}}}" });
         }
         await f.Db.SaveChangesAsync();
 
@@ -512,7 +514,7 @@ public sealed class WebsiteInquiryIsolationTests
         var result = Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, CancellationToken.None));
         Assert.IsType<OkObjectResult>(await f.Controller.Submit(request, CancellationToken.None));
         Assert.Contains("\"accepted\":true", System.Text.Json.JsonSerializer.Serialize(result.Value), StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(publishedDomain ? 1 : 0, await f.Db.Set<CommerceWebsiteInquiry>().CountAsync());
+        Assert.Equal(publishedDomain || sourcePath == "/store/training" ? 1 : 0, await f.Db.Set<CommerceWebsiteInquiry>().CountAsync());
 
         var lead = Assert.Single(await f.Db.WebsiteLeads.ToListAsync());
         Assert.Equal(businessId, lead.CommerceBusinessId);
@@ -535,7 +537,7 @@ public sealed class WebsiteInquiryIsolationTests
         await f.DeliverPendingNotificationsAsync();
         f.EmailSender.Verify(sender => sender.TrySendAsync(
             "parfait-primary@example.org",
-            It.Is<string>(subject => publishedDomain ? subject == "New website inquiry" : subject.Contains("Parfait", StringComparison.OrdinalIgnoreCase)),
+            It.Is<string>(subject => (publishedDomain || sourcePath == "/store/training") ? subject == "New website inquiry" : subject.Contains("Parfait", StringComparison.OrdinalIgnoreCase)),
             It.IsAny<string>(),
             It.IsAny<string?>(),
             "visitor@example.org",

@@ -110,7 +110,7 @@ public sealed class ParfaitStoreProductViewModel
         ?? Sizes.FirstOrDefault(size => size.IsEnabled)
         ?? Sizes.OrderBy(size => size.DisplayOrder).FirstOrDefault();
 
-    public string PrimaryImageUrl => PrimaryImage?.ImageUrl ?? "/images/favicon/parfait-logo.png";
+    public string PrimaryImageUrl => PrimaryImage?.ImageUrl ?? "";
     public string PrimaryImageObjectFit => PrimaryImage?.ObjectFit ?? "cover";
     public int PrimaryImageObjectPositionX => PrimaryImage?.ObjectPositionX ?? 50;
     public int PrimaryImageObjectPositionY => PrimaryImage?.ObjectPositionY ?? 50;
@@ -213,6 +213,8 @@ public sealed class ParfaitProductDiscountCodeEditorViewModel
 
     public string DiscountType { get; set; } = "Percent";
     public decimal Amount { get; set; }
+    [Range(1, int.MaxValue)]
+    public int? UsageLimit { get; set; }
     public bool IsActive { get; set; } = true;
 
     public string SummaryLabel => string.Equals(DiscountType, "Fixed", StringComparison.OrdinalIgnoreCase)
@@ -236,7 +238,7 @@ public sealed class ParfaitProductEditorViewModel
     [Required]
     public string PriceLabel { get; set; } = "Coming Soon";
 
-    public string Badge { get; set; } = "";
+    public string? Badge { get; set; }
     [RegularExpression("^(OneTime|MonthlyTraining)$")]
     public string BillingKind { get; set; } = Domain.Billing.ClientSubscriptionScope.OneTimeProduct;
     public int PriceCents { get; set; }

@@ -100,6 +100,32 @@ final class LegendTests: XCTestCase {
         XCTAssertFalse(LegendPushNotificationNavigation.consumePendingNotifications())
     }
 
+    func testConversationPushRetainsOpaqueDestinationAndSupersedesInbox() {
+        let id = UUID()
+        LegendPushNotificationNavigation.requestNotifications()
+        LegendPushNotificationNavigation.requestConversation(id)
+        XCTAssertEqual(LegendPushNotificationNavigation.consumePendingConversation(), id)
+        XCTAssertNil(LegendPushNotificationNavigation.consumePendingConversation())
+        XCTAssertFalse(LegendPushNotificationNavigation.consumePendingNotifications())
+    }
+
+    func testWorkPushOpensOnlyWorkChannelOnce() {
+        LegendPushNotificationNavigation.requestNotifications(work: true)
+        XCTAssertTrue(LegendPushNotificationNavigation.consumePendingWork())
+        XCTAssertFalse(LegendPushNotificationNavigation.consumePendingWork())
+        XCTAssertFalse(LegendPushNotificationNavigation.consumePendingNotifications())
+    }
+
+    func testWorkOrderConcurrencyTokenPreservesFractionalServerTimestamp() throws {
+        let json = """
+        {"id":"00000000-0000-0000-0000-000000000001","businessId":"00000000-0000-0000-0000-000000000002","profileId":"00000000-0000-0000-0000-000000000003","orderNumber":"QA","fulfillmentStatus":"Packed","allowedStatuses":["Packed","Shipped"],"updatedUtc":"2026-11-03T10:20:30.1234567Z","firstName":"Fixture","lastName":"Only","addressLine1":"Fixture","city":"Fixture","state":"AZ","postalCode":"00000","items":[]}
+        """
+        let order = try JSONDecoder().decode(MobileWorkOrder.self, from: Data(json.utf8))
+        let encoded = try JSONEncoder().encode(order)
+        let roundtrip = try JSONDecoder().decode(MobileWorkOrder.self, from: encoded)
+        XCTAssertEqual(roundtrip.updatedUtc, "2026-11-03T10:20:30.1234567Z")
+    }
+
     func testPlannerAlertPolicyUsesOneLegendLocalAlertWithoutAnAPNsMirror() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))

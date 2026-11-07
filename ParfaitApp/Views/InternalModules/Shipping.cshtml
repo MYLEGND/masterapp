@@ -1,0 +1,44 @@
+@model Legend.Commerce.Shipping.ShippingSetupView
+@{
+    Layout = "_InternalLayout";
+    ViewData["Title"] = "Shipping setup";
+    var ticket = ViewData["CommerceManagerTicket"] as string;
+    var action = Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/shipping/connect", ticket, "POST");
+}
+<section class="pf-command-page">
+    <header class="pf-page-header"><div><h1>Shipping setup</h1><p>Connect your postage account once for every product in this store.</p></div></header>
+    @if (TempData["ShippingStatus"] is string status) { <p class="pf-alert-success">@status</p> }
+    @if (TempData["ShippingError"] is string error) { <p role="alert">@error</p> }
+    <section>
+        <h2>Postage connection</h2>
+        <p>@(Model.ConnectedProvider is null ? "No provider connected." : $"Connected: {Model.ConnectedProvider} · {(Model.TestMode ? "Test mode" : "Live postage")}")</p>
+        <form method="post" action="@action" class="pf-automation-form">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="ExpectedRevision" value="@Model.Revision" />
+            <div class="pf-automation-form-grid">
+                <label>Provider<select name="Provider" class="form-select" required><option value="">Select a provider</option>@foreach(var provider in Model.Providers) { <option value="@provider.Id" selected="@(provider.Id == Model.ConnectedProvider)">@provider.Name</option> }</select></label>
+                <label>Environment<select name="TestMode" class="form-select"><option value="true" selected="@Model.TestMode">Test labels · no valid postage</option><option value="false" selected="@(!Model.TestMode)">Live postage · purchases are charged</option></select></label>
+                <label>Existing API key<input class="form-control" type="password" name="ApiKey" autocomplete="new-password" maxlength="300" required="@(Model.ConnectedProvider is null)" /></label>
+            </div>
+            @if (Model.ConnectedProvider is not null) { <p>Leave the key blank to keep this connection. Changing provider or environment requires a key.</p> }
+            <h2>Ship from</h2>
+            <div class="pf-automation-form-grid">
+                <label>Name / business<input class="form-control" name="Name" value="@Model.From?.Name" maxlength="100" required /></label>
+                <label>Phone<input class="form-control" name="Phone" value="@Model.From?.Phone" maxlength="40" required /></label>
+                <label>Street<input class="form-control" name="Street1" value="@Model.From?.Street1" maxlength="150" required /></label>
+                <label>Suite / unit<input class="form-control" name="Street2" value="@Model.From?.Street2" maxlength="150" /></label>
+                <label>City<input class="form-control" name="City" value="@Model.From?.City" maxlength="100" required /></label>
+                <label>State / region<input class="form-control" name="State" value="@Model.From?.State" maxlength="100" required /></label>
+                <label>Postal code<input class="form-control" name="PostalCode" value="@Model.From?.PostalCode" maxlength="20" required /></label>
+                <label>Country code<input class="form-control" name="Country" value="@Model.From?.Country" placeholder="US" minlength="2" maxlength="2" required /></label>
+            </div>
+            <div class="pf-form-actions"><button class="pf-action" type="submit">@(Model.ConnectedProvider is null ? "Verify & connect" : "Save shipping settings")</button></div>
+        </form>
+    </section>
+    <details><summary>Choose a provider and label printer</summary>
+        <p>Use a provider you already have when it supports your carriers. Otherwise compare available services and fees before opening an account.</p>
+        <ul>@foreach (var provider in Model.Providers) { <li><a href="@provider.AccountUrl" target="_blank" rel="noopener noreferrer">@provider.Name</a> — @provider.Description</li> }</ul>
+        <p>For adhesive package labels, choose a 4 × 6 direct-thermal printer with a driver for your computer. USB suits one packing station; network or Wi-Fi suits a shared station. Choose the model that fits your devices rather than a required brand.</p>
+        <p>Install its manufacturer driver, load 4 × 6 labels, and select that printer in the label print dialog. Print at actual size with headers and footers off. Reprinting uses the existing label and does not purchase postage again.</p>
+    </details>
+</section>

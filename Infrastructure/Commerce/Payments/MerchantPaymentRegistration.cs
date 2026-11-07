@@ -10,6 +10,9 @@ public static class MerchantPaymentRegistration
     {
         services.AddHttpClient();
         services.AddDataProtection();
+        services.TryAddSingleton(provider => MerchantPaymentProtection.CreateShared(
+            provider.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(),
+            provider.GetRequiredService<Microsoft.Extensions.Hosting.IHostEnvironment>()));
         services.TryAddScoped<MerchantConnectionService>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMerchantPaymentGateway,SquareMerchantPaymentGateway>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMerchantPaymentGateway,StripeMerchantPaymentGateway>());

@@ -36,6 +36,42 @@ namespace AgentPortal.Tests;
 
 public sealed class BusinessWorkspaceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CalendarCallbackNeverPlacesProviderDiagnosticsInRedirect(bool callbackThrows)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var business = new CommerceBusiness { Key = "calendar-synthetic" };
+        var authority = new Mock<IMicrosoftCalendarConnectionAuthority>(MockBehavior.Strict);
+        var owner = MarketingOwnerScope.Business(business.Id);
+        authority.Setup(x => x.InspectState("protected-state")).Returns(new MicrosoftCalendarOAuthState(
+            owner, "/internal/analytics?businessKey=calendar-synthetic", "https://example.invalid/callback"));
+        const string diagnostic = "SENSITIVE_PROVIDER_DIAGNOSTIC_DO_NOT_REDIRECT";
+        if (callbackThrows)
+            authority.Setup(x => x.CompleteCallbackAsync("code", "protected-state", It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException(diagnostic));
+        using var services = new ServiceCollection().AddSingleton(authority.Object).BuildServiceProvider();
+        var controller = new CalendarPageController(business)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = services } }
+        };
+        var result = Assert.IsType<RedirectResult>(await controller.CalendarCallback("code", "protected-state",
+            callbackThrows ? null : "access_denied", diagnostic));
+        Assert.StartsWith("/internal/analytics?businessKey=calendar-synthetic&calendar=error&reason=", result.Url);
+        Assert.DoesNotContain(diagnostic, result.Url);
+        Assert.DoesNotContain("message=", result.Url);
+    }
+
+    private sealed class CalendarPageController(CommerceBusiness business) : BusinessAnalyticsControllerBase(null)
+    {
+        protected override Task<CommerceBusiness?> ResolveBusinessAsync(Guid id, string capability, CancellationToken ct) =>
+            Task.FromResult<CommerceBusiness?>(id == business.Id ? business : null);
+        protected override Task<(Guid BusinessId, string ReturnUrl)?> ResolveAnalyticsCallbackAsync(
+            MarketingOwnerScope owner, string returnUrl, CancellationToken ct) =>
+            Task.FromResult<(Guid, string)?>(owner == MarketingOwnerScope.Business(business.Id) ? (business.Id, returnUrl) : null);
+    }
+
     [Fact]
     public async Task BulkEditsRejectStaleBatchWithoutChangingAnyContact()
     {
@@ -156,8 +192,8 @@ public sealed class BusinessWorkspaceTests
         var actor = "navigation-agent";
         db.AddRange(selected, other, profile,
             new AgentClient { AgentUserId = actor, AgentUpn = "agent@example.org", ClientUserId = profile.ClientUserId },
-            new CommerceBusinessMember { CommerceBusinessId = selected.Id, ClientProfileId = profile.Id },
-            new CommerceBusinessMember { CommerceBusinessId = other.Id, ClientProfileId = profile.Id },
+            new CommerceBusinessMember { CanManageCrm = true, CommerceBusinessId = selected.Id, ClientProfileId = profile.Id },
+            new CommerceBusinessMember { CanManageCrm = true, CommerceBusinessId = other.Id, ClientProfileId = profile.Id },
             new CommerceBusinessStorefrontSettings { CommerceBusinessId = selected.Id },
             new CommerceBusinessStorefrontSettings { CommerceBusinessId = other.Id });
         await db.SaveChangesAsync();
@@ -178,7 +214,7 @@ public sealed class BusinessWorkspaceTests
         using var db = ControllerTestHelpers.BuildDb();
         var business = new CommerceBusiness { Key = "navigation" };
         var profile = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), Email = "owner@example.org" };
-        var member = new CommerceBusinessMember { CommerceBusinessId = business.Id, ClientProfileId = profile.Id };
+        var member = new CommerceBusinessMember { CanManageCrm = true, CommerceBusinessId = business.Id, ClientProfileId = profile.Id };
         db.AddRange(business, profile, member, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id });
         await db.SaveChangesAsync();
         var service = new BusinessWorkspaceService(db, Mock.Of<IAnalyticsQueryService>());
@@ -295,6 +331,42 @@ public sealed class BusinessWorkspaceTests
         Assert.Contains("/leads", html, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task TrainingDetailResolvesAndVersionsStylesheetAndRendersCanonicalTable()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "training-view-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "css"));
+        await File.WriteAllTextAsync(Path.Combine(root, "css", "clients-index.css"), ".action-table{width:100%}");
+        try
+        {
+            using var host = await BuildClientAppRazorHostAsync();
+            using var files = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(root);
+            host.Services.GetRequiredService<IWebHostEnvironment>().WebRootFileProvider = files;
+            using var scope = host.Services.CreateScope();
+            var services = scope.ServiceProvider;
+            var http = new DefaultHttpContext { RequestServices = services };
+            http.Request.Scheme = "https"; http.Request.Host = new HostString("client.test");
+            var action = new ActionContext(http, new RouteData(), new ActionDescriptor());
+            var view = services.GetRequiredService<IRazorViewEngine>().GetView(null, "~/Views/Shared/BusinessTrainingContact.cshtml", false);
+            Assert.True(view.Success);
+            var model = new BusinessTrainingCohort { BusinessId = Guid.NewGuid(), Contacts = [new BusinessTrainingContact(
+                Guid.NewGuid(), "training@example.test", "training@example.test", "", false,
+                [new BusinessTrainingTerm(Guid.NewGuid(), "Training plan", 25000, "USD", "Offered", null)])] };
+            var data = new ViewDataDictionary<BusinessTrainingCohort>(services.GetRequiredService<IModelMetadataProvider>(), new ModelStateDictionary()) { Model = model };
+            using var writer = new StringWriter();
+            await view.View.RenderAsync(new ViewContext(action, view.View, data,
+                new TempDataDictionary(http, services.GetRequiredService<ITempDataProvider>()), writer, new HtmlHelperOptions()));
+            var html = writer.ToString();
+            Assert.Contains("href=\"/css/clients-index.css?v=", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("href=\"~/", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("asp-append-version", html, StringComparison.Ordinal);
+            Assert.Contains("class=\"action-table\"", html, StringComparison.Ordinal);
+            Assert.Contains("training@example.test", html, StringComparison.Ordinal);
+            Assert.Contains("250.00/month", html, StringComparison.Ordinal);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     private static Task<IHost> BuildClientAppRazorHostAsync()
     {
         return new HostBuilder()
@@ -307,7 +379,8 @@ public sealed class BusinessWorkspaceTests
                     services.AddDataProtection();
                     services.AddControllersWithViews()
                         .AddApplicationPart(typeof(ClientApp.Controllers.HomeController).Assembly)
-                        .AddApplicationPart(Assembly.Load("ClientApp.Views"));
+                        .AddApplicationPart(Assembly.Load("ClientApp.Views"))
+                        .AddApplicationPart(typeof(BusinessWorkspaceModel).Assembly);
                 })
                 .Configure(_ => { }))
             .StartAsync();
@@ -432,6 +505,7 @@ public sealed class BusinessWorkspaceTests
             {
                 CommerceBusinessId = business.Id,
                 ClientProfileId = memberProfile.Id,
+                CanManageCrm = true,
                 Status = "Active"
             },
             new AgentClient
@@ -561,6 +635,28 @@ public sealed class BusinessWorkspaceTests
     }
 
     [Fact]
+    public async Task SharedAnalyticsPreservesStoreAndOwnerDimensionsAndRejectsForeignStore()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var businessId = Guid.NewGuid();
+        var scope = ScopeContext.ForAgent(Guid.NewGuid()).ForStore(businessId);
+        var range = TimeRangeRequest.FromPreset("7d", null, null, TimeZoneInfo.Utc);
+        var analytics = new Mock<IAnalyticsQueryService>(MockBehavior.Strict);
+        var summary = new SummaryKpiDto();
+        analytics.Setup(x => x.GetSummaryAsync(range, scope, TrafficType.All,
+            It.IsAny<System.Threading.CancellationToken>())).ReturnsAsync(summary);
+        var service = new BusinessWorkspaceService(db, analytics.Object);
+        Assert.Same(summary, await service.AnalyticsDataAsync(businessId, "summary", range,
+            TrafficType.All, reportingScope: scope));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.AnalyticsDataAsync(Guid.NewGuid(),
+            "summary", range, TrafficType.All, reportingScope: scope));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.AnalyticsDataAsync(businessId,
+            "summary", range, TrafficType.All, reportingScope: ScopeContext.Global));
+        analytics.VerifyAll();
+        analytics.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task PreferencesAndContactsStayBusinessScopedAndCustomStageSurvivesCapture()
     {
         using var db = ControllerTestHelpers.BuildDb();
@@ -593,7 +689,7 @@ public sealed class BusinessWorkspaceTests
         using var db = ControllerTestHelpers.BuildDb();
         var business = new CommerceBusiness { Key = "business", OwnerEmail = "owner@example.org" };
         var profile = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), Email = business.OwnerEmail };
-        var member = new CommerceBusinessMember { CommerceBusinessId = business.Id, ClientProfileId = profile.Id, DisplayName = "Owner" };
+        var member = new CommerceBusinessMember { CanManageCrm = true, CommerceBusinessId = business.Id, ClientProfileId = profile.Id, DisplayName = "Owner" };
         var settings = new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id, WorkspacePreferencesJson = new BusinessWorkspacePreferences { NotificationMemberId = member.Id }.Write() };
         db.AddRange(business, profile, member, settings); await db.SaveChangesAsync();
         var resolver = new WebsiteIntakeRecipientResolver(db, new ConfigurationBuilder().AddInMemoryCollection(new[] { new System.Collections.Generic.KeyValuePair<string,string?>("Contact:RecipientEmail", "founder@example.org") }).Build());
@@ -612,7 +708,7 @@ public sealed class BusinessWorkspaceTests
         var business = new CommerceBusiness { Key = "business", OwnerEmail = "owner@example.org" };
         var profile = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), Email = business.OwnerEmail };
         var row = new CommerceWebsiteInquiry { CommerceBusinessId = business.Id, Email = "visitor@example.org", Message = "<script>unsafe</script>" };
-        db.AddRange(business, profile, row, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id }, new CommerceBusinessMember { CommerceBusinessId = business.Id, ClientProfileId = profile.Id });
+        db.AddRange(business, profile, row, new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id }, new CommerceBusinessMember { CanManageCrm = true, CommerceBusinessId = business.Id, ClientProfileId = profile.Id });
         await db.SaveChangesAsync();
         var sender = new Mock<IWebsiteInquiryEmailSender>();
         sender.Setup(x => x.TrySendAsync(business.OwnerEmail, It.IsAny<string>(), It.Is<string>(s => s.Contains("&lt;script&gt;") && !s.Contains("<script>")), null, row.Email, false, It.IsAny<CancellationToken>())).ReturnsAsync(true);

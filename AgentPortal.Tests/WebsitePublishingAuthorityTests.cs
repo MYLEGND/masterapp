@@ -95,6 +95,8 @@ public sealed class WebsitePublishingAuthorityTests
         Assert.Null(await controller.ResolveProtectPageAsync(path, default));
         controller.HttpContext.Items["TrackingProfile"] = profile;
         Assert.Null(await controller.ResolveProtectPageAsync("/not-published", default));
+        Assert.Equal(404, controller.Response.StatusCode);
+        controller.Response.StatusCode = 200;
         Assert.Null(await controller.ResolveProtectPageAsync("/trainingpackages", default));
         var persistedVersion = await f.Db.Set<WebsiteContentVersion>().SingleAsync(v => v.Id == version.Id);
         var compiledWithHint = System.Text.Json.Nodes.JsonNode.Parse(persistedVersion.CompiledPagesJson!)!;

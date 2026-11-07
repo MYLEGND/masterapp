@@ -104,6 +104,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
+    <ProjectReference Include="..\CommerceCore\LegendCommerce.csproj" />
     <ProjectReference Include="..\Domain\Domain.csproj" />
     <ProjectReference Include="..\SHARED\Shared.csproj" />
   </ItemGroup>

@@ -3,17 +3,19 @@
     Layout = "_InternalLayout";
     ViewData["Title"] = "Payments";
     var ticket = ViewData["CommerceManagerTicket"] as string ?? "";
-    string ActionUrl(string action) => "/commerce/manage/payments" + action + "?ticket=" + Uri.EscapeDataString(ticket);
+    string ActionUrl(string action) => Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/payments" + action, ticket, string.IsNullOrEmpty(action) ? "GET" : "POST");
 }
 <section class="pf-command-page">
-    <div class="pf-command-heading">
-        <h1>Payments</h1>
-        <p>Connect your business’s processor account to accept customer payments. Square is our first supported connection. Your LEGEND® subscription billing is managed separately.</p>
-    </div>
-    <div class="pf-command-panel">
-        <nav aria-label="Payment environment">
-            <a class="pf-action" href="@(ActionUrl("") + "&environment=Production")">Live payments</a>
-            <a class="pf-action" href="@(ActionUrl("") + "&environment=Sandbox")">Sandbox</a>
+    <header class="pf-command-head">
+        <div class="pf-command-copy">
+        <h1 class="pf-command-title">Payments</h1>
+        <p class="pf-command-text">Connect your business’s processor account to accept customer payments. Square is our first supported connection. Your LEGEND® subscription billing is managed separately.</p>
+        </div>
+    </header>
+    <div class="pf-module-card">
+        <nav class="pf-payment-environments" aria-label="Payment environment">
+            <a class="@(Model.Environment == "Production" ? "pf-action" : "pf-secondary-action")" aria-current="@(Model.Environment == "Production" ? "page" : null)" href="@Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(ActionUrl(""), "environment", "Production")">Live payments</a>
+            <a class="@(Model.Environment == "Sandbox" ? "pf-action" : "pf-secondary-action")" aria-current="@(Model.Environment == "Sandbox" ? "page" : null)" href="@Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(ActionUrl(""), "environment", "Sandbox")">Sandbox</a>
         </nav>
         <h2>@(Model.Environment == "Production" ? "Live payments" : "Sandbox — test payments only")</h2>
         @if (Model.DefaultConnectionId is null)
@@ -22,9 +24,24 @@
         }
         <p>New payments use the selected default. Existing payments stay with their original processor for reconciliation and refunds.</p>
     </div>
+    @if (ViewData["CanUsePlatformPaymentAccount"] as bool? == true)
+    {
+        <section class="pf-module-card">
+            <h2>LEGEND payment account</h2>
+            <p>Use the existing Square account that processes LEGEND subscriptions. The account and location are verified before you confirm this Store connection.</p>
+            <form method="post" action="@ActionUrl("/connect")" class="d-grid gap-3">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="provider" value="PlatformBilling" />
+                <input type="hidden" name="environment" value="@Model.Environment" />
+                <label><input type="checkbox" name="authorizeSharing" value="true" required /> Use the existing LEGEND subscription payment account for this Store.</label>
+                <button class="pf-action" type="submit">Verify existing LEGEND account</button>
+            </form>
+        </section>
+    }
+    <section class="pf-payment-provider-grid" aria-label="Payment providers">
     @foreach (var provider in Model.Providers)
     {
-        <div class="pf-command-panel">
+        <div class="pf-module-card">
             <h2>@provider.Provider</h2>
             @{
                 var dashboard = provider.Provider switch
@@ -60,9 +77,10 @@
             }
         </div>
     }
+    </section>
     @foreach (var connection in Model.Connections)
     {
-        <div class="pf-command-panel">
+        <div class="pf-module-card">
             <h2>@connection.Provider @(Model.DefaultConnectionId == connection.Id ? "· Default" : "")</h2>
             <dl>
                 <dt>Authorized merchant account</dt><dd>@connection.AccountId</dd>
@@ -83,7 +101,7 @@
             </dl>
             @if (!string.IsNullOrWhiteSpace(connection.Readiness.RequiredAction))
             { <p role="status">@connection.Readiness.RequiredAction</p> }
-            @if (connection.State != "Disconnected" &&
+            @if (connection.CredentialSource != "PlatformBilling" && connection.State != "Disconnected" &&
                  (connection.State == "PendingConfirmation" || !connection.Readiness.CanAcceptPayments(connection.Provider)))
             {
                 <form method="post" action="@ActionUrl("/resume")" target="_blank" rel="noopener">
@@ -96,13 +114,18 @@
             }
             @if (connection.State == "PendingConfirmation")
             {
-            <form method="post" action="@ActionUrl("/confirm")" class="pf-command-form">
+            <form method="post" action="@ActionUrl("/confirm")" class="d-grid gap-3">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="connectionId" value="@connection.Id" />
                 <input type="hidden" name="revision" value="@connection.Revision" />
                 <input type="hidden" name="environment" value="@Model.Environment" />
                 <input type="hidden" name="accountId" value="@connection.AccountId" />
-                @if (connection.Readiness.Locations.Length > 0)
+                @if (connection.CredentialSource == "PlatformBilling")
+                {
+                    <p>Subscription payment location: @connection.LocationId</p>
+                    <input type="hidden" name="locationId" value="@connection.LocationId" />
+                }
+                else if (connection.Readiness.Locations.Length > 0)
                 {
                     <label>Merchant location
                         <select name="locationId" class="form-select" required>
@@ -149,7 +172,7 @@
             }
         </div>
     }
-    <div class="pf-command-panel">
+    <div class="pf-module-card">
         <h2>Recent customer payments</h2>
         @if (TempData["MerchantRefundStatus"] is string refundStatus)
         { <p role="status">@refundStatus</p> }
@@ -171,7 +194,7 @@
                 {
                     <details>
                         <summary>Refund payment</summary>
-                        <form method="post" action="@ActionUrl("/refund")" class="pf-command-form">
+                        <form method="post" action="@ActionUrl("/refund")" class="d-grid gap-3">
                             @Html.AntiForgeryToken()
                             <input type="hidden" name="orderId" value="@payment.OrderId" />
                             <input type="hidden" name="requestKey" value="@Guid.NewGuid().ToString("N")" />

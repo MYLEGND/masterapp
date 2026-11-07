@@ -194,11 +194,11 @@ public class LeadBridgeController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.LeadId)) return BadRequest("Lead id required");
         var agentId = GetAgentId();
 
-        var lead = await _db.WorkstationLeadProfiles.FirstOrDefaultAsync(x => x.LeadId == req.LeadId && x.AgentUserId == agentId);
+        var lead = await _db.WorkstationLeadProfiles.ActiveLeadQueue().FirstOrDefaultAsync(x => x.LeadId == req.LeadId && x.AgentUserId == agentId);
         if (lead == null) return NotFound();
 
-        _db.WorkstationLeadProfiles.Remove(lead);
-        await _db.SaveChangesAsync();
+        if (await WorkstationLeadConversionLifecycle.ArchiveAsync(_db, new[] { lead }, HttpContext.RequestAborted) is null)
+            return Conflict("The lead changed. Refresh before removing it.");
 
         var leads = await GetOrderedLeads(agentId, req.QueueKey);
         var nextLead = leads.FirstOrDefault();

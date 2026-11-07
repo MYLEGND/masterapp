@@ -26,6 +26,17 @@ public sealed record WebsiteEditorTicket(
     string? ActorEmail = null,
     Guid? ActorClientProfileId = null);
 
+// A protected login request, not an authorization grant. The receiving authority must
+// re-resolve the destination binding and authenticated actor before issuing a continuation.
+public sealed record StoreManagementLoginRequest(
+    Guid CommerceBusinessId,
+    string SiteKey,
+    string OwnerKey,
+    string DestinationOrigin,
+    string ReturnPath,
+    string BrowserCorrelationHash,
+    DateTime ExpiresUtc);
+
 public sealed class WebsiteStoreSettings
 {
     public bool Enabled { get; set; }
@@ -264,6 +275,7 @@ public sealed class WebsitePageNavigation
 {
     public string? Label { get; set; }
     public bool ShowInNavigation { get; set; } = true;
+    public bool IsPublished { get; set; } = true;
     public string? ParentPath { get; set; }
     public int Order { get; set; }
     public bool IsDeleted { get; set; }
@@ -648,3 +660,5 @@ public static class WebsiteCallToActionCatalog
         return uri.ToString();
     }
 }
+
+public sealed record StoreProviderContinuation(WebsiteEditorTicket Actor, string DestinationOrigin, string Capability);

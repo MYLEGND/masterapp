@@ -10,6 +10,15 @@ internal static class AnalyticsScopeQueryExtensions
         this IQueryable<AnalyticsEvent> query,
         ScopeContext scope)
     {
+        if (scope.StoreBusinessId is { } storeId)
+        {
+            if (storeId == Guid.Empty) return query.Where(x => false);
+            var storeKey = storeId.ToString("D");
+            // Only server-resolved store attribution qualifies. Unattributed historical
+            // rows remain available in website reports; they are not guessed into commerce.
+            query = query.Where(x => x.MetadataJson != null &&
+                MasterAppDbContext.JsonValue(MasterAppDbContext.IsJson(x.MetadataJson) == 1 ? x.MetadataJson : "{}", "$.commerceBusinessId") == storeKey);
+        }
         if (scope.ScopeType == ScopeType.Business)
             return scope.CommerceBusinessId is { } businessId && businessId != Guid.Empty && !scope.AgentTrackingProfileId.HasValue
                 ? query.Where(x => x.CommerceBusinessId == businessId && x.AgentTrackingProfileId == null)
@@ -63,6 +72,15 @@ internal static class AnalyticsScopeQueryExtensions
         this IQueryable<MetaSignalEvent> query,
         ScopeContext scope)
     {
+        if (scope.StoreBusinessId is { } storeId)
+        {
+            if (storeId == Guid.Empty) return query.Where(x => false);
+            var storeKey = storeId.ToString("D");
+            // Only server-resolved store attribution qualifies. Unattributed historical
+            // rows remain available in website reports; they are not guessed into commerce.
+            query = query.Where(x => x.MetadataJson != null &&
+                MasterAppDbContext.JsonValue(MasterAppDbContext.IsJson(x.MetadataJson) == 1 ? x.MetadataJson : "{}", "$.commerceBusinessId") == storeKey);
+        }
         if (scope.ScopeType == ScopeType.Business)
             return scope.CommerceBusinessId is { } businessId && businessId != Guid.Empty && !scope.AgentTrackingProfileId.HasValue
                 ? query.Where(x => x.CommerceBusinessId == businessId && x.AgentTrackingProfileId == null)

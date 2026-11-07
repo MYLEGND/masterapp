@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore.Storage;
 using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Data;
@@ -32,6 +33,31 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
 
     public async Task<ClientSubscriptionOffer> CreateClientSubscriptionOfferAsync(CreateClientSubscriptionOfferCommand command, CancellationToken cancellationToken = default)
     {
+        if (!(command.TrainingBusinessId.HasValue || command.TrainingProductId.HasValue) || !_db.Database.IsRelational())
+            return await CreateClientSubscriptionOfferCoreAsync(command, cancellationToken);
+        if (_db.Database.CurrentTransaction is { } ambient)
+        {
+            if (ambient.GetDbTransaction().IsolationLevel != System.Data.IsolationLevel.Serializable)
+                throw new InvalidOperationException("Training offers require serializable reservation admission.");
+            return await CreateClientSubscriptionOfferCoreAsync(command, cancellationToken);
+        }
+        // Direct callers receive the same admission as the enrollment transaction.
+        // Never discard unrelated pending writes while retrying a reservation.
+        if (_db.ChangeTracker.HasChanges())
+            throw new InvalidOperationException("Save pending changes before reserving a training offer.");
+        var attempt = 0;
+        return await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            if (attempt++ > 0) _db.ChangeTracker.Clear();
+            await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+            var result = await CreateClientSubscriptionOfferCoreAsync(command, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        });
+    }
+
+    private async Task<ClientSubscriptionOffer> CreateClientSubscriptionOfferCoreAsync(CreateClientSubscriptionOfferCommand command, CancellationToken cancellationToken)
+    {
         await EnsureClientExistsAsync(command.ClientProfileId, cancellationToken);
 
         var nowUtc = DateTime.UtcNow;
@@ -55,6 +81,16 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
                 throw new InvalidOperationException("The training business is unavailable.");
             trainingTerms = TrainingPlanTerms.FromCatalog(trainingProduct, command.TrainingPromotionCode);
             scope = ClientSubscriptionScope.Training(businessId);
+            if (trainingTerms.DiscountId is Guid discountId)
+            {
+                var promotion = trainingProduct.Discounts.Single(x => x.Id == discountId);
+                if (promotion.UsageLimit is int limit)
+                {
+                    var reservedClients = await TrainingPromotionReservations.ReservedClientIdsAsync(_db, discountId, nowUtc, cancellationToken);
+                    if (!reservedClients.Contains(command.ClientProfileId) && reservedClients.Count >= limit)
+                        throw new TrainingPromotionCapacityException();
+                }
+            }
         }
         var authoritativeAmount = trainingTerms?.MonthlyAmountCents ?? ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
             command.PriceType,
@@ -95,6 +131,7 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             TrainingPlanName = trainingTerms?.Name,
             TrainingBenefits = trainingTerms?.Benefits,
             TrainingPromotionCode = trainingTerms?.PromotionCode,
+            TrainingDiscountId = trainingTerms?.DiscountId,
             OwnerAgentUserId = command.OwnerAgentUserId.Trim(),
             PriceType = trainingTerms is null ? command.PriceType : ClientSubscriptionOfferPriceType.Custom,
             MonthlyAmountCents = authoritativeAmount,

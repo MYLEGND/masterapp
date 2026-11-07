@@ -14,7 +14,8 @@ public sealed class MarketingScopeParityContractTests
         var js = Read("AgentPortal", "wwwroot", "js", "website-analytics.js");
 
         Assert.Contains("const analyticsBase = shell?.dataset.analyticsBase || '/WebsiteAnalytics';", js, StringComparison.Ordinal);
-        Assert.Contains("const analyticsEndpoint = path => analyticsBase + path;", js, StringComparison.Ordinal);
+        Assert.Contains("const analyticsEndpoint = path =>", js, StringComparison.Ordinal);
+        Assert.Contains("return url.pathname + url.search;", js, StringComparison.Ordinal);
 
         foreach (var endpoint in new[]
         {
@@ -37,7 +38,7 @@ public sealed class MarketingScopeParityContractTests
     [Fact]
     public void BusinessScope_HasExplicitMarketingRoutesBeforeGenericAnalyticsCatchAll()
     {
-        var controller = Read("Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
+        var controller = Read("Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs");
 
         var explicitRoutes = new[]
         {
@@ -68,9 +69,9 @@ public sealed class MarketingScopeParityContractTests
     public void FounderAgentAndBusiness_UseTypedMarketingOwnerScopes_NotHostOrDisplayNameInference()
     {
         var agent = Read("AgentPortal", "Controllers", "WebsiteAnalyticsController.cs");
-        var business = Read("Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
+        var business = Read("Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs");
 
-        Assert.Contains("MarketingOwnerScope.Founder", agent, StringComparison.Ordinal);
+        Assert.Contains("MarketingOwnerScope.Founder", Read("Infrastructure", "Analytics", "CanonicalAdvertisingEventProjection.cs"), StringComparison.Ordinal);
         Assert.Contains("CanonicalAdvertisingEventProjection.ResolveOwnerAsync", agent, StringComparison.Ordinal);
         Assert.DoesNotContain("MarketingOwnerScope.Agent(", agent, StringComparison.Ordinal);
         Assert.Contains("MarketingOwnerScope.Business(businessId)", business, StringComparison.Ordinal);
@@ -148,7 +149,7 @@ public sealed class MarketingScopeParityContractTests
     public void AppSpecificSurfaces_DoNotOwnProviderConversionMappingLogic()
     {
         var agentController = Read("AgentPortal", "Controllers", "WebsiteAnalyticsController.cs");
-        var businessController = Read("Infrastructure", "Businesses", "BusinessWorkspaceControllerBase.cs");
+        var businessController = Read("Infrastructure", "Businesses", "BusinessAnalyticsControllerBase.cs");
         var parfaitController = Read("CommerceCore", "Controllers", "CommerceManagementController.cs");
 
         foreach (var source in new[] { agentController, businessController, parfaitController })

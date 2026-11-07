@@ -6,6 +6,8 @@ public sealed class WebsiteContentState
     public string OwnerKey { get; set; } = "";
     public string SiteKey { get; set; } = "";
     public Guid? CommerceBusinessId { get; set; }
+    // Exact business for which Add Store was committed; retained after public removal.
+    public Guid? ProvisionedStoreBusinessId { get; set; }
     public string DraftJson { get; set; } = "{}";
     public string NamedDraftsJson { get; set; } = "[]";
     public string? ImportReportJson { get; set; }

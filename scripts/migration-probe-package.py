@@ -153,10 +153,16 @@ def isolated_sql():
                       ';User Id=sa;Password=' + password + ';Encrypt=True;TrustServerCertificate=True')
         end = time.monotonic() + 90
         while True:
-            ready = subprocess.run(['docker', 'exec', '-e', 'SQLCMDPASSWORD', name,
-                '/opt/mssql-tools18/bin/sqlcmd', '-S', 'localhost', '-U', 'sa', '-C', '-Q', 'SELECT 1'],
-                env=env, capture_output=True, timeout=10, check=False)
-            if ready.returncode == 0:
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError('Isolated SQL readiness deadline exceeded')
+            try:
+                ready = subprocess.run(['docker', 'exec', '-e', 'SQLCMDPASSWORD', name,
+                    '/opt/mssql-tools18/bin/sqlcmd', '-S', 'localhost', '-U', 'sa', '-C', '-Q', 'SELECT 1'],
+                    env=env, capture_output=True, timeout=min(10, remaining), check=False)
+            except subprocess.TimeoutExpired:
+                ready = None
+            if ready is not None and ready.returncode == 0:
                 break
             if time.monotonic() >= end:
                 raise RuntimeError('Isolated SQL readiness deadline exceeded')
@@ -665,7 +671,14 @@ def test_schema_contract(directory):
         ('20261026210738_AddReceptionistManagement', AUTHORITY.REVIEWED_MANAGEMENT_ENTRY, 'LEGEND_MANAGEMENT_APPEND_TEST:PROVEN'),
         ('20261026223148_ReceptionistBrowserCreation', AUTHORITY.REVIEWED_BROWSER_ENTRY, 'LEGEND_BROWSER_APPEND_TEST:PROVEN'),
         ('20261030033900_RuntimeDiagnosticPerformanceEvidence', AUTHORITY.REVIEWED_DIAGNOSTICS_ENTRY, 'LEGEND_DIAGNOSTICS_APPEND_TEST:PROVEN'),
-        ('20261030070000_CrmRelationshipHistory', AUTHORITY.REVIEWED_CRM_ENTRY, 'LEGEND_CRM_APPEND_TEST:PROVEN')]
+        ('20261030070000_CrmRelationshipHistory', AUTHORITY.REVIEWED_CRM_ENTRY, 'LEGEND_CRM_APPEND_TEST:PROVEN')] + [(migration_id, digest, 'LEGEND_STORE_APPEND_TEST:PROVEN') for migration_id, digest in AUTHORITY.REVIEWED_STORE_ENTRIES]
+    # Disposable fixture identities only; production append authority is unchanged.
+    reviewed += [
+        ('20261103081639_ScopedMerchantWebsiteOwners', '66e40e423f5828e5b76d11fb68d1ef8c6235905a8a8662b05017925b8f2f3cc0', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
+        ('20261103170724_SharedCommerceAutomationState', 'a37f31f2f2f5d2f6a82b6e3b645a3aff82cde8fd4cc24ee261d09c3a2f245b30', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
+        ('20261103174446_SharedCommerceShippingState', '28661e65b1183ce05e6764e9c9050d9e748c4547e1850f0bd189bb89d2efc02e', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
+        ('20261104012500_ParfaitMemberPageRestrictions', '3431b5357098c33623f2fa8d1233439c7cb7fb48f4c761c247406d5957592023', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
+        ('20261104014500_TrainingPromotionMemberLimits', '43410794881f1459251f1a7038111ccaa7f752332e5f91a37fbb865e83478cc1', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS')]
     migrations = current['migrations']
     for index, (migration_id, digest, marker) in enumerate(reviewed):
         entries = [row for row in migrations if row.get('id') == migration_id]
@@ -685,7 +698,11 @@ def test_schema_contract(directory):
         '-c', 'Release', '--nologo', '-o', str(directory), '-m:1', '-nr:false',
         '-p:UseSharedCompilation=false'], check=True)
     scenarios = ['payment-and-successors']
-    if any(row.get('id') == reviewed[6][0] for row in migrations):
+    if any(row.get('id') == reviewed[-1][0] for row in migrations):
+        scenarios.extend(['expanded-store-only', 'standalone-reconciliation-only'])
+    if any(row.get('id') == reviewed[10][0] for row in migrations):
+        scenarios.extend(['canonical-payment-training-management-browser-diagnostics-crm-store', 'training-management-browser-diagnostics-crm-store', 'management-browser-diagnostics-crm-store', 'browser-diagnostics-crm-store', 'diagnostics-crm-store', 'crm-store', 'store-all', 'store-crm-provisioning-membership', 'store-provisioning-membership', 'store-membership'])
+    elif any(row.get('id') == reviewed[6][0] for row in migrations):
         scenarios.extend(['canonical-payment-training-management-browser-diagnostics-crm', 'training-management-browser-diagnostics-crm', 'management-browser-diagnostics-crm', 'browser-diagnostics-crm', 'diagnostics-crm', 'crm-only'])
     elif any(row.get('id') == reviewed[5][0] for row in migrations):
         scenarios.extend(['canonical-payment-training-management-browser-diagnostics', 'training-management-browser-diagnostics', 'management-browser-diagnostics', 'browser-diagnostics', 'diagnostics-only'])
@@ -708,7 +725,7 @@ def test_schema_contract(directory):
                 allowed = r'LEGEND_ISOLATED_FIXTURE:UNPROVEN:(?:dispatch|initialize|precondition|migrate|verify|adversarial):(?:SQL:-?[0-9]{1,10}|INPUT_UNAVAILABLE|MIGRATION_COMPATIBILITY_UNPROVEN|PHYSICAL_SCHEMA_DRIFT|MERCHANT_CHECKOUT_DUPLICATE_IDENTITY_REQUIRES_REVIEW|TIMEOUT|INVALID_OPERATION|UNCLASSIFIED)'
                 exception_type = r'[A-Za-z_][A-Za-z0-9_.+]{0,159}'
                 allowed += r'(?::TYPES:' + exception_type + r'(?:>' + exception_type + r'){0,3})?'
-                allowed += r'(?::LOCATION:(?:UNKNOWN|(?:RehearsalFixture|CandidateContract|CandidateContract\.Structures)\.cs:[1-9][0-9]{0,4}))?'
+                allowed += r'(?::LOCATION:(?:UNKNOWN|(?:RehearsalFixture|RehearsalFixture\.Store|CandidateContract|CandidateContract\.Structures)\.cs:[1-9][0-9]{0,4}))?'
                 reasons = [line for line in result.stderr.splitlines() if re.fullmatch(allowed, line)]
                 reason = reasons[0] if len(reasons) == 1 else 'LEGEND_ISOLATED_FIXTURE:UNPROVEN:dispatch:UNCLASSIFIED'
                 raise RuntimeError('Synthetic payment migration SQL contract failed: ' + reason)

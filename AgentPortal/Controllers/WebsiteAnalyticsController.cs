@@ -589,59 +589,22 @@ namespace AgentPortal.Controllers;
         var tracking = await ResolveMarketingSetupTrackingAsync(request.AgentProfileId, cancellationToken);
         if (tracking is null) return Forbid();
 
-        var pixel = string.IsNullOrWhiteSpace(request.MetaPixelId) ? null : request.MetaPixelId.Trim();
-        if (pixel is not null && (pixel.Length > 32 || pixel.Any(ch => ch < '0' || ch > '9')))
-            return BadRequest(new { message = "Meta Pixel ID must contain only digits." });
-        var testEventCode = string.IsNullOrWhiteSpace(request.MetaTestEventCode) ? null : request.MetaTestEventCode.Trim();
-        if (testEventCode is not null && testEventCode.Length > 100)
-            return BadRequest(new { message = "Meta Test Event Code is too long." });
-
-        static string? Clean(string? value, int max) =>
-            string.IsNullOrWhiteSpace(value) ? null : value.Trim().Length <= max ? value.Trim() : value.Trim()[..max];
-
-        static bool ValidHttpUrl(string? value) =>
-            string.IsNullOrWhiteSpace(value) ||
-            (Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri) &&
-             (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp));
-
-        var embed = Clean(request.MicrosoftBookingsEmbedUrl, 2048);
-        var fallback = Clean(request.FallbackBookingUrl, 2048);
-        var mailbox = Clean(request.BookingPageIdOrMailbox, 320);
-        var calendarEmail = Clean(request.CalendarEmail, 320);
-
-        if (!ValidHttpUrl(embed) || !ValidHttpUrl(fallback))
-            return BadRequest(new { message = "Booking URLs must be valid HTTP or HTTPS URLs." });
-        if (calendarEmail is not null && !new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(calendarEmail))
-            return BadRequest(new { message = "Enter a valid calendar email." });
-
-        var profile = await ResolveMarketingSetupAgentProfileAsync(tracking, createIfMissing: true, cancellationToken)
-            ?? throw new InvalidOperationException("Agent profile could not be resolved.");
-        var hasBookingValues = embed is not null || fallback is not null || mailbox is not null || calendarEmail is not null;
-        profile.BookingEnabled = request.BookingEnabled ? true : hasBookingValues ? false : null;
-        profile.MicrosoftBookingsEmbedUrl = embed;
-        profile.FallbackBookingUrl = fallback;
-        profile.BookingPageIdOrMailbox = mailbox;
-        profile.CalendarEmail = calendarEmail;
-        profile.PreferModalOnMobile = false;
-        profile.UpdatedUtc = DateTime.UtcNow;
-
-        var marketingService = HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.AgentMarketingProfileService>();
         try
         {
-            // This writes the existing MarketingConnection and the tracked AgentProfile
-            // through the same scoped DbContext SaveChanges transaction. No CAPI secret
-            // is accepted here; OAuth-owned Meta Ads credentials remain the only active
-            // secure CAPI authority.
-            var owner = await ResolveMarketingOwnerAsync(tracking, cancellationToken);
-            if (owner == Shared.Analytics.MarketingOwnerScope.Founder)
-                await MarketingConnections.SaveSettingsAsync(owner, pixel, testEventCode, null, request.MarketingRevision, cancellationToken);
-            else
-                await marketingService.SavePixelAsync(tracking, pixel, testEventCode, request.MarketingRevision, cancellationToken);
+            await HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.AgentMarketingProfileService>()
+                .SaveMarketingAsync(tracking, await ResolveMarketingOwnerAsync(tracking, cancellationToken), new()
+                {
+                    ConnectionRevision = request.MarketingRevision,
+                    MetaPixelId = request.MetaPixelId, MetaTestEventCode = request.MetaTestEventCode,
+                    BookingEnabled = request.BookingEnabled, BookingEmbedUrl = request.MicrosoftBookingsEmbedUrl,
+                    BookingFallbackUrl = request.FallbackBookingUrl, BookingMailboxId = request.BookingPageIdOrMailbox,
+                    BookingCalendarEmail = request.CalendarEmail
+                }, cancellationToken);
         }
+        catch (System.ComponentModel.DataAnnotations.ValidationException ex)
+        { return BadRequest(new { message = ex.Message }); }
         catch (DbUpdateConcurrencyException)
-        {
-            return Conflict(new { message = "Marketing setup changed. Reload the setup and try again." });
-        }
+        { return Conflict(new { message = "Marketing setup changed. Reload the setup and try again." }); }
 
         return await MarketingSetup(tracking.Id, cancellationToken);
     }
@@ -780,35 +743,10 @@ namespace AgentPortal.Controllers;
             .SingleOrDefaultAsync(row => row.Id == requestedAgentId.Value, cancellationToken);
     }
 
-    private async Task<AgentProfile?> ResolveMarketingSetupAgentProfileAsync(
-        AgentTrackingProfile tracking,
-        bool createIfMissing,
-        CancellationToken cancellationToken)
-    {
-        var normalizedUpn = string.IsNullOrWhiteSpace(tracking.AgentUpn) ? null : tracking.AgentUpn.Trim().ToUpperInvariant();
-        var profiles = await _db.AgentProfiles
-            .Where(profile =>
-                (!string.IsNullOrWhiteSpace(tracking.AgentUserId) && profile.AgentUserId == tracking.AgentUserId) ||
-                (normalizedUpn != null && (profile.NormalizedEmail == normalizedUpn || profile.AgentUpn == tracking.AgentUpn)))
-            .OrderByDescending(profile => profile.AgentUserId == tracking.AgentUserId)
-            .ThenByDescending(profile => profile.UpdatedUtc)
-            .ToListAsync(cancellationToken);
-
-        var profile = profiles.FirstOrDefault();
-        if (profile is not null || !createIfMissing) return profile;
-
-        profile = new AgentProfile
-        {
-            AgentUserId = tracking.AgentUserId ?? string.Empty,
-            AgentUpn = tracking.AgentUpn ?? string.Empty,
-            NormalizedEmail = normalizedUpn,
-            FullName = tracking.DisplayName,
-            CreatedUtc = DateTime.UtcNow,
-            UpdatedUtc = DateTime.UtcNow
-        };
-        _db.AgentProfiles.Add(profile);
-        return profile;
-    }
+    private Task<AgentProfile?> ResolveMarketingSetupAgentProfileAsync(
+        AgentTrackingProfile tracking, bool createIfMissing, CancellationToken cancellationToken) =>
+        HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.AgentMarketingProfileService>()
+            .ResolveProfileAsync(tracking, createIfMissing, cancellationToken);
 
     // JSON endpoints -------------------------------------------------
     private TimeZoneInfo GetViewerTimeZone()
@@ -1981,19 +1919,10 @@ namespace AgentPortal.Controllers;
     private Infrastructure.Analytics.MarketingConnectionStore MarketingConnections =>
         HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.MarketingConnectionStore>();
 
-    private async Task<MarketingConnection> GetMarketingSettingsAsync(AgentTrackingProfile tracking,
-        Shared.Analytics.MarketingOwnerScope owner, CancellationToken ct)
-    {
-        if (owner != Shared.Analytics.MarketingOwnerScope.Founder)
-            return await HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.AgentMarketingProfileService>().GetAsync(tracking, ct);
-        // Initialize the Founder owner without importing any agent-owned credentials or settings.
-        if (await MarketingConnections.GetStatusAsync(owner, ct) is not { } row)
-        {
-            await MarketingConnections.ImportProfileAsync(owner, null, null, null, ct);
-            row = (await MarketingConnections.GetStatusAsync(owner, ct))!;
-        }
-        return row;
-    }
+    private Task<MarketingConnection> GetMarketingSettingsAsync(AgentTrackingProfile tracking,
+        Shared.Analytics.MarketingOwnerScope owner, CancellationToken ct) =>
+        HttpContext.RequestServices.GetRequiredService<Infrastructure.Analytics.AgentMarketingProfileService>()
+            .GetAsync(tracking, owner, ct);
 
     private async Task<bool> IsAuthorizedMetaOwnerAsync(Shared.Analytics.MarketingOwnerScope owner)
     {

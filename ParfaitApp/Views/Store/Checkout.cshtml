@@ -12,6 +12,7 @@
     var appId = ViewBag.SquareApplicationId as string;
     var locationId = ViewBag.SquareLocationId as string;
     var environment = ViewBag.SquareEnvironment as string ?? "Sandbox";
+    var checkoutAvailable = ViewBag.CheckoutAvailable as bool? ?? false;
     var squareScript = environment.Equals("Production", StringComparison.OrdinalIgnoreCase)
         ? "https://web.squarecdn.com/v1/square.js"
         : "https://sandbox.web.squarecdn.com/v1/square.js";
@@ -20,9 +21,6 @@
     var locationIdJson = System.Text.Json.JsonSerializer.Serialize(locationId ?? "");
 }
 
-@section Styles {
-    <link rel="stylesheet" href="/store-assets/css/storefront.css" asp-append-version="true" />
-}
 
 <section class="sp-store-page sp-store-page--checkout">
     <div class="sp-shell sp-transaction-page">
@@ -120,12 +118,21 @@
                     </div>
 
                     <div class="sp-payment-panel">
-                        <div id="card-container" class="sp-card-container"></div>
+                        <div class="sp-card-container">
+                            <div id="spPaymentStatus" role="status">@(checkoutAvailable
+                                ? hosted ? "Continue to secure processor checkout to enter your payment details." : "Loading secure payment form…"
+                                : "This store is not accepting online payments yet. Please return when payment setup is complete.")</div>
+                            <div id="card-container"></div>
+                        </div>
                     </div>
                 </div>
 
+                <label class="sp-checkout-consent" for="marketingEmailConsent">
+                    <input type="checkbox" id="marketingEmailConsent" checked />
+                    <span>@ParfaitApp.Services.ParfaitCustomerAutomationService.MarketingConsentText <small>Optional.</small></span>
+                </label>
                 <div class="sp-checkout-submit-row">
-                    <button id="spPayButton" class="sp-button sp-button--primary sp-button--checkout sp-button--purchase" type="button">
+                    <button id="spPayButton" disabled="@(!checkoutAvailable)" class="sp-button sp-button--primary sp-button--checkout sp-button--purchase" type="button">
                         <span class="sp-button-main">
                             <span id="spPaySpinner" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" hidden></span>
                             <span id="spPayButtonLabel">Complete Purchase</span>
@@ -180,6 +187,9 @@
             const checkoutAttemptStorageKey = store.storageKey === "parfaitCart"
                 ? "parfaitCheckoutAttemptId"
                 : store.storageKey + ":checkoutAttemptId";
+            const pendingStorageKey = checkoutAttemptStorageKey + ":pending";
+            let pendingReference = null;
+            try { pendingReference = JSON.parse(window.sessionStorage.getItem(pendingStorageKey) || "null"); } catch { }
             const emailPattern = /^[^\s@@]+@@[^\s@@]+\.[^\s@@]+$/;
 
             const fields = {
@@ -229,13 +239,13 @@
                     return;
                 }
 
-                payButton.disabled = !isAvailable;
-                payButton.classList.toggle("is-disabled", !isAvailable);
+                payButton.disabled = !isAvailable && !pendingReference;
+                payButton.classList.toggle("is-disabled", payButton.disabled);
             };
 
             const setSubmittingState = (submitting, label) => {
                 isSubmitting = submitting;
-                payButton.disabled = submitting || !latestQuote?.isValid;
+                payButton.disabled = submitting || (!pendingReference && !latestQuote?.isValid);
                 payButton.classList.toggle("is-disabled", payButton.disabled);
                 paySpinner.hidden = !submitting;
                 payButtonLabel.textContent = label;
@@ -251,42 +261,7 @@
                 quantity: item.quantity
             }));
 
-            const syncCartWithQuote = quote => {
-                const current = store.readCart();
-                const next = [];
-                let changed = false;
 
-                current.forEach(entry => {
-                    const quoted = quote.items.find(item => item.key === entry.key);
-                    if (!quoted || Number(quoted.quantity || 0) <= 0) {
-                        changed = true;
-                        return;
-                    }
-
-                    const nextQuantity = Number(quoted.quantity || 0);
-                    if (Number(entry.quantity || 0) !== nextQuantity) {
-                        changed = true;
-                    }
-
-                    next.push({
-                        ...entry,
-                        quantity: nextQuantity,
-                        priceCents: Number(quoted.unitPriceCents || entry.priceCents || 0),
-                        compareAtPriceCents: Number(quoted.compareAtPriceCents || entry.compareAtPriceCents || 0),
-                        imageUrl: quoted.imageUrl || entry.imageUrl,
-                        name: quoted.name || entry.name,
-                        slug: quoted.slug || entry.slug,
-                        badge: quoted.badge || entry.badge,
-                        size: quoted.size || entry.size
-                    });
-                });
-
-                if (changed) {
-                    store.writeCart(next);
-                }
-
-                return changed;
-            };
 
             const renderEmptySummary = () => {
                 if (!hosted) clearCheckoutAttemptId();
@@ -409,7 +384,9 @@
 
                     const text = await response.text();
                     const quote = text ? JSON.parse(text) : {};
-                    const changed = quote?.items ? syncCartWithQuote(quote) : false;
+                    const applied = quote?.items ? await store.applyQuote(quote, cart.revision) : { changed: false };
+                    if (applied.stale) return requestQuote();
+                    const changed = applied.changed;
 
                     if (changed) {
                         syncMessage = "Checkout updated to current stock.";
@@ -419,28 +396,43 @@
                     renderSummary(quote);
                     setError(syncMessage || quote.error || quote.messages?.[0] || "");
                     syncMessage = "";
+                    quote.cartRevision = cart.revision;
                     return quote;
-                } catch {
+                } catch (error) {
                     renderFallbackSummary(cart);
-                    setError("We could not refresh checkout right now.");
+                    setError(error.message || "We could not refresh checkout right now.");
                     return null;
                 }
             };
 
             async function startSquare() {
-                const firstQuote = await requestQuote();
+                if (!@System.Text.Json.JsonSerializer.Serialize(checkoutAvailable) && !pendingReference) return;
+                const firstQuote = pendingReference ? null : await requestQuote();
 
                 if (!hosted) {
+                try {
                 if (!window.Square) throw new Error("Square.js failed to load.");
                 if (!appId || !locationId) throw new Error("Square Application ID or Location ID is missing.");
 
                 const payments = window.Square.payments(appId, locationId);
                 card = await payments.card();
                 await card.attach("#card-container");
-                } else { document.getElementById("card-container").textContent = "Continue to your secure payment provider to complete your purchase."; }
+                document.getElementById("spPaymentStatus").hidden = true;
+                } catch (error) { document.getElementById("spPaymentStatus").hidden = true; if (!pendingReference) throw error; }
+                } else { document.getElementById("spPaymentStatus").textContent = "Continue to your secure payment provider to complete your purchase."; }
                 ensureCheckoutAttemptId();
 
+                let declinedCheckout = false;
+                let changedUnsubmittedCheckout = false;
+                let checkingPayment = Boolean(pendingReference);
+                let submittedPayload = null;
+                let preparedRecovery = null;
                 payButton.addEventListener("click", async () => {
+                    if (changedUnsubmittedCheckout) {
+                        if (!await store.abandonUnsubmittedCheckout(ensureCheckoutAttemptId())) { setError("This payment may already be processing. Check its status before starting another checkout."); return; }
+                        clearCheckoutAttemptId(); changedUnsubmittedCheckout = false;
+                    }
+                    if (declinedCheckout) { clearCheckoutAttemptId(); declinedCheckout = false; submittedPayload = null; }
                     if (isSubmitting) {
                         return;
                     }
@@ -449,36 +441,51 @@
                     setError("");
 
                     try {
-                        const customerError = validateCustomer();
-                        if (customerError) throw new Error(customerError);
-
-                        const quote = await requestQuote();
-                        if (!quote) {
-                            throw new Error(errorHost.textContent || "Checkout could not refresh right now.");
+                        let postPayment = false;
+                        if (!checkingPayment) {
+                        let quote;
+                        if (preparedRecovery) {
+                            if (preparedRecovery.merchantConnectionRevision !== @Html.Raw(System.Text.Json.JsonSerializer.Serialize((Guid?)ViewBag.MerchantConnectionRevision)))
+                                throw new Error("Payment setup changed. Refresh this page to reload the secure card form for this saved order.");
+                            await store.ensurePaymentReady();
+                            submittedPayload = { ...preparedRecovery, sourceId: null, marketingEmailConsent: false };
+                            quote = preparedRecovery;
+                        } else {
+                            const customerError = validateCustomer();
+                            if (customerError) throw new Error(customerError);
+                            quote = await requestQuote();
+                            if (!quote?.isValid) throw new Error(errorHost.textContent || "Review the updated order before paying.");
+                            submittedPayload = {
+                                marketingEmailConsent: document.getElementById("marketingEmailConsent").checked,
+                                sourceId: null,
+                                merchantConnectionRevision: @Html.Raw(System.Text.Json.JsonSerializer.Serialize((Guid?)ViewBag.MerchantConnectionRevision)),
+                                checkoutAttemptId: ensureCheckoutAttemptId(), discountCode: store.readDiscountCode(), customer: getCustomer(),
+                                items: quote.items.filter(item => Number(item.quantity || 0) > 0).map(item => ({ id: item.id, size: item.size, quantity: item.quantity }))
+                            };
                         }
+                        const customer = submittedPayload.customer;
+                        const binding = preparedRecovery ? { submitted: false } : await store.bindCheckout(submittedPayload.checkoutAttemptId, submittedPayload.items, quote.cartRevision);
+                        if (!hosted && !binding.submitted && !card) throw new Error("The secure card form is unavailable. Refresh this page before retrying this saved order.");
+                        const result = (hosted || binding.submitted) ? { status: "OK", token: null } : await card.tokenize({
+                            amount: (Number(quote.totalCents) / 100).toFixed(2), currencyCode: "USD", intent: "CHARGE",
+                            customerInitiated: true, sellerKeyedIn: false,
+                            billingContact: { givenName: customer.firstName, familyName: customer.lastName,
+                                email: customer.email, phone: customer.phone, addressLines: [customer.addressLine1, customer.addressLine2].filter(Boolean),
+                                city: customer.city, state: customer.state, postalCode: customer.postalCode, countryCode: "US" }
+                        });
+                        if (result.status !== "OK") throw new Error("Check your card details and try again.");
 
-                        if (!quote.isValid) {
-                            throw new Error(errorHost.textContent || "Checkout totals changed. Review the updated order before paying.");
+                        submittedPayload.sourceId = result.token;
+                        if (!preparedRecovery) await store.markCheckoutSubmitted(submittedPayload.checkoutAttemptId);
+                        pendingReference = { attemptId: submittedPayload.checkoutAttemptId };
+                        window.sessionStorage.setItem(pendingStorageKey, JSON.stringify(pendingReference));
+                        postPayment = true;
+                        checkingPayment = true; // Network loss must reconcile this intent, never re-tokenize it.
                         }
-
-                        const result = hosted ? { status: "OK", token: null } : await card.tokenize();
-                        if (result.status !== "OK") throw new Error("Unable to tokenize payment card.");
-
-                        const payload = {
-                            sourceId: result.token,
-                            checkoutAttemptId: ensureCheckoutAttemptId(),
-                            discountCode: store.readDiscountCode(),
-                            customer: getCustomer(),
-                            items: quote.items
-                                .filter(item => Number(item.quantity || 0) > 0)
-                                .map(item => ({
-                                    id: item.id,
-                                    size: item.size,
-                                    quantity: item.quantity
-                                }))
-                        };
-
-                        const response = await fetch(payEndpoint, {
+                        const payload = submittedPayload;
+                        const response = !postPayment && pendingReference
+                            ? await fetch(checkoutPath + "/return?orderNumber=" + encodeURIComponent(pendingReference.orderNumber || "") + "&attempt=" + encodeURIComponent(pendingReference.attemptId), { headers: { "Accept": "application/json" } })
+                            : await fetch(payEndpoint, {
                             method: "POST",
                             headers: {
                                 "Content-Type": "application/json",
@@ -487,32 +494,63 @@
                             body: JSON.stringify(payload)
                         });
 
+                        if (submittedPayload) submittedPayload.sourceId = null;
                         const text = await response.text();
                         const data = text ? JSON.parse(text) : {};
 
+                        if (data.paymentNotStarted) {
+                            preparedRecovery = data.recovery;
+                            renderSummary({ ...preparedRecovery, isValid: true });
+                            for (const [name, value] of Object.entries(preparedRecovery.customer)) {
+                                if (fields[name]) { fields[name].value = value || ""; fields[name].readOnly = true; }
+                            }
+                            checkingPayment = false;
+                            setError(data.error); setSubmittingState(false, "Retry saved order"); return;
+                        }
+                        if (data.paymentPending) {
+                            checkingPayment = true;
+                            pendingReference = { orderNumber: data.orderNumber, attemptId: pendingReference?.attemptId || submittedPayload.checkoutAttemptId };
+                            window.sessionStorage.setItem(pendingStorageKey, JSON.stringify(pendingReference));
+                            setError(data.error);
+                            setSubmittingState(false, "Check payment status");
+                            return;
+                        }
+                        if (data.paymentDeclined) {
+                            checkingPayment = false;
+                            preparedRecovery = null;
+                            for (const field of Object.values(fields)) field.readOnly = false;
+                            pendingReference = null;
+                            window.sessionStorage.removeItem(pendingStorageKey);
+                            setError(data.error);
+                            setSubmittingState(false, "Try another card");
+                            declinedCheckout = true;
+                            return;
+                        }
                         if (!response.ok || !data.success) {
                             throw new Error(data.error || "Payment failed.");
                         }
 
-                        if (!hosted) {
-                            clearCheckoutAttemptId();
-                            store.clearCart();
-                            store.clearDiscountCode();
-                        }
+                        window.sessionStorage.removeItem(pendingStorageKey);
                         window.location.href = data.redirectUrl || successPath;
                     } catch (error) {
+                        if (submittedPayload) submittedPayload.sourceId = null;
+                        if (error.code === "checkout_cart_changed") {
+                            changedUnsubmittedCheckout = true;
+                            setError(error.message); setSubmittingState(false, "Review updated checkout"); return;
+                        }
                         setError(error.message || "Payment failed.");
-                        setSubmittingState(false, "Complete Purchase");
+                        setSubmittingState(false, checkingPayment ? "Check payment status" : "Complete Purchase");
                     }
                 });
 
+                if (pendingReference) { setError("Payment verification is pending."); setSubmittingState(false, "Check payment status"); }
                 if (!firstQuote?.isValid) {
                     setPayButtonAvailability(false);
                 }
             }
 
             window.addEventListener("parfait-cart-updated", () => {
-                requestQuote();
+                if (!pendingReference) requestQuote();
             });
 
             startSquare().catch(error => {

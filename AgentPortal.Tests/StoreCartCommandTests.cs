@@ -28,7 +28,7 @@ public sealed class StoreCartCommandTests
     {
         using var fixture = new Fixture();
         var id = Guid.NewGuid();
-        var command = new StoreCartController.CartAddItemRequest { EventId = id.ToString("N"), ProductId = "tee", Size = "M", Quantity = 2 };
+        var command = new StoreCartController.CartAddItemRequest { EventId = id.ToString("N"), ProductId = "tee", Size = "M", Quantity = 2, CurrentQuantity = 0 };
         Assert.IsType<OkObjectResult>(await fixture.Controller.AddItem(command, default));
         var row = Assert.Single(fixture.Db.AnalyticsEvents);
         var eventId = row.EventId;
@@ -38,20 +38,20 @@ public sealed class StoreCartCommandTests
         row = Assert.Single(fixture.Db.AnalyticsEvents);
         Assert.Equal(eventId, row.EventId);
         Assert.Equal(time, row.EventUtc);
-        Assert.Equal(2, fixture.CartQuantity());
+        Assert.Equal(0, fixture.CartQuantity());
         command.Quantity = 1;
         Assert.IsType<ConflictResult>(await fixture.Controller.AddItem(command, default));
         Assert.Single(fixture.Db.AnalyticsEvents);
-        Assert.Equal(2, fixture.CartQuantity());
+        Assert.Equal(0, fixture.CartQuantity());
     }
 
     [Fact]
     public async Task NearStockLimitRecordsOnlyAcceptedIncrementAndZeroIncrementAddsNoEvent()
     {
         using var fixture = new Fixture();
-        for (var i = 0; i < 3; i++)
-            Assert.IsType<OkObjectResult>(await fixture.Controller.AddItem(new() { EventId = Guid.NewGuid().ToString(), ProductId = "tee", Size = "M", Quantity = 2 }, default));
-        Assert.Equal(3, fixture.CartQuantity());
+        foreach (var (current, expected) in new[] { (0, 2), (2, 1), (3, 0) })
+            Assert.Equal(expected, Accepted(Assert.IsType<OkObjectResult>(await fixture.Controller.AddItem(new() { EventId = Guid.NewGuid().ToString(), ProductId = "tee", Size = "M", Quantity = 2, CurrentQuantity = current }, default))));
+        Assert.Equal(0, fixture.CartQuantity());
         Assert.Equal(2, fixture.Db.AnalyticsEvents.Count());
         var quantities = fixture.Db.AnalyticsEvents.AsEnumerable().Select(row =>
             Infrastructure.Analytics.CanonicalAdvertisingEventProjection.ReadInt64(row.MetadataJson, "quantity")).ToArray();
@@ -63,13 +63,47 @@ public sealed class StoreCartCommandTests
     public async Task InvalidScopeAndForeignProductCannotMutateCartOrEmitOutcome()
     {
         using var fixture = new Fixture();
-        var command = new StoreCartController.CartAddItemRequest { EventId = Guid.NewGuid().ToString(), ProductId = "foreign", Size = "M", Quantity = 1 };
+        var command = new StoreCartController.CartAddItemRequest { EventId = Guid.NewGuid().ToString(), ProductId = "foreign", Size = "M", Quantity = 1, CurrentQuantity = 0 };
         Assert.IsType<BadRequestResult>(await fixture.Controller.AddItem(command, default));
         command.ProductId = "tee";
         Assert.IsType<NotFoundResult>(await fixture.Controller.AddScopedItem("other-business", command, default));
         Assert.Empty(fixture.Db.AnalyticsEvents);
         Assert.Equal(0, fixture.CartQuantity());
     }
+
+    [Fact]
+    public async Task LostResponseReceiptSurvivesStockChangingBeforeReplay()
+    {
+        using var f = new Fixture();
+        var command = new StoreCartController.CartAddItemRequest { EventId = Guid.NewGuid().ToString(), ProductId = "tee", Size = "M", Quantity = 2, CurrentQuantity = 0 };
+        Assert.Equal(2, Accepted(Assert.IsType<OkObjectResult>(await f.Controller.AddItem(command, default))));
+        f.Db.CommerceProductInventoryItems.Single().StockQuantity = 0;
+        f.Db.SaveChanges();
+        Assert.Equal(2, Accepted(Assert.IsType<OkObjectResult>(await f.Controller.AddItem(command, default))));
+        Assert.Single(f.Db.AnalyticsEvents);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(-1)]
+    public async Task MissingOrInvalidBrowserQuantityFailsBeforeAnyOutcome(int? current)
+    {
+        using var f = new Fixture();
+        Assert.IsType<ConflictObjectResult>(await f.Controller.AddItem(new() { EventId = Guid.NewGuid().ToString(), ProductId = "tee", Size = "M", Quantity = 1, CurrentQuantity = current }, default));
+        Assert.Empty(f.Db.AnalyticsEvents);
+    }
+
+    [Fact]
+    public async Task OldSessionAccumulatorDoesNotOwnNewBrowserCart()
+    {
+        using var f = new Fixture();
+        f.Session.SetString($"cart:{f.BusinessId:N}", "{\"tee:M\":3}");
+        var result = Assert.IsType<OkObjectResult>(await f.Controller.AddItem(new() { EventId = Guid.NewGuid().ToString(), ProductId = "tee", Size = "M", Quantity = 1, CurrentQuantity = 0 }, default));
+        Assert.Equal(1, Accepted(result));
+        Assert.Equal(3, f.CartQuantity()); // Legacy bytes are untouched and have no quantity authority.
+    }
+
+    private static int Accepted(OkObjectResult result) => JsonSerializer.SerializeToElement(result.Value).GetProperty("acceptedQuantity").GetInt32();
 
     private sealed class Fixture : IDisposable
     {
@@ -97,6 +131,10 @@ public sealed class StoreCartCommandTests
             http.Request.Host = new HostString("shopparfait.com");
             Controller.ControllerContext = new ControllerContext { HttpContext = http };
         }
+        public ISession Session => session;
+        public Guid BusinessId => businessId;
+        public ParfaitApp.Models.ParfaitOrderRecord Order(string status) => new() { CommerceOrderId = Guid.NewGuid(), CommerceBusinessId = businessId,
+            OrderNumber = "PAID-CART", FirstName = "Test", LastName = "Buyer", Email = "test@example.invalid", Phone = "5550100", AddressLine1 = "1 Test Street", City = "Example", State = "AZ", PostalCode = "85001", PaymentStatus = status, Items = [new() { Id = "tee", Size = "M", Quantity = 1 }] };
         public int CartQuantity() => JsonSerializer.Deserialize<Dictionary<string, int>>(session.GetString($"cart:{businessId:N}") ?? "{}")!.Values.Sum();
         public void Dispose() => Db.Dispose();
     }

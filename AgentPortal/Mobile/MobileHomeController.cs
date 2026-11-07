@@ -139,12 +139,12 @@ public sealed class MobileHomeController : MobileApiControllerBase
                 client.DisplayName,
                 client.Email,
                 client.CrmStatus,
-                avatar, client.Archived, client.Phone));
+                avatar, client.Archived, client.Phone, client.EntityName));
         }
 
         return result;
     }
 }
 
-public sealed record MobileAgentClientDto(Guid ProfileId, string DisplayName, string Email, string CrmStatus, MobileAvatarDto? Avatar, bool Archived = false, string? Phone = null);
+public sealed record MobileAgentClientDto(Guid ProfileId, string DisplayName, string Email, string CrmStatus, MobileAvatarDto? Avatar, bool Archived = false, string? Phone = null, string? EntityName = null);
 public sealed record MobileAgentLeadDto(string LeadId, string DisplayName, string CrmStage, DateTime UpdatedUtc, bool Archived = false, string? Email = null, string? Phone = null);

@@ -303,3 +303,82 @@ test('explicit index files cannot expose the old static homepage',async()=>{
     assert.equal(new URL(seen.url).searchParams.get('path'),route);
   }
 });
+
+test('internal pages and writes retain trusted website scope and bypass public renderer/cache', async () => {
+  for (const host of ['mylegnd.com', 'protect.mylegnd.com', 'tenant.example']) {
+    for (const method of ['GET', 'POST']) {
+      const request = new Request(`https://${host}/internal/commerce/products?businessKey=tenant-one`, {
+        method, headers: { Cookie: 'synthetic=session', 'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Legend-Original-Host': 'forged.example' }, ...(method === 'POST' ? { body: 'name=Synthetic' } : {})
+      });
+      const response = await handleWebsiteRouting(request, env, async (upstream, options) => {
+        assert.equal(new URL(upstream.url).hostname, 'masterapp-protect.azurewebsites.net');
+        assert.equal(new URL(upstream.url).pathname, '/internal/commerce/products');
+        assert.equal(upstream.headers.get('X-Legend-Original-Host'), host);
+        assert.equal(upstream.headers.get('Cookie'), 'synthetic=session');
+        assert.equal(options.cache, "no-store");
+        assert.equal(options.cf?.cacheTtl, undefined);
+        if (method === 'POST') assert.equal(await upstream.text(), 'name=Synthetic');
+        return new Response('private workspace', {headers: {'Set-Cookie': 'synthetic=new; Secure; HttpOnly'}});
+      });
+      assert.match(response.headers.get('Cache-Control'), /no-store/);
+      assert.equal(response.headers.get('Set-Cookie'), 'synthetic=new; Secure; HttpOnly');
+    }
+  }
+});
+
+
+test('shared internal assets use the website origin on every Store host without CMS or commerce cutover', async () => {
+  for (const host of ['mylegnd.com', 'protect.mylegnd.com', 'tenant.example']) {
+    for (const path of ['/design/legend-app-shell.css', '/_content/Shared/css/dashboard-home-shared.css', '/_content/Shared/js/legend-modal.js', '/css/internal.css', '/css/website-analytics.css', '/js/website-analytics.js', '/js/website-analytics-kpi-modal.js', '/lib/bootstrap/dist/js/bootstrap.bundle.min.js']) {
+      const response = await handleWebsiteRouting(new Request(`https://${host}${path}?v=synthetic`), env, async (upstream, options) => {
+        assert.equal(new URL(upstream.url).hostname, 'masterapp-protect.azurewebsites.net');
+        assert.equal(new URL(upstream.url).pathname, path);
+        assert.equal(upstream.headers.get('X-Legend-Original-Host'), host);
+        assert.equal(options.cache, "no-store");
+        assert.equal(options.cf?.cacheTtl, undefined);
+        return new Response('synthetic asset');
+      });
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get('Cache-Control'), /no-store/);
+    }
+  }
+});
+
+test('internal presentation assets cannot forward writes', async () => {
+  let forwarded = false;
+  const response = await handleWebsiteRouting(new Request('https://tenant.example/js/website-analytics.js', { method: 'POST' }), env, async () => {
+    forwarded = true;
+    return new Response('unexpected');
+  });
+  assert.equal(response.status, 405);
+  assert.equal(forwarded, false);
+});
+
+test('provider callback private adapters retain state and avoid legacy commerce origin', async () => {
+  for (const path of ['/internal/analytics/calendar-callback', '/internal/analytics/external-ads/callback']) {
+    const response = await handleWebsiteRouting(new Request(`https://tenant.example${path}?state=synthetic&code=synthetic`), env, async upstream => {
+      const url = new URL(upstream.url);
+      assert.equal(url.hostname, 'masterapp-protect.azurewebsites.net');
+      assert.equal(url.pathname, path);
+      assert.equal(url.searchParams.get('state'), 'synthetic');
+      assert.equal(upstream.headers.get('X-Legend-Original-Host'), 'tenant.example');
+      return new Response('state rejected', {status: 400});
+    });
+    assert.equal(response.status, 400);
+    assert.match(response.headers.get('Cache-Control'), /no-store/);
+  }
+});
+
+
+test('LEGEND uploaded product media reads from its scoped management storage owner', () => {
+  for (const host of ['mylegnd.com', 'www.mylegnd.com']) {
+    const path = '/uploads/parfait-products/tenant/product/photo.png';
+    const result = buildBridgeRequest(new Request('https://' + host + path), env);
+    assert.equal(result.request.url, env.LEGEND_WEBSITE_ORIGIN + path);
+    assert.equal(result.request.headers.get('X-Legend-Original-Host'), host);
+    assert.equal(result.request.headers.get('X-Legend-Website-Bridge'), secret);
+  }
+  const legacy = buildBridgeRequest(new Request('https://camoexterior.com/uploads/parfait-products/product/photo.png'), env);
+  assert.equal(new URL(legacy.request.url).origin, env.LEGEND_COMMERCE_ORIGIN);
+});

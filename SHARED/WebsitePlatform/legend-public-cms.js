@@ -23,7 +23,7 @@
   const AGENT_SLUG = context.agentSlug || '';
   let BUSINESS_ID = context.businessId || '';
   const params = new URLSearchParams(location.search);
-  const requestedPage = SITE_KEY === 'business' && (params.has('legendEdit') || location.pathname.startsWith('/business-preview')) ? params.get('cmsPage') : null;
+  const requestedPage = (params.has('legendEdit') || window.history?.state?.legendStudioTicket || location.pathname.startsWith('/business-preview')) ? params.get('cmsPage') : null;
   const customPage = requestedPage && /^\/(?:[a-z0-9_-]+\/)*[a-z0-9_-]*$/.test(requestedPage) ? requestedPage.replace(/\/$/, '') || '/' : null;
   let activeEditorRoute = customPage;
   let pageKey = (customPage ? customPage.slice(1).replace(/\//g, '-') || 'home' : null) || renderInput?.pageKey || document.body?.dataset?.pageKey
@@ -602,6 +602,7 @@
         : {showInNavigation:true,order:0,isDeleted:false};
       navigation.showInNavigation=navigation.showInNavigation!==false;
       navigation.isDeleted=navigation.isDeleted===true;
+      navigation.isPublished=navigation.isPublished!==false;
       navigation.order=Number.isFinite(Number(navigation.order)) ? Number(navigation.order) : 0;
       if(navigation.showInNavigation && !navigation.isDeleted && !String(navigation.label||'').trim())
         navigation.label=defaultNavigationLabel(route,title);
@@ -684,6 +685,9 @@
   }
 
   function currentPageRoute() {
+    const storeRoot=window.PARFAIT_COMMERCE_CONTEXT?.storeRootPath;
+    if(!editorMode && typeof storeRoot==='string' && storeRoot.startsWith('/') &&
+       normalizePageRoute(location.pathname)===normalizePageRoute(storeRoot) && documentState.pages?.['/store']) return '/store';
     const browserPath = (editorMode && activeEditorRoute) || customPage || location.pathname.replace(/^\/business-preview/, '').replace(/\/$/, '') || '/';
     return canonicalSiteRoute(browserPath) || '/';
   }
@@ -1110,7 +1114,7 @@
     const fieldKey=['INPUT','SELECT','TEXTAREA','BUTTON'].includes(selected.tagName) && selected.dataset?.cmsFieldKey
       ? formFieldKey(selected)
       : null;
-    const form=fieldKey ? selected.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]') : null;
+    const form=fieldKey ? selected.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]') : null;
     const elementId=fieldKey
       ? form?.dataset?.cmsCompositionId
       : (selected.dataset.cmsCompositionId || selected.dataset.cmsId || null);
@@ -1487,6 +1491,20 @@
     host.appendChild(add);
   }
 
+  // Same opaque-hex contrast contract as CommerceThemeContrast on server-rendered Store pages.
+  function storeThemeForeground(background, preferred, fallbackBackground) {
+    const rgb=value=>/^#[0-9a-f]{6}$/i.test(String(value||''))
+      ? {r:parseInt(value.slice(1,3),16),g:parseInt(value.slice(3,5),16),b:parseInt(value.slice(5,7),16)} : null;
+    if(background&&!rgb(background)&&preferred) return preferred;
+    const bg=rgb(background)||rgb(fallbackBackground);
+    if(!bg) throw new Error('A canonical opaque hex fallback is required.');
+    const luminance=relativeLuminance(bg);
+    const contrast=value=>(Math.max(luminance,value)+.05)/(Math.min(luminance,value)+.05);
+    const candidate=rgb(preferred);
+    if(candidate&&contrast(relativeLuminance(candidate))>=4.5) return preferred;
+    return contrast(1)>=contrast(0)?'#ffffff':'#000000';
+  }
+
   function applyTheme(theme) {
     const root = document.documentElement;
     const strings = {
@@ -1516,6 +1534,14 @@
       if (theme?.[key]) root.style.setProperty(cssVar, theme[key]);
       else root.style.removeProperty(cssVar);
     });
+    const computedTheme=window.getComputedStyle?.(root);
+    const resolved=(key,fallback)=>theme?.[key]||computedTheme?.getPropertyValue(fallback)?.trim()||null;
+    const accent=theme?.goldStrong||theme?.gold||resolved('goldStrong','--web-gold-strong')||resolved('gold','--web-gold');
+    const secondary=theme?.navyDeep||theme?.navy||resolved('navyDeep','--web-navy-deep');
+    const surface=resolved('surface','--web-surface');
+    root.style.setProperty('--web-on-accent',storeThemeForeground(accent,secondary,'#6f4b3b'));
+    root.style.setProperty('--web-on-secondary',storeThemeForeground(secondary,surface,'#1f120d'));
+    root.style.setProperty('--web-on-elevated',storeThemeForeground(theme?.surfaceElevated||surface,resolved('text','--web-ink'),'#ffffff'));
     const numberValue=key=>{
       const value=theme?.[key];
       return value==null || typeof value==='boolean' || (typeof value==='string' && !value.trim())
@@ -2057,7 +2083,7 @@
 
   function nativeFormPresentationOwner(el) {
     if(!el?.dataset?.cmsPresentationKey) return null;
-    const form=el.closest('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]');
+    const form=el.closest('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]');
     const node=compositionNode(form?.dataset.cmsCompositionId);
     const binding=nativeFormPresentationBindings.get(el);
     return node && binding?.form===form && binding.ownerId===node.id &&
@@ -2083,12 +2109,12 @@
 
   function formFieldPresentationForElement(el, create = true) {
     if(!el || legacyMigration) return null;
-    const form=el.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]');
+    const form=el.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]');
     if(!form || form===el) return null;
     const key=formFieldKey(el);
     if(!key) return null;
     const formNode=compositionNode(form.dataset.cmsCompositionId);
-    if(!formNode || !(formNode.type==='form' || formNode.type==='receptionist' || formNode.type==='experience' || String(formNode.systemKey || '').startsWith('protect_runtime_form:'))) return null;
+    if(!formNode || !(formNode.systemKey==='commerce_catalog' || formNode.type==='form' || formNode.type==='receptionist' || formNode.type==='experience' || String(formNode.systemKey || '').startsWith('protect_runtime_form:'))) return null;
     if(create){
       formNode.fieldPresentations ||= {};
       formNode.fieldPresentations[key] ||= normalizeControlPresentation(null);
@@ -2423,6 +2449,11 @@
 
   function materializeCompositionNodeWithNativeControls(el, fallbackId = null, identity = null) {
     if (!(el instanceof HTMLElement) || el.closest('.legend-cms-editor')) return null;
+    if(el.matches('[data-legend-store-catalog]')) {
+      const saved=compositionNode(el.dataset.cmsId);
+      if(saved?.systemKey==='commerce_catalog') return {...cloneCanonicalValue(saved),children:[]};
+      return null;
+    }
     identity ||= createMaterializationIdentityContext();
     // Template decoration is deliberately presentation-only. Persisting SVG/icon
     // wrappers as ordinary v3 nodes creates empty colored boxes after the SVG is
@@ -3071,7 +3102,7 @@
   // A late-loading module fills only the canonical placeholders. Apply the same
   // existing control presentation after mounting; do not rerender/reset forms.
   window.addEventListener('legend:public-inquiry-mounted',()=>{
-    document.querySelectorAll('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]').forEach(form=>{
+    document.querySelectorAll('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]').forEach(form=>{
       const node=compositionNode(form.dataset.cmsCompositionId);
       if(node) applyFormFieldPresentations(form,node);
     });
@@ -3190,10 +3221,63 @@
     else el.removeAttribute('fetchpriority');
   }
 
+  // Catalog values/actions stay server-owned. The existing presentation records
+  // style every instance of a native catalog part, never materialized products.
+  const storePresentationParts=['card','media','badge','content','title','price','actions','button'];
+  function applyStoreCatalogPresentation(catalog,node) {
+    let sheet=catalog.querySelector('style[data-store-catalog-presentation]');
+    if(!sheet){sheet=document.createElement('style');sheet.dataset.storeCatalogPresentation='';catalog.prepend(sheet);}
+    const rules=[];
+    for(const part of storePresentationParts){
+      const key='store:'+part;
+      const presentation=node.fieldPresentations?.[key];
+      if(presentation){
+        const probe=document.createElement('div');
+        applyStyle(probe,effectiveStyle(presentation));applyLayout(probe,effectiveLayout(presentation));
+        rules.push('[data-legend-store-catalog] [data-cms-store-style="'+part+'"]{'+probe.style.cssText+'}');
+      }
+      catalog.querySelectorAll('[data-cms-store-style="'+part+'"]').forEach(element=>{
+        element.dataset.cmsFieldKey=key;element.dataset.cmsSignalOnly='true';element.dataset.cmsEditable='true';
+      });
+    }
+    sheet.textContent=rules.join('\n');
+  }
+
+  let retainedStoreCatalog = null;
   function buildCompositionNode(node) {
     if (!node?.id) return null;
     let el;
-    if (node.type === 'reusable') {
+    if (node.systemKey === 'commerce_catalog') {
+      el=retainedStoreCatalog || document.createElement('div');
+      el.dataset.legendStoreCatalog='';
+      if(editorMode && !document.querySelector('link[data-store-presentation]')) {
+        const css=document.createElement('link'); css.rel='stylesheet';css.dataset.storePresentation='';
+        // Studio must show the current deployed presentation, not a heuristically cached prior release.
+        const stylesheet=new URL('/store-assets/css/storefront.css',storePreviewUrl() || location.origin);
+        stylesheet.searchParams.set('studio',String(Date.now()));
+        css.href=stylesheet.toString();document.head.appendChild(css);
+      }
+
+      if(!retainedStoreCatalog){
+        el.append(document.createComment('legend:store:catalog:start'),document.createComment('legend:store:catalog:end'));
+        if(editorMode){
+          const url=storePreviewUrl();
+          if(url){
+            const target=new URL(url,location.origin);target.searchParams.set('catalogOnly','true');
+            // Preview authority is the scoped ticket, never cross-origin cookies.
+            fetch(target.toString(),{credentials:'omit',cache:'no-store'}).then(async response=>{
+              if(!response.ok) throw new Error('Catalog preview unavailable');
+              const markup=await response.text();
+              if(!el.isConnected)return;
+              el.innerHTML=markup;
+              if(!markup.trim()) el.textContent='No active products yet. Add products in your store workspace.';
+              applyStoreCatalogPresentation(el,node);
+              el.querySelectorAll('a').forEach(link=>{link.removeAttribute('href');link.setAttribute('aria-disabled','true');});
+            }).catch(()=>{if(el.isConnected)el.textContent='Catalog preview unavailable. Reopen this page to retry.';});
+          }
+        }
+      }
+    } else if (node.type === 'reusable') {
       const definition = reusableDefinition(node);
       el = document.createElement(definition?.kind === 'section' ? 'section' : 'div');
       el.className = 'cms-reusable-instance';
@@ -3276,6 +3360,7 @@
     if(pageUsesSystemTemplate()) { applyTemplateBackedCompositionPage(); return; }
     const main=document.querySelector('main');
     if(!main) return;
+    retainedStoreCatalog=!editorMode && !renderInput?.server ? main.querySelector('[data-legend-store-catalog]') : null;
     main.replaceChildren();
     const roots=pageState().composition || [];
     for(const node of roots){
@@ -4249,9 +4334,12 @@
 
   function applyCompositionNode(el, model) {
     if (el?.dataset.cmsSignalOnly && el.tagName!=='FORM') {
-      const form=el.closest('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]');
+      const form=el.closest('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]');
       const formNode=compositionNode(form?.dataset.cmsCompositionId);
-      if(form && formNode) applyFormFieldPresentations(form,formNode);
+      if(form && formNode) {
+        if(formNode.systemKey==='commerce_catalog') applyStoreCatalogPresentation(form,formNode);
+        else applyFormFieldPresentations(form,formNode);
+      }
       return;
     }
     if (!el || !model) return;
@@ -4315,6 +4403,7 @@
       const photo=el.parentElement?.querySelector('img');
       el.hidden=!!photo && photo.style.display!=='none';
     }
+    if(model.systemKey==='commerce_catalog') applyStoreCatalogPresentation(el,model);
     if (el.tagName === 'FORM' || model.type === 'receptionist') applyFormFieldPresentations(el,model);
     applyAnimations(el, model.animations);
   }
@@ -4712,7 +4801,19 @@
   }
 
   function applyBusinessPageNavigation() {
-    if (SITE_KEY !== 'business') return;
+    if (SITE_KEY !== 'business') {
+      const pages=new Map(websitePageEntries(true).map(page=>[page.route,page]));
+      for(const [path,navigation] of Object.entries(renderInput?.pageNavigation || {})) {
+        if(editorMode) break;
+        pages.set(canonicalSiteRoute(path),{deleted:navigation.isDeleted===true,published:navigation.isPublished!==false,showInNavigation:navigation.showInNavigation!==false});
+      }
+      document.querySelectorAll('.site-header nav a[href],.site-header .nav a[href]').forEach(link=>{
+        const route=canonicalSiteRoute(new URL(link.getAttribute('href'),location.href).pathname);
+        const page=pages.get(route);
+        if(page && (page.deleted || page.published===false || page.showInNavigation===false)) link.remove();
+      });
+      return;
+    }
     const header=document.querySelector('.site-header');
     const nav=header?.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]') || document.querySelector('#primary-nav.nav,[data-public-nav].nav,.nav[data-public-nav]');
     if (!nav) return;
@@ -4725,7 +4826,7 @@
     // the catalog; doing so lets stale/default links survive beside managed
     // pages and creates duplicate banner tabs.
     const entries=websitePageEntries(false)
-      .filter(value=>value.showInNavigation!==false && !value.deleted && !value.parentPath)
+      .filter(value=>value.showInNavigation!==false && value.published!==false && !value.deleted && !value.parentPath)
       .sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0) || a.route.localeCompare(b.route));
 
     nav.querySelectorAll('[data-legend-page-nav="true"],a:not([data-legend-store-nav])').forEach(node=>node.remove());
@@ -4898,7 +4999,9 @@
   }
 
   function storeIsEnabled() {
-    return documentState.store?.enabled === true && storeContext?.enabled === true && !!storeContext?.storefrontUrl;
+    const page=documentState.pages?.['/store'];
+    return documentState.store?.enabled === true && storeContext?.enabled === true && !!storeContext?.storefrontUrl &&
+      (editorMode || (page?.navigation?.isPublished!==false && page?.navigation?.isDeleted!==true));
   }
 
   function effectiveCartIcon() {
@@ -4989,6 +5092,23 @@
     cart.appendChild(count);
 
     cluster.append(store,cart);
+    if(storeContext?.managerUrl && !editorMode){
+      const login=document.querySelector('a.login-link,[data-team-login]') || document.createElement('a');
+      login.href=storeContext.managerUrl;
+      login.classList.add('nav-link','nav-icon-link','login-link');
+      login.setAttribute('aria-label','Team login'); login.target='_blank'; login.rel='noopener';
+      if(!login.firstChild){
+        const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+        icon.setAttribute('viewBox','0 0 24 24'); icon.setAttribute('width','24'); icon.setAttribute('height','24');
+        icon.setAttribute('fill','none'); icon.setAttribute('stroke','currentColor'); icon.setAttribute('aria-hidden','true');
+        const head=document.createElementNS(icon.namespaceURI,'circle');
+        head.setAttribute('cx','12'); head.setAttribute('cy','8'); head.setAttribute('r','4'); head.setAttribute('stroke-width','2');
+        const body=document.createElementNS(icon.namespaceURI,'path');
+        body.setAttribute('d','M4.5 21a7.5 7.5 0 0 1 15 0'); body.setAttribute('stroke-width','2'); body.setAttribute('stroke-linecap','round');
+        icon.append(head,body); login.appendChild(icon);
+      }
+      if(!login.isConnected){ login.dataset.legendStoreNav='login'; cluster.appendChild(login); }
+    }
     nav.appendChild(cluster);
     applyCompositionNode(store,documentState.store?.storeNavigation || {});
     applyCompositionNode(cart,documentState.store?.cartNavigation || {});
@@ -5023,6 +5143,7 @@
         showInNavigation:page.showInNavigation !== false,
         parentPath:normalizePageRoute(page.parentPath),
         order:Number.isFinite(Number(page.order)) ? Number(page.order) : index * 10,
+        published:page.published !== false,
         deleted:page.deleted === true
       });
     });
@@ -5052,13 +5173,14 @@
         nativeRoute:previous?.nativeRoute===true,
         legacyTemplatePath:normalizePageRoute(legacy?.templatePath),
         deleted:navigation.isDeleted===true,
+        published:navigation.isPublished!==false,
         showInNavigation:navigation.showInNavigation!==false,
         parentPath:normalizePageRoute(navigation.parentPath),
         order:Number.isFinite(Number(navigation.order))?Number(navigation.order):0
       });
     }
     return [...entries.values()]
-      .filter(entry=>includeDeleted || !entry.deleted)
+      .filter(entry=>(includeDeleted || !entry.deleted) && (entry.route!=='/store' || storeIsEnabled()))
       .sort((a,b)=>a.order-b.order || a.route.localeCompare(b.route));
   }
 
@@ -5118,13 +5240,16 @@
       const prefix = SITE_KEY === 'protect' ? (managementPayload?.agentSlug ? `/a/${encodeURIComponent(managementPayload.agentSlug)}` : context.pagePrefix || '') : '';
       url.pathname=prefix + (route==='/'?'/':route);
     }
+    if(route==='/store') {
+      url.pathname=SITE_KEY==='business'?'/business-preview/':(SITE_KEY==='protect' && managementPayload?.agentSlug ? `/a/${encodeURIComponent(managementPayload.agentSlug)}/` : '/');
+      url.searchParams.set('cmsPage','/store');
+    }
     if(editorTicket) url.searchParams.set('legendEdit',editorTicket);
     if(materialize) url.searchParams.set('legendMaterialize','1');
     return url;
   }
 
   async function navigateToEditorPage(route,{replaceHistory=false}={}) {
-    if (route === '__store__') { openStorePreview(); return; }
     closeStorePreview();
     route=normalizePageRoute(route); if(!route) return;
     if (saving) { const status=document.getElementById('legend-cms-status'); if(status) status.textContent='Wait for the current save to finish, then choose a page.'; return; }
@@ -5139,7 +5264,7 @@
     // Switching pages is therefore a local workspace operation, not another
     // /manage bootstrap. Protect keeps navigation reloads where the server must
     // mount a route-specific executable runtime/template.
-    if(editorMode && SITE_KEY==='business' && documentState.pages?.[route]){
+    if(editorMode && (SITE_KEY==='business' || route==='/store') && documentState.pages?.[route]){
       activeEditorRoute=route;
       pageKey=route==='/'?'home':route.slice(1).replace(/\//g,'-');
       setSelected(null);
@@ -5420,7 +5545,7 @@
       open.disabled=entry.deleted; open.setAttribute('aria-current',String(entry.route===current));
       open.addEventListener('click',()=>void navigateToEditorPage(entry.route)); row.appendChild(open);
 
-      if (SITE_KEY==='business') {
+      {
         const label=document.createElement('input');
         label.type='text'; label.maxLength=120; label.value=entry.label; label.setAttribute('aria-label',`Navigation label for ${entry.route}`);
         label.disabled=entry.deleted;
@@ -5449,7 +5574,10 @@
           applyBusinessPageNavigation();
           refreshPageSelector();
         });
-        row.appendChild(visible);
+        const visibilityLabel=document.createElement('label');
+        visibilityLabel.title='Hide the navigation link only; the published page remains available at its direct address.';
+        visibilityLabel.append(visible,document.createTextNode('Show link'));
+        row.appendChild(visibilityLabel);
 
         const remove=document.createElement('button'); remove.type='button';
         const home=entry.route==='/';
@@ -5471,20 +5599,20 @@
         row.appendChild(remove);
       }
 
-      if (SITE_KEY==='protect' && entry.route==='/trainingpackages') {
-        // This obsolete Protect-only route has a recoverable retirement action,
-        // not the business site's arbitrary page creation/removal permissions.
-        open.disabled=true;
-        const retire=document.createElement('button'); retire.type='button';
-        retire.textContent=entry.deleted?'Training page retired':'Retire training page';
-        retire.disabled=entry.deleted;
-        retire.addEventListener('click',async()=>{
-          retire.disabled=true;
-          try { await creativeApplyMutationBatch([{type:'removePage',pagePath:entry.route}]); }
-          catch(error) { retire.disabled=false; alert(error.message || 'The page could not be retired.'); }
-        });
-        row.appendChild(retire);
-      }
+      const publicationLabel=document.createElement('label');
+      publicationLabel.className='legend-cms-page-publication';
+      const published=document.createElement('input'); published.type='checkbox';
+      published.checked=entry.published!==false && !entry.deleted;
+      published.disabled=entry.deleted;
+      published.setAttribute('aria-label',`Publish ${entry.label}`);
+      published.addEventListener('change',event=>{
+        checkpoint();
+        ensurePageRecord(entry.route).navigation.isPublished=event.target.checked;
+        markDirty(); renderPageManager();
+      });
+      publicationLabel.title='Unpublish to hide this page from visitors and direct links. Saved content stays available here; publish again to restore it.';
+      publicationLabel.append(published,document.createTextNode('Published page'));
+      row.appendChild(publicationLabel);
       host.appendChild(row);
     }
   }
@@ -5520,14 +5648,7 @@
       option.textContent=entry.label;
       select.appendChild(option);
     }
-    if (storeIsEnabled()) {
-      const option=document.createElement('option');
-      option.value='__store__';
-      option.textContent=effectiveStoreLabel();
-      select.appendChild(option);
-    }
-    if (storePreviewActive && storeIsEnabled()) select.value='__store__';
-    else if ([...select.options].some(option=>option.value===current)) select.value=current;
+    if ([...select.options].some(option=>option.value===current)) select.value=current;
   }
 
   function installPageSelector() {
@@ -5601,24 +5722,20 @@
 
     const actions=document.createElement('div');
     actions.className='legend-cms-store-actions';
-    const manage=document.createElement('button');
-    manage.type='button';
-    manage.id='legend-cms-manage-store';
-    manage.textContent='Manage products';
-    manage.disabled=!storeContext?.managerUrl;
-    manage.addEventListener('click',()=>openStoreManager());
-    const payments=document.createElement('button');
-    payments.type='button';
-    payments.id='legend-cms-store-payments';
-    payments.textContent='Payments';
-    payments.disabled=!storeContext?.paymentsUrl;
-    payments.addEventListener('click',()=>openStoreManager(storeContext?.paymentsUrl));
-    actions.append(action,manage,payments);
+    const workspace=document.createElement('a');
+    workspace.textContent='Open store workspace';
+    workspace.target='_blank'; workspace.rel='noopener noreferrer';
+    if(storeContext?.managerUrl) workspace.href=storeContext.managerUrl;
+    else { workspace.setAttribute('aria-disabled','true'); workspace.title='Connect a verified website domain to open the store workspace.'; }
+    actions.append(action,workspace);
     host.insertBefore(actions,settings);
   }
 
   async function updateStore(enabled,labelValue=null,cartIconValue=null,cartIconSizeValue=null) {
     if (!editorMode || saving) return;
+    // Store operations return the canonical draft. Persist pending canvas edits
+    // first, just as page navigation does, before replacing that local document.
+    if (dirty) { const saved=await save(false); if(!saved || dirty) return; }
     const status=document.getElementById('legend-cms-status');
     if(status) status.textContent=enabled?'Setting up your store…':'Removing Store page…';
     try {
@@ -5631,6 +5748,9 @@
       if(!response.ok) throw new Error(payload.message || payload.error || `Store update failed (${response.status})`);
       revision=payload.revision;
       documentState=normalizeDocument(payload.document || documentState);
+      persistedDocumentState=cloneCanonicalValue(documentState);
+      canonicalSourceDocument=null;
+      canonicalSourceRevision=null;
       storeContext=payload.store || null;
       dirty=false;
       applyStoreNavigation();
@@ -5659,7 +5779,7 @@
       overlay.className='legend-cms-editor legend-cms-store-preview';
       const bar=document.createElement('div'); bar.className='legend-cms-store-preview-bar';
       const title=document.createElement('strong'); title.textContent='Store preview';
-      const manage=document.createElement('button'); manage.type='button'; manage.textContent='Manage Store'; manage.addEventListener('click',openStoreManager);
+      const manage=document.createElement('button'); manage.type='button'; manage.textContent='Manage Store'; manage.addEventListener('click',()=>openStoreWorkspace());
       bar.append(title,manage);
       const frame=document.createElement('iframe'); frame.className='legend-cms-store-preview-frame'; frame.title='Store preview';
       overlay.append(bar,frame);
@@ -5678,26 +5798,11 @@
     if(overlay) overlay.hidden=true;
   }
 
-  function openStoreManager(managerUrl=storeContext?.managerUrl) {
-    if(!managerUrl) return;
-    let modal=document.querySelector('.legend-cms-store-manager');
-    if(!modal) {
-      modal=document.createElement('div');
-      modal.className='legend-cms-editor legend-cms-store-manager';
-      modal.setAttribute('role','dialog');
-      modal.setAttribute('aria-modal','true');
-      modal.setAttribute('aria-label','Manage Store');
-      const shell=document.createElement('div'); shell.className='legend-cms-store-manager-shell';
-      const top=document.createElement('div'); top.className='legend-cms-store-manager-top';
-      const title=document.createElement('strong'); title.textContent='Manage Store';
-      const close=document.createElement('button'); close.type='button'; close.textContent='Close'; close.addEventListener('click',()=>{modal.hidden=true;});
-      top.append(title,close);
-      const frame=document.createElement('iframe'); frame.className='legend-cms-store-manager-frame'; frame.title='Manage Store workspace';
-      shell.append(top,frame); modal.appendChild(shell); document.body.appendChild(modal);
-    }
-    const frame=modal.querySelector('iframe');
-    if(frame) frame.src=managerUrl;
-    modal.hidden=false;
+  function openStoreWorkspace() {
+    if(!storeContext?.managerUrl) return;
+    const destination=new URL(storeContext.managerUrl,location.origin);
+    if(destination.protocol!=='https:' || destination.pathname!=='/internal/login') return;
+    window.open(destination.href,'_blank','noopener,noreferrer');
   }
   function preservePreviewNavigation() {
     if (renderInput || SITE_KEY !== 'business' || !location.pathname.startsWith('/business-preview')) return;
@@ -6495,7 +6600,7 @@
 
     const selectedFieldPresentation=selected?.dataset?.cmsSignalOnly ? formFieldPresentationForElement(selected,false) : null;
     const selectedFieldCanCreatePresentation=!!selected?.dataset?.cmsSignalOnly &&
-      !!selected?.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]') &&
+      !!selected?.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]') &&
       !!formFieldKey(selected);
     document.querySelectorAll('[data-cms-view="content"] input,[data-cms-view="content"] textarea,[data-cms-view="content"] select,[data-cms-view="appearance"] input,[data-cms-view="appearance"] select,[data-cms-view="layout"] input,[data-cms-view="layout"] select').forEach(control => { control.disabled = !selected || (!!selected.dataset.cmsSignalOnly && !selectedFieldPresentation && !selectedFieldCanCreatePresentation); });
     if (!selected) {
@@ -7937,7 +8042,7 @@
   }
 
   function sourceSelectedNodeId() {
-    return selected?.dataset?.cmsCompositionId || selected?.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id]')?.dataset?.cmsCompositionId || null;
+    return selected?.dataset?.cmsCompositionId || selected?.closest?.('form[data-cms-composition-id],[data-cms-receptionist][data-cms-composition-id],[data-legend-store-catalog][data-cms-composition-id]')?.dataset?.cmsCompositionId || null;
   }
 
   function syncSelectedSourcePresentationFromCanvas() {
@@ -8502,7 +8607,7 @@
   function relativeLuminance(rgb) {
     const channel=value=>{
       const normalized=Math.max(0,Math.min(255,value))/255;
-      return normalized<=.03928 ? normalized/12.92 : Math.pow((normalized+.055)/1.055,2.4);
+      return normalized<=.04045 ? normalized/12.92 : Math.pow((normalized+.055)/1.055,2.4);
     };
     return .2126*channel(rgb.r)+.7152*channel(rgb.g)+.0722*channel(rgb.b);
   }
@@ -9654,7 +9759,8 @@
       const ov=selectedWebsiteModel(); if(!ov) return;
       const style=editingStyle(ov,true);
       if(input.value==='') delete style[key]; else style[key]=value;
-      applyStyle(selected,effectiveStyle(ov));
+      if(selected.closest('[data-legend-store-catalog]') && selected.dataset.cmsSignalOnly) applyCompositionNode(selected,ov);
+      else applyStyle(selected,effectiveStyle(ov));
       updateDirectCanvasUi();
       syncSelectedSourcePresentationFromCanvas();
       syncEditorControls();
@@ -9666,7 +9772,8 @@
       const ov=selectedWebsiteModel(); if(!ov) return;
       const style=editingStyle(ov,true);
       delete style[button.dataset.colorReset];
-      applyStyle(selected,effectiveStyle(ov));
+      if(selected.closest('[data-legend-store-catalog]') && selected.dataset.cmsSignalOnly) applyCompositionNode(selected,ov);
+      else applyStyle(selected,effectiveStyle(ov));
       syncEditorControls();
       markDirty();
     }));
@@ -9752,7 +9859,6 @@
       .legend-cms-store-settings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;padding:7px;border:1px solid #344766;border-radius:9px;background:#0d213e}.legend-cms-store-settings label{display:grid;gap:4px;margin:0;font-size:10px;font-weight:800;color:#cbd7e8}.legend-cms-store-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}.legend-cms-store-actions button{min-height:32px!important;padding:6px 8px!important;border-color:#50617e!important;background:#142c50!important;color:#fff!important}.legend-cms-store-controls input,.legend-cms-store-controls select{min-height:32px!important;padding:5px 7px!important;border-color:#50617e!important;background:#142c50!important;color:#fff!important}
       .legend-cms-store-preview{position:absolute!important;inset:0!important;z-index:2147482400!important;display:grid!important;grid-template-rows:auto minmax(0,1fr)!important;background:var(--web-surface,#fff)!important;color:var(--web-ink,#101a35)!important;pointer-events:auto!important}
       .legend-cms-store-preview[hidden]{display:none!important}.legend-cms-store-preview-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 50%,transparent);background:var(--web-surface,#fff)}.legend-cms-store-preview-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
-      .legend-cms-store-manager{position:fixed!important;inset:0!important;z-index:2147483640!important;display:grid!important;place-items:center!important;padding:2vmin!important;background:#0009!important;pointer-events:auto!important}.legend-cms-store-manager[hidden]{display:none!important}.legend-cms-store-manager-shell{width:min(98vw,1600px);height:96dvh;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden;border-radius:16px;background:var(--web-surface,#fff);box-shadow:0 24px 70px #0008}.legend-cms-store-manager-top{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid color-mix(in srgb,var(--web-gold,#d4ad45) 45%,transparent);color:var(--web-ink,#101a35)}.legend-cms-store-manager-frame{width:100%;height:100%;border:0;background:var(--web-surface,#fff)}
       .legend-cms-edge-handle{position:absolute;pointer-events:auto;touch-action:none;margin:0;padding:0;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;min-width:0!important;min-height:0!important}
       .legend-cms-edge-top,.legend-cms-edge-bottom{left:10px;right:10px;height:12px;cursor:ns-resize}
       .legend-cms-edge-top{top:-6px}.legend-cms-edge-bottom{bottom:-6px}
@@ -10754,6 +10860,7 @@
     applyCanonicalResponsiveAttributes(el,model);
     applyStyle(el,effectiveStyle(model,el));
     applyLayout(el,effectiveLayout(model,el));
+    if(model.systemKey==='commerce_catalog') applyStoreCatalogPresentation(el,model);
     if (el.tagName === 'FORM' || model.type === 'receptionist') applyFormFieldPresentations(el,model,true);
   }
 

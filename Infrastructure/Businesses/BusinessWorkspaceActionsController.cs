@@ -25,8 +25,8 @@ public abstract partial class BusinessWorkspaceControllerBase
     public async Task<IActionResult> Actions(Guid businessId, string recordSet, string id, CancellationToken cancellationToken)
     {
         if (await ResolveBusinessAsync(businessId, "crm", cancellationToken) is null) return Forbid();
-        if (await workspace.QuickViewAsync(businessId, id, recordSet == "Clients" ? "Client" : "Lead", cancellationToken) is null) return NotFound();
-        var items = await workspace.BusinessActions(businessId).GetByRelatedAsync(RelatedEntityType.BusinessContact,
+        if (await WorkspaceService.QuickViewAsync(businessId, id, recordSet == "Clients" ? "Client" : "Lead", cancellationToken) is null) return NotFound();
+        var items = await WorkspaceService.BusinessActions(businessId).GetByRelatedAsync(RelatedEntityType.BusinessContact,
             id, User.GetCanonicalUserId(), cancellationToken);
         ViewBag.ClientId = id;
         ViewBag.LeadId = id;
@@ -42,8 +42,8 @@ public abstract partial class BusinessWorkspaceControllerBase
         if (!ModelState.IsValid) return BadRequest(ModelState);
         var contact = recordSet == "Clients" ? input.ClientId : input.LeadId;
         if (string.IsNullOrWhiteSpace(contact)) return BadRequest("Choose a contact.");
-        if (await workspace.QuickViewAsync(businessId, contact, recordSet == "Clients" ? "Client" : "Lead", cancellationToken) is null) return NotFound();
-        await workspace.BusinessActions(businessId).CreateActionAsync(new ActionItem
+        if (await WorkspaceService.QuickViewAsync(businessId, contact, recordSet == "Clients" ? "Client" : "Lead", cancellationToken) is null) return NotFound();
+        await WorkspaceService.BusinessActions(businessId).CreateActionAsync(new ActionItem
         {
             RelatedEntityType = RelatedEntityType.BusinessContact, RelatedEntityId = contact,
             OwnerType = ActionOwnerType.Business, OwnerId = businessId.ToString(), EffectiveAgentOid = "",
@@ -61,7 +61,7 @@ public abstract partial class BusinessWorkspaceControllerBase
     {
         if (await ResolveBusinessAsync(businessId, "crm", cancellationToken) is null) return Forbid();
         if (!ModelState.IsValid || input.Id == Guid.Empty) return BadRequest();
-        var item = await workspace.BusinessActions(businessId).CompleteActionAsync(input.Id, User.GetCanonicalUserId(), cancellationToken);
+        var item = await WorkspaceService.BusinessActions(businessId).CompleteActionAsync(input.Id, User.GetCanonicalUserId(), cancellationToken);
         return item is null ? NotFound() : Json(new { ok = true });
     }
 
@@ -69,7 +69,7 @@ public abstract partial class BusinessWorkspaceControllerBase
     public async Task<IActionResult> EditAction(Guid businessId, Guid id, CancellationToken cancellationToken)
     {
         if (await ResolveBusinessAsync(businessId, "crm", cancellationToken) is null) return Forbid();
-        var item = await workspace.BusinessActions(businessId).GetByIdAsync(id, User.GetCanonicalUserId(), cancellationToken);
+        var item = await WorkspaceService.BusinessActions(businessId).GetByIdAsync(id, User.GetCanonicalUserId(), cancellationToken);
         return item is null ? NotFound() : View("~/Views/Actions/Edit.cshtml", item);
     }
 
@@ -79,7 +79,7 @@ public abstract partial class BusinessWorkspaceControllerBase
     {
         if (await ResolveBusinessAsync(businessId, "crm", cancellationToken) is null) return Forbid();
         if (!ModelState.IsValid || id == Guid.Empty || id != input.Id) return BadRequest(ModelState);
-        var item = await workspace.BusinessActions(businessId).UpdateActionAsync(id, User.GetCanonicalUserId(),
+        var item = await WorkspaceService.BusinessActions(businessId).UpdateActionAsync(id, User.GetCanonicalUserId(),
             input.Title, input.Description, input.DueDateUtc, input.Priority, cancellationToken);
         if (item is null) return NotFound();
         return await ReturnToActionContact(businessId, item, cancellationToken);
@@ -90,7 +90,7 @@ public abstract partial class BusinessWorkspaceControllerBase
     public async Task<IActionResult> DeleteAction(Guid businessId, Guid id, CancellationToken cancellationToken)
     {
         if (await ResolveBusinessAsync(businessId, "crm", cancellationToken) is null) return Forbid();
-        var engine = workspace.BusinessActions(businessId);
+        var engine = WorkspaceService.BusinessActions(businessId);
         var item = await engine.GetByIdAsync(id, User.GetCanonicalUserId(), cancellationToken);
         if (item is null || !await engine.DeleteActionAsync(id, User.GetCanonicalUserId(), cancellationToken)) return NotFound();
         // The canonical quick view reloads its panel after this response.
@@ -99,7 +99,7 @@ public abstract partial class BusinessWorkspaceControllerBase
 
     private async Task<IActionResult> ReturnToActionContact(Guid businessId, ActionItem item, CancellationToken ct)
     {
-        var isClient = await workspace.QuickViewAsync(businessId, item.RelatedEntityId, "Client", ct) is not null;
+        var isClient = await WorkspaceService.QuickViewAsync(businessId, item.RelatedEntityId, "Client", ct) is not null;
         return RedirectToAction(isClient ? nameof(Clients) : nameof(Leads), new { businessId, contactId = item.RelatedEntityId });
     }
 }

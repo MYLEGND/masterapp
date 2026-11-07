@@ -69,7 +69,7 @@ public class WebsiteLeadAppNotificationTests
         var business = new CommerceBusiness { Key = key, OwnerEmail = key + "@example.test" };
         var profile = new ClientProfile { ClientUserId = user, Email = business.OwnerEmail };
         var member = new CommerceBusinessMember { CommerceBusinessId = business.Id, ClientProfileId = profile.Id,
-            Email = profile.Email, NormalizedEmail = profile.Email, RoleKey = role };
+            Email = profile.Email, NormalizedEmail = profile.Email, RoleKey = role, CanManageCrm = true };
         db.CommerceBusinesses.Add(business);
         db.ClientProfiles.Add(profile);
         db.CommerceBusinessMembers.Add(member);
@@ -129,7 +129,7 @@ public class WebsiteLeadAppNotificationTests
             case "missing-profile": owner.Member.ClientProfileId = Guid.NewGuid(); break;
             case "empty-profile": owner.Member.ClientProfileId = Guid.Empty; break;
             case "empty-user": owner.Profile.ClientUserId = " "; break;
-            case "non-primary": owner.Member.RoleKey = "staff"; owner.Member.CanManageOrders = false; break;
+            case "non-primary": owner.Member.RoleKey = "staff"; owner.Member.CanManageOrders = false; owner.Member.CanManageCrm = false; break;
             default:
                 var other = new ClientProfile { ClientUserId = "other", Email = "other@example.test" };
                 db.ClientProfiles.Add(other);

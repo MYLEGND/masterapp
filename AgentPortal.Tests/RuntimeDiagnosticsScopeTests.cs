@@ -17,6 +17,43 @@ using Xunit;
 namespace AgentPortal.Tests;
 public sealed class RuntimeDiagnosticsScopeTests
 {
+    [Theory]
+    [InlineData(101, false)]
+    [InlineData(200, true)]
+    [InlineData(503, true)]
+    public async Task LongLivedUpgradeIsNotLatencyButOrdinarySlowAndFailedRequestsRemainCaptured(int status, bool captured)
+    {
+        var sink = new RecordingSink();
+        var clock = new RequestClock();
+        using var services = new ServiceCollection().AddLogging().AddSingleton<IHostEnvironment>(new Host())
+            .AddSingleton<TimeProvider>(clock).AddSingleton<IRuntimeDiagnosticSink>(sink).BuildServiceProvider();
+        var context = new DefaultHttpContext { RequestServices = services };
+        var app = new ApplicationBuilder(services); app.UseLegendFailureDiagnostics();
+        app.Run(current => { current.Response.StatusCode = status; clock.Timestamp += 12000; return Task.CompletedTask; });
+        await app.Build()(context);
+        Assert.Equal(captured ? 1 : 0, sink.Count);
+        Assert.Equal(status, context.Response.StatusCode);
+    }
+    [Fact]
+    public async Task UpgradeExceptionIsStillCaptured()
+    {
+        var sink = new RecordingSink();
+        using var services = new ServiceCollection().AddLogging().AddSingleton<IHostEnvironment>(new Host())
+            .AddSingleton<IRuntimeDiagnosticSink>(sink).BuildServiceProvider();
+        var context = new DefaultHttpContext { RequestServices = services };
+        var app = new ApplicationBuilder(services); app.UseLegendFailureDiagnostics();
+        app.Run(current => { current.Response.StatusCode = 101; throw new InvalidOperationException("synthetic failure"); });
+        await Assert.ThrowsAsync<InvalidOperationException>(()=>app.Build()(context));
+        Assert.Equal(1,sink.Count);
+        Assert.Equal("System.InvalidOperationException",sink.Captured!.ErrorName);
+    }
+    private sealed class RequestClock : TimeProvider
+    {
+        public long Timestamp;
+        public override long TimestampFrequency => 1000;
+        public override long GetTimestamp() => Timestamp;
+    }
+
     [Fact]
     public async Task ConcurrentChildrenAggregateWithinFixedBoundsAndSuppressIsExecutionLocal()
     {

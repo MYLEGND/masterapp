@@ -1,0 +1,67 @@
+@model Legend.Commerce.Shipping.ShippingOrderView
+@using Microsoft.AspNetCore.WebUtilities
+@{
+    Layout = "_InternalLayout";
+    ViewData["Title"] = "Shipping label";
+    var ticket = ViewData["CommerceManagerTicket"] as string;
+    string Action(string path, string method = "POST") => Legend.Commerce.CommerceManagementCapabilityPolicy.ManagementUrl(Context, "/commerce/manage/" + path, ticket, method);
+}
+<section class="pf-command-page">
+    <header class="pf-page-header"><div><h1>Ship @Model.Order.OrderNumber</h1><p>@Model.Order.CustomerName · @Model.Order.City, @Model.Order.State @Model.Order.PostalCode</p></div><a class="pf-secondary-action" href="@Action("orders", "GET")">Orders</a></header>
+    @if (TempData["ShippingStatus"] is string status) { <p class="pf-alert-success">@status</p> }
+    @if (TempData["ShippingError"] is string error) { <p role="alert">@error</p> }
+    @if (Model.Setup.ConnectedProvider is null)
+    {
+        <p>Connect a postage provider and ship-from address in Shipping setup.</p>
+        <a class="pf-action" href="@Action("shipping", "GET")">Shipping setup</a>
+    }
+    @if (Model.Setup.ConnectedProvider is not null)
+    {
+        @if (Model.TestMode) { <p role="status">Test mode — generated labels are not valid postage.</p> }
+        @if (Model.Shipment is null || Model.Shipment.Status is "Quoted" or "TestLabel" or "Rejected")
+        {
+            <details open="@(Model.Shipment?.Status != "TestLabel")">
+                <summary>@(Model.Shipment?.Status == "TestLabel" ? "Compare another test parcel" : "Packed parcel")</summary>
+            <form method="post" action="@Action("order/shipping/rates")">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="OrderNumber" value="@Model.Order.OrderNumber" />
+                <input type="hidden" name="ExpectedOrderRevision" value="@(Model.Order.UpdatedUtc?.Ticks ?? 0)" />
+                <div class="pf-automation-form-grid">
+                    <label>Length · inches<input class="form-control" name="Length" type="number" min="0.1" max="108" step="0.1" required /></label>
+                    <label>Width · inches<input class="form-control" name="Width" type="number" min="0.1" max="108" step="0.1" required /></label>
+                    <label>Height · inches<input class="form-control" name="Height" type="number" min="0.1" max="108" step="0.1" required /></label>
+                    <label>Total weight · ounces<input class="form-control" name="WeightOunces" type="number" min="0.1" max="2400" step="0.1" required /></label>
+                    <label>Destination country code<input class="form-control" name="DestinationCountry" placeholder="US" minlength="2" maxlength="2" required /></label>
+                </div>
+                <div class="pf-form-actions"><button class="pf-action">Compare rates</button></div>
+            </form>
+            </details>
+        }
+        @if (Model.Shipment is { Status: "Quoted" } quoted)
+        {
+            <h2>Choose postage</h2>
+            <form method="post" action="@Action("order/shipping/buy")">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="OrderNumber" value="@Model.Order.OrderNumber" />
+                <div class="table-responsive"><table class="table"><thead><tr><th>Choose</th><th>Carrier / service</th><th>Estimate</th><th>Postage</th></tr></thead><tbody>
+                @foreach (var rate in quoted.Rates) { <tr><td><input type="radio" name="rateId" value="@rate.Id" required aria-label="@rate.Carrier @rate.Service @rate.Amount.ToString("0.00") @rate.Currency" /></td><td>@rate.Carrier · @rate.Service</td><td>@(rate.EstimatedDays.HasValue ? $"{rate.EstimatedDays} days" : "Not provided")</td><td>@rate.Amount.ToString("0.00") @rate.Currency</td></tr> }
+                </tbody></table></div>
+                <label><input type="checkbox" name="confirmed" value="true" required /> I confirm this service and postage amount.</label>
+                <div class="pf-form-actions"><button class="pf-action">@(Model.TestMode ? "Generate test label" : "Purchase shipping label")</button></div>
+            </form>
+        }
+        @if (Model.Shipment is { Status: not "Quoted" } shipment)
+        {
+            <section>
+            <h2>@(shipment.Status == "TestLabel" ? "Test label" : shipment.Status == "Purchased" ? "Shipping label ready" : shipment.Status == "Rejected" ? "Provider rejected the label" : "Purchase verification pending")</h2>
+            <p>@shipment.SelectedRate?.Carrier · @shipment.SelectedRate?.Service · @shipment.TrackingNumber</p>
+            <div class="pf-form-actions">
+            @if (!string.IsNullOrWhiteSpace(shipment.LabelUrl)) { <a class="pf-action" href="@shipment.LabelUrl" target="_blank" rel="noopener noreferrer">Open / reprint 4 × 6 label</a> }
+            <a class="pf-secondary-action" target="_blank" rel="noopener" href="@QueryHelpers.AddQueryString(Action("order/reference-label", "GET"), "orderNumber", Model.Order.OrderNumber)">Order-reference QR sticker · not postage</a>
+            <form method="post" action="@Action("order/shipping/reconcile")">@Html.AntiForgeryToken()<input type="hidden" name="OrderNumber" value="@Model.Order.OrderNumber" />@if (string.IsNullOrWhiteSpace(shipment.TransactionId)) { <label>Existing provider transaction ID<input class="form-control" name="providerTransactionId" maxlength="100" /></label> }<button class="pf-secondary-action">Check purchase status</button></form>
+            </div>
+            <p>Print at actual size on your thermal label printer. Mark the order shipped when the package is handed to the carrier.</p>
+            </section>
+        }
+    }
+</section>

@@ -4,6 +4,7 @@ using Domain.FinancialIntelligence;
 using Domain.JourneyCircles;
 using Domain.Messaging;
 using Infrastructure.Data;
+using Infrastructure.Businesses;
 using Infrastructure.DailyScripture;
 using Infrastructure.Households;
 using DailyScriptureRecord = Infrastructure.DailyScripture.DailyScripture;
@@ -390,20 +391,17 @@ public sealed class MobileHomeService : IMobileHomeService
             .Distinct()
             .ToListAsync(cancellationToken);
 
-        var profiles = await LegendMemberDirectory.ActiveSubscribedProfiles(_db)
+        var profiles = await _db.ClientProfiles.AsNoTracking()
             .Where(profile => assignedClientUserIds.Contains(profile.ClientUserId.ToLower()))
             .ToListAsync(cancellationToken);
-
-        var archivedProfiles = await _db.ClientProfiles.AsNoTracking()
-            .Where(p => assignedClientUserIds.Contains(p.ClientUserId.ToLower())).ToListAsync(cancellationToken);
         bool Archived(ClientProfile p) => closed.Contains(p.Id.ToString()) || closed.Contains(p.ClientUserId) || CrmArchiveScope.ArchivedStatus(p.CrmStatus);
-        var clients = LegendMemberDirectory.Collapse(profiles).Where(p => !Archived(p))
-            .Concat(archivedProfiles.Where(p => Archived(p) && ClientRecordClassification.IsClientOrBusinessClient(p.ClientUserId, p.CrmNotes, p.CrmStatus)))
+        var entityLabels = await BusinessIdentityProjection.LoadLabelsAsync(_db, profiles.Select(p => p.Id), cancellationToken);
+        var clients = profiles.Where(p => ClientRecordClassification.IsClientOrBusinessClient(p.ClientUserId, p.CrmNotes, p.CrmStatus))
             .Select(profile => new MobileAgentClient(
                 profile.Id,
                 string.Join(" ", new[] { profile.FirstName, profile.LastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim(),
                 profile.Email,
-                profile.CrmStatus ?? "Active", Archived(profile), profile.Phone))
+                profile.CrmStatus ?? "Active", Archived(profile), profile.Phone, entityLabels.GetValueOrDefault(profile.Id)))
             .OrderBy(profile => profile.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -692,5 +690,5 @@ public sealed record MobileFinancialPosition(int HealthScore, decimal AssetsTota
 public sealed record MobileFinancialIntelligenceSummary(string Status, decimal DataCompletenessScore, string CurrentRiskSummary, string CurrentOpportunitySummary, string CurrentLeakageSummary, DateTime? LastEvaluatedUtc, IReadOnlyList<MobileFinancialFinding> Findings);
 public sealed record MobileFinancialFinding(Guid Id, string Category, string Title, string Explanation, decimal? EstimatedImpact, string? ImpactUnit, string Urgency, string Status, DateTime LastDetectedUtc);
 public sealed record MobileUpcomingBill(Guid Id, string DisplayName, long AverageAmountCents, string Cadence, DateTime NextExpectedDateUtc, string Status);
-public sealed record MobileAgentClient(Guid ProfileId, string DisplayName, string Email, string CrmStatus, bool Archived = false, string? Phone = null);
+public sealed record MobileAgentClient(Guid ProfileId, string DisplayName, string Email, string CrmStatus, bool Archived = false, string? Phone = null, string? EntityName = null);
 public sealed record MobileAgentLead(string LeadId, string DisplayName, string CrmStage, DateTime UpdatedUtc, bool Archived = false, string? Email = null, string? Phone = null);

@@ -4,11 +4,13 @@ using System.Linq;
 
 namespace ParfaitApp.Controllers
 {
-    public class TrainingController : Controller
+    public class TrainingController(ParfaitApp.Services.CommerceStoreContextService stores) : Controller
     {
         // GET: /Training/
-        public IActionResult Index()
+        public async Task<IActionResult> Index(CancellationToken ct)
         {
+            var store = await stores.ResolvePublicAsync(HttpContext, null, ct);
+            if (store is not { IsParfait: true, TrainingPagePublished: true }) return NotFound();
             ViewData["Title"] = "Training";
 
             // Path to the wwwroot/training folder

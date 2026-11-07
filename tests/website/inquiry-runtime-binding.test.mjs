@@ -27,3 +27,12 @@ for(const [name,binding,expected] of [
     assert.deepEqual(imports,[expected]);
   } finally {dom.window.close();}
 });
+
+ test('paused native receptionist omits voice entry while preserving the inquiry form', async()=>{
+  const {publicInquiryForm}=await import('../../SHARED/WebsitePlatform/public-inquiry-form.mjs');
+  assert.match(publicInquiryForm(),/data-website-receptionist/);
+  const paused=publicInquiryForm({receptionistEnabled:false,ownerLabel:'Parfait'});
+  assert.doesNotMatch(paused,/data-website-receptionist/);
+  assert.match(paused,/data-website-inquiry/);
+  assert.match(paused,/name="consent" required/);
+ });

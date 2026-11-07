@@ -29,6 +29,9 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
             var owner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, profile, ct);
             if (owner is null || (scope.ScopeType == ScopeType.Founder && owner != MarketingOwnerScope.Founder)) return [];
         }
+        if (scope.StoreBusinessId is { } storeId && (storeId == Guid.Empty ||
+            (scope.CommerceBusinessId.HasValue && scope.CommerceBusinessId != storeId) ||
+            (scope.ScopeType == ScopeType.Global && !scope.HasSiteScope))) return [];
         var ids = await AnalyticsTrackingProfileScope.ResolveAsync(db, scope, ct);
         var states = db.Set<WebsiteContentState>().AsNoTracking();
         if (scope.ScopeType is ScopeType.Agent or ScopeType.Founder)
@@ -44,10 +47,12 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
             var ownerKey = WebsiteEditorSiteKeys.BusinessOwnerKey(scope.CommerceBusinessId!.Value);
             states = states.Where(s => s.SiteKey == WebsiteEditorSiteKeys.Business && s.CommerceBusinessId == scope.CommerceBusinessId && s.OwnerKey == ownerKey);
         }
+        if (scope.StoreBusinessId.HasValue)
+            states = states.Where(s => s.CommerceBusinessId == scope.StoreBusinessId);
         if (!string.IsNullOrWhiteSpace(scope.SiteKey)) states = states.Where(s => s.SiteKey == scope.SiteKey);
         var range = new TimeRangeRequest { FromUtc = DateTime.UtcNow.AddDays(-30), ToUtc = DateTime.UtcNow, QualityMode = TrafficQualityMode.AllTraffic };
         var events = await new AnalyticsQueryService(db, configuration).LoadAttributedEventsAsync(range, scope, ct: ct);
-        return await ReadStatesAsync(await PublishedStateIdentity(states).ToListAsync(ct), events, ct);
+        return await ReadStatesAsync(await PublishedStateIdentity(states).ToListAsync(ct), events, ct, scope.StoreBusinessId.HasValue);
     }
 
     public async Task<IReadOnlyList<Entry>> ReadTicketAsync(WebsiteEditorTicket actor, CancellationToken ct = default)
@@ -73,15 +78,16 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
             CommerceBusinessId = s.CommerceBusinessId, PublishedVersionId = s.PublishedVersionId
         });
 
-    private async Task<IReadOnlyList<Entry>> ReadStatesAsync(List<WebsiteContentState> states, List<AnalyticsEvent> events, CancellationToken ct)
+    private async Task<IReadOnlyList<Entry>> ReadStatesAsync(List<WebsiteContentState> states, List<AnalyticsEvent> events, CancellationToken ct, bool storeOnly = false)
     {
         var versionIds = states.Where(s => s.PublishedVersionId.HasValue).Select(s => s.PublishedVersionId!.Value).ToArray();
-        var versions = await db.Set<WebsiteContentVersion>().AsNoTracking().Where(v => versionIds.Contains(v.Id))
-            .Select(v => new { v.Id, v.StateId, v.Revision, v.DocumentJson }).ToListAsync(ct);
+        var versions = WebsiteContentStore.ReadImmutablePublication(() => db.Set<WebsiteContentVersion>().AsNoTracking().Where(v => versionIds.Contains(v.Id))
+            .Select(v => new { v.Id, v.StateId, v.Revision, v.DocumentJson }).ToList(), ct);
         var sourceIds = events.Select(e => e.Id).ToArray();
         var receipts = await db.Set<MarketingDestinationDelivery>().AsNoTracking().Where(r => r.Channel == "server" && r.CanonicalSource == nameof(AnalyticsEvent) &&
                 r.AnalyticsEventId.HasValue && sourceIds.Contains(r.AnalyticsEventId.Value)).ToListAsync(ct);
         var meta = await db.MetaSignalEvents.AsNoTracking().Where(m => m.WebsiteContentVersionId.HasValue && versionIds.Contains(m.WebsiteContentVersionId.Value)).ToListAsync(ct);
+        var sourceOwners = await CanonicalAdvertisingEventProjection.ResolveOwnersAsync(db, configuration, events, ct);
         var historicalReceipts = new Dictionary<long, MarketingDestinationDelivery>();
         var legacyEventIds = meta.Select(m => m.EventId).ToArray();
         var legacyReceipts = await db.MarketingDestinationDeliveries.AsNoTracking()
@@ -92,7 +98,7 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                 events.Any(e => e.Id == id && e.AgentTrackingProfileId == m.AgentTrackingProfileId && e.CommerceBusinessId == m.CommerceBusinessId))
             {
                 var source = events.Single(e => e.Id == id);
-                var sourceOwner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, source, ct);
+                var sourceOwner = sourceOwners[source];
                 if (sourceOwner is null) continue;
                 var receipt = legacyReceipts.FirstOrDefault(r => r.CanonicalEventId == m.EventId && r.OwnerKey == sourceOwner.Key);
                 if (receipt is not null) historicalReceipts[id] = receipt;
@@ -107,12 +113,14 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
             var stateOwner = await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, state, ct);
             var stateEvents = new List<AnalyticsEvent>();
             if (stateOwner is not null)
-                foreach (var group in events.Where(e => e.WebsiteContentVersionId == version?.Id)
-                    .GroupBy(e => new { e.CommerceBusinessId, e.AgentTrackingProfileId, e.AgentSlug, e.Host }))
-                    if (await CanonicalAdvertisingEventProjection.ResolveOwnerAsync(db, configuration, group.First(), ct) == stateOwner)
-                        stateEvents.AddRange(group);
+                stateEvents.AddRange(events.Where(e => e.WebsiteContentVersionId == version?.Id && sourceOwners[e] == stateOwner));
             void Add(string page, string element, string? label, string? action, WebsiteSignalBinding? binding, AnalyticsBehaviorContract? behavior, bool automatic)
             {
+                // Store reports contain only the authored Store page and commerce lifecycle.
+                // Whole-site shell, CRM, insurance and booking definitions remain in website analytics.
+                if (storeOnly && (page == "*" ? behavior?.Key is not
+                    ("page_view" or "cta_click" or "meaningful_scroll" or "product_viewed" or "add_to_cart" or "checkout_started" or "purchase_completed")
+                    : !string.Equals(page, "/store", StringComparison.OrdinalIgnoreCase))) return;
                 var eventName = behavior?.EventName ?? binding?.EventName ?? "unresolved";
                 var sources = stateEvents.Where(e => e.WebsiteContentVersionId == version?.Id &&
                     (binding is not null ? e.WebsiteBindingId == binding.Id &&

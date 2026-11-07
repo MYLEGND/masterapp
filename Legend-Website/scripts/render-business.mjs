@@ -92,12 +92,13 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
         : typeof navigation.parentPath==='string'&&navigation.parentPath!==descriptor.route?normalizeRoute(navigation.parentPath):null,
       order:Number.isFinite(Number(navigation.order))?Number(navigation.order):0,
       isDeleted:navigation.isDeleted===true,
+      isPublished:navigation.isPublished!==false,
       template:!canonicalV3&&!!built,
       dynamic
     };
   };
 
-  const manifest=[...descriptors.values()].map(descriptorMeta).filter(page=>!page.isDeleted)
+  const manifest=[...descriptors.values()].map(descriptorMeta).filter(page=>!page.isDeleted && page.isPublished && (page.route!=='/store' || input.document?.store?.enabled===true))
     .sort((a,b)=>a.order-b.order||a.route.localeCompare(b.route));
   const navEntries=manifest.filter(page=>page.showInNavigation);
   const pageCatalog=manifest.map(page=>({
@@ -108,13 +109,14 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
     parentPath:page.parentPath || null,
     order:Number.isFinite(Number(page.order)) ? Number(page.order) : 0
   }));
-  const storeEnabled=input.document?.store?.enabled===true && !!input.business?.key;
+  const storePageVisible=documents['/store']?.navigation?.isPublished!==false && documents['/store']?.navigation?.isDeleted!==true;
+  const storeEnabled=input.document?.store?.enabled===true && storePageVisible && !!input.business?.key;
   const storeLabel=String(input.document?.store?.navigationLabel||'Store').trim().slice(0,40)||'Store';
   const storeRoot=storeEnabled?'/store':null;
   const storeCartIcon=['cart','bag','basket'].includes(String(input.document?.store?.cartIcon||'').toLowerCase())
     ? String(input.document.store.cartIcon).toLowerCase()
     : 'cart';
-  const storeContext=(company || protect)?(input.store||null):storeEnabled?{
+  const storeContext=(company || protect)?(storePageVisible?input.store||null:null):storeEnabled?{
     enabled:true,label:storeLabel,cartIcon:storeCartIcon,commerceBusinessId:input.business.id,businessKey:input.business.key,
     storefrontUrl:storeRoot,cartUrl:storeRoot+'/cart'
   }:null;
@@ -160,12 +162,14 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
       requestAnimationFrame:()=>0,cancelAnimationFrame(){},setTimeout:()=>0,clearTimeout(){}};
     window.LegendPublicInquiryForm={mountWebsiteReceptionists};
     window.LEGEND_PUBLIC_CMS_CONTEXT={siteKey,apiBase:publicApiBase,businessId:input.business?.id};
+    // Keep navigation metadata for other routes without publishing their authored content.
+    const pageNavigation=Object.fromEntries(Object.entries(documents).map(([path,value])=>[path,value.navigation||{}]));
     const currentDocument={...input.document,pages:page&&Object.keys(page).length?{[route]:page}:{}};
     window.LEGEND_PUBLIC_CMS_RENDER_INPUT={
       document:currentDocument,
       legacyMigration:canonicalV3?null:currentDocument,
       siteKey,ctaCatalog:input.ctaCatalog,business:input.business,collections:input.collections||[],
-      store:storeContext,dynamicItem,pageKey:renderPageKey,pageCatalog,server:true,protectNativeSlot:nativeSlot
+      store:storeContext,dynamicItem,pageKey:renderPageKey,pageCatalog,pageNavigation,server:true,protectNativeSlot:nativeSlot
     };
     compiledCms.runInNewContext(sandbox,{timeout:3000});
     if(window.LEGEND_PUBLIC_CMS_RENDER_COMPLETE!==true)throw new Error('Canonical renderer did not complete.');
@@ -238,7 +242,7 @@ export async function compileWebsite(input, root=resolve(import.meta.dirname,'..
       legacyMigration:canonicalV3?null:currentDocument,
       siteKey,ctaCatalog:input.ctaCatalog,business:input.business,collections:runtimeCollections,store:storeContext,dynamicItem,
       publication:input.publication,
-      pageKey:renderPageKey,pageCatalog,server:false,publishedMarkupReady:true,protectNativeSlot:nativeSlot,
+      pageKey:renderPageKey,pageCatalog,pageNavigation,server:false,publishedMarkupReady:true,protectNativeSlot:nativeSlot,
       runtime:{apiBase:publicApiBase,...(company?{editorAuthorizationUrl:editorAuthorizationBase+'/Account/EditLegendWebsite'}:{}),trackingAsset:publicRuntimeAssets.tracking,metaSignalAsset:publicRuntimeAssets.metaSignal,openAiMeasurementAsset:publicRuntimeAssets.openAiMeasurement}
     }).replace(/</g,'\\u003c');
     doc.body.insertBefore(renderInput,doc.querySelector('script[src^="/legend-public-cms.js"]'));

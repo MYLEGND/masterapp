@@ -1,0 +1,12 @@
+@model ParfaitApp.Controllers.StoreSessionForm
+@{ Layout = null; }
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>@Model.Title</title></head>
+<body><main><p role="status">@Model.Title…</p>
+<form id="store-session-handoff" method="post" action="@Model.Action">
+@Html.AntiForgeryToken()
+<input type="hidden" name="businessKey" value="@Model.BusinessKey" />
+@if (Model.ReturnPath is not null) { <input type="hidden" name="returnPath" value="@Model.ReturnPath" /> }
+@if (Model.State is not null) { <input type="hidden" name="state" value="@Model.State" /> }
+<button type="submit">Resume sign-in</button>
+</form></main><script src="~/store-assets/js/store-session.js" asp-append-version="true" defer></script></body></html>

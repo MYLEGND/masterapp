@@ -60,6 +60,7 @@ if (builder.Environment.IsDevelopment())
 {
     mvcBuilder.AddRazorRuntimeCompilation();
 }
+builder.Services.AddLegendCommerceSessions();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ProtectWebsite.Controllers.WebsiteContentController>();
 builder.Services.AddSingleton(sp =>
@@ -314,6 +315,8 @@ app.UseMiddleware<Infrastructure.WebsiteRuntime.BusinessWebsiteMiddleware>();
 app.UseMiddleware<Legend.Commerce.CommercePreviewMediaMiddleware>();
 app.UseStaticFiles();
 app.UseRouting();
+app.UseAuthentication();
+app.UseAuthorization();
 app.Use(async (context, next) =>
 {
     // Endpoint selection already happened on the internal preview path.

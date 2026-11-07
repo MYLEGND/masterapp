@@ -1,4 +1,5 @@
 using System.Globalization;
+using Infrastructure.Businesses;
 using Infrastructure.Analytics;
 using Infrastructure.Security.UploadValidation;
 using Microsoft.AspNetCore.Authorization;
@@ -11,8 +12,9 @@ using Shared.Analytics;
 namespace ParfaitApp.Controllers;
 
 [Authorize]
+[BusinessAnalyticsAdapter]
 [Route("internal")]
-public sealed class InternalModulesController : Controller
+public sealed partial class InternalModulesController : BusinessAnalyticsControllerBase
 {
     private const string ViewerTimezoneIdCookieName = "ParfaitAnalyticsViewerTimeZone";
     private const string ViewerTimezoneOffsetCookieName = "ParfaitAnalyticsViewerOffsetMinutes";
@@ -40,7 +42,7 @@ public sealed class InternalModulesController : Controller
         MarketingConnectionStore marketingConnections,
         MarketingMetaAdsOAuthService metaAdsOAuth,
         ParfaitBusinessScopeService parfaitScope,
-        IMetaAdsService metaAds)
+        IMetaAdsService metaAds) : base(null)
     {
         _products = products;
         _orders = orders;
@@ -80,6 +82,8 @@ public sealed class InternalModulesController : Controller
     [ValidateAntiForgeryToken]
     public IActionResult SaveProduct(ParfaitProductEditorViewModel product)
     {
+        product.InventoryBySize ??= [];
+        product.DiscountCodes ??= [];
         product.IsActive = HasCheckedValue(Request.Form, "IsActive");
         product.IsFeatured = HasCheckedValue(Request.Form, "IsFeatured");
 
@@ -95,16 +99,7 @@ public sealed class InternalModulesController : Controller
 
         if (!ModelState.IsValid)
         {
-            var products = _products.GetAllProducts().ToList();
-            return View("Products", new ParfaitProductAdminViewModel
-            {
-                Products = products,
-                NewProduct = product,
-                CommerceSettings = _products.GetCommerceSettings(),
-                ActiveProductCount = products.Count(item => item.IsActive),
-                FeaturedProductCount = products.Count(item => item.IsFeatured),
-                TotalImageCount = products.Sum(item => item.Images.Count)
-            });
+            return BadRequest(new { error = "product_invalid", message = "Check the product fields and enter valid numbers before saving." });
         }
 
         _products.SaveProduct(product);
@@ -208,7 +203,7 @@ public sealed class InternalModulesController : Controller
         "Purchase, payment, and fulfillment tracking for the Parfait store.",
         3,
         3)]
-    public IActionResult Orders()
+    public IActionResult Orders(string? search = null)
     {
         var orders = _orders.GetAllOrders().ToList();
         var paidOrders = orders
@@ -219,6 +214,8 @@ public sealed class InternalModulesController : Controller
         return View(new ParfaitOrderAdminViewModel
         {
             Orders = orders,
+            SearchQuery = search?.Trim() ?? "",
+            SearchResults = string.IsNullOrWhiteSpace(search) ? orders : _orders.SearchOrders(search).ToList(),
             PaidOrderCount = paidOrders.Count(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)),
             PendingOrderCount = orders.Count(order => string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase)),
             FailedOrderCount = orders.Count(order => string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase)),
@@ -230,13 +227,22 @@ public sealed class InternalModulesController : Controller
         });
     }
 
+    [HttpGet("commerce/orders/packing-slip")]
+    [ParfaitInternalPageAccess("/internal/commerce/orders")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public IActionResult PackingSlip(string orderNumber)
+    {
+        var order = _orders.GetOrder(orderNumber);
+        return order is null ? NotFound() : View("~/Views/InternalModules/PackingSlip.cshtml", order);
+    }
+
     [HttpPost("commerce/orders/update")]
     [ValidateAntiForgeryToken]
     public IActionResult UpdateOrder(ParfaitOrderAdminUpdateRequest request)
     {
-        if (!_orders.UpdateOrder(request))
+        if (!_orders.UpdateOrder(_orders.GetDefaultBusinessId(), request, out var error))
         {
-            TempData["OrderStatus"] = "Order could not be updated.";
+            TempData["OrderStatus"] = error;
             return RedirectToAction(nameof(Orders));
         }
 
@@ -282,6 +288,25 @@ public sealed class InternalModulesController : Controller
         return View(_automations.GetWorkspaceViewModel());
     }
 
+    [HttpPost("automations/email-settings")]
+    [ValidateAntiForgeryToken]
+    [ParfaitInternalPageAccess("/internal/automations")]
+    public IActionResult SaveAutomationEmailSettings(CommerceAutomationEmailSettingsInput input)
+    {
+        try
+        {
+            _automations.SaveEmailSettings(_orders.GetDefaultBusinessId(), input);
+            TempData["AutomationStatus"] = "Email settings saved.";
+            TempData["AutomationStatusTone"] = "success";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["AutomationStatus"] = ex.Message;
+            TempData["AutomationStatusTone"] = "danger";
+        }
+        return RedirectToAction(nameof(Automations));
+    }
+
     [HttpPost("automations/workflows")]
     [ValidateAntiForgeryToken]
     public IActionResult SaveAutomationWorkflow(ParfaitAutomationWorkflowEditorInput input)
@@ -293,19 +318,35 @@ public sealed class InternalModulesController : Controller
             return RedirectToAction(nameof(Automations));
         }
 
-        _automations.SaveWorkflow(input);
-        TempData["AutomationStatus"] = "Automation saved.";
-        TempData["AutomationStatusTone"] = "success";
+        try
+        {
+            _automations.SaveWorkflow(input);
+            TempData["AutomationStatus"] = "Automation saved.";
+            TempData["AutomationStatusTone"] = "success";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["AutomationStatus"] = ex.Message;
+            TempData["AutomationStatusTone"] = "danger";
+        }
         return RedirectToAction(nameof(Automations));
     }
 
     [HttpPost("automations/workflows/delete")]
     [ValidateAntiForgeryToken]
-    public IActionResult DeleteAutomationWorkflow(Guid id)
+    public IActionResult DeleteAutomationWorkflow(Guid id, long expectedUpdatedTicks)
     {
-        _automations.DeleteWorkflow(id);
-        TempData["AutomationStatus"] = "Automation deleted.";
-        TempData["AutomationStatusTone"] = "success";
+        try
+        {
+            _automations.DeleteWorkflow(id, expectedUpdatedTicks);
+            TempData["AutomationStatus"] = "Automation deleted.";
+            TempData["AutomationStatusTone"] = "success";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["AutomationStatus"] = ex.Message;
+            TempData["AutomationStatusTone"] = "danger";
+        }
         return RedirectToAction(nameof(Automations));
     }
 
@@ -326,18 +367,12 @@ public sealed class InternalModulesController : Controller
         [FromQuery] int? timezoneOffsetMinutes = null,
         CancellationToken ct = default)
     {
-        var resolvedQualityMode = ResolveParfaitAnalyticsQualityMode(qualityMode);
-        var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
-        return View(await _internalAnalytics.GetDashboardAsync(
-            preset,
-            fromUtc,
-            toUtc,
-            resolvedQualityMode,
-            timezoneContext.ViewerTimeZone,
-            timezoneContext.TimezoneId,
-            timezoneContext.TimezoneOffsetMinutes,
-            ct));
+        var business = await ResolveLegacyAnalyticsBusinessAsync(ct);
+        if (business is null) return Forbid();
+        var days = preset == "7d" ? 7 : preset == "90d" ? 90 : 30;
+        return await base.Analytics(business.Id, days, timezoneId, timezoneOffsetMinutes, ct, preset, fromUtc, toUtc, ResolveParfaitAnalyticsQualityMode(qualityMode));
     }
+
 
     [HttpPost("analytics/meta-settings")]
     [ParfaitInternalPageAccess("/internal/analytics")]
@@ -352,93 +387,13 @@ public sealed class InternalModulesController : Controller
         [FromQuery] int? timezoneOffsetMinutes = null,
         CancellationToken ct = default)
     {
-        var resolvedQualityMode = ResolveParfaitAnalyticsQualityMode(qualityMode);
-        var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
-        if (!ModelState.IsValid)
-        {
-            var dashboard = await _internalAnalytics.GetDashboardAsync(
-                preset,
-                fromUtc,
-                toUtc,
-                resolvedQualityMode,
-                timezoneContext.ViewerTimeZone,
-                timezoneContext.TimezoneId,
-                timezoneContext.TimezoneOffsetMinutes,
-                ct);
-            dashboard.MetaSettings.MetaPixelId = model.MetaPixelId;
-            dashboard.MetaSettings.MetaTestEventCode = model.MetaTestEventCode;
-            return View("Analytics", dashboard);
-        }
+        if (await ResolveLegacyAnalyticsBusinessAsync(ct) is null) return Forbid();
+        if (!ModelState.IsValid) return ValidationProblem(ModelState);
 
         await _businessProfile.SaveMetaSettingsAsync(model, ct);
         _internalAnalytics.InvalidateCache();
         TempData["AnalyticsStatus"] = "Meta settings saved.";
         return RedirectToAction(nameof(Analytics), new { preset, fromUtc, toUtc, qualityMode, timezoneId, timezoneOffsetMinutes });
-    }
-
-    [HttpGet("analytics/marketing-setup")]
-    [ParfaitInternalPageAccess("/internal/analytics")]
-    public async Task<IActionResult> MarketingSetup(CancellationToken ct = default)
-    {
-        var owner = MarketingOwnerScope.Business((await _parfaitScope.GetParfaitAsync(ct)).Id);
-        return Json(await HttpContext.RequestServices.GetRequiredService<MarketingProviderSetupProjection>().GetAsync(owner, ct));
-    }
-
-    [HttpPost("analytics/openai-connect")]
-    [ParfaitInternalPageAccess("/internal/analytics")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ConnectOpenAi([FromBody] MarketingProviderApiKeyRequest request, CancellationToken ct = default)
-    {
-        var owner = MarketingOwnerScope.Business((await _parfaitScope.GetParfaitAsync(ct)).Id);
-        try
-        {
-            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsDirectConnectionService>().ConnectAsync(owner, request.AdvertiserApiKey, request.ExpectedRevision, ct);
-            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
-        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
-        catch (HttpRequestException)
-        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
-    }
-
-    [HttpPost("analytics/openai-refresh")]
-    [ParfaitInternalPageAccess("/internal/analytics")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> RefreshOpenAi([FromBody] MarketingProviderRevisionRequest request, CancellationToken ct = default)
-    {
-        var owner = MarketingOwnerScope.Business((await _parfaitScope.GetParfaitAsync(ct)).Id);
-        try
-        {
-            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsDirectConnectionService>().RefreshAsync(owner, request.ConnectionRevision, ct);
-            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
-        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
-        catch (HttpRequestException)
-        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
-    }
-
-    [HttpPost("analytics/openai-disconnect")]
-    [ParfaitInternalPageAccess("/internal/analytics")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> DisconnectOpenAi([FromBody] MarketingProviderRevisionRequest request, CancellationToken ct = default)
-    {
-        var owner = MarketingOwnerScope.Business((await _parfaitScope.GetParfaitAsync(ct)).Id);
-        try
-        {
-            await HttpContext.RequestServices.GetRequiredService<IOpenAiAdsAccountConnectionAuthority>().DisconnectAsync(owner, request.ConnectionRevision, ct);
-            return Json(new { ok = true, ownerKey = owner.Key, status = "saved" });
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        { return Conflict(new { message = "Connection changed. Refresh this setup and retry." }); }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException)
-        { return BadRequest(new { message = "Provider connection could not be verified. Check the selected account and retry." }); }
-        catch (HttpRequestException)
-        { return StatusCode(502, new { message = "Provider unavailable. The existing connection is preserved." }); }
     }
 
     [HttpGet("analytics/meta-connect")]

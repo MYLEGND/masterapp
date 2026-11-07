@@ -203,3 +203,18 @@ test('registered sheet and rapid repeated transitions never double restore or ov
   f.sheet.open=false;f.sync();f.sheet.open=true;f.sync();assert.notEqual(f.focusState.get(f.sheet),state);
   assert.equal(f.focusState.get(f.sheet).opener,opener);assert.equal(returned,2);
 });
+
+
+test('shared modal initialization registers Store dialogs without a Portal header',()=>{
+  const calls=[], listeners=new Map(), body={};
+  const context={header:null,footer:null,content:null,impersonation:null,
+    document:{body,querySelector:()=>null,addEventListener:(name,fn)=>listeners.set(name,fn)},
+    window:{},registerDialogs:node=>calls.push(['dialogs',node]),registerMobileSheets:node=>calls.push(['sheets',node]),
+    syncViewportOffsets:()=>calls.push(['viewport']),scheduleViewportOffsets(){},handleModalKeyboard(){},
+    MutationObserver:class {observe(node){calls.push(['observe',node]);}}};
+  vm.createContext(context);vm.runInContext(implementation('observeContentRegion'),context);
+  context.observeContentRegion();
+  assert.equal(calls.find(x=>x[0]==='dialogs')[1],body);
+  assert.equal(calls.find(x=>x[0]==='observe')[1],body);
+  assert(listeners.has('keydown'));assert(listeners.has('shown.bs.modal'));assert(listeners.has('hidden.bs.modal'));
+});
