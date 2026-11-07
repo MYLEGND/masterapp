@@ -52,6 +52,8 @@ public sealed partial class ReceptionistOperatorTests
         Assert.Equal("already_satisfied", (await f.Operator.ApplyAsync(f.Request(plan))).Outcome);
         Assert.Contains(await f.Operator.SavedAccountingOperationsAsync(), x => x.Key == "saved-" + saved.Id.ToString("N") && x.ReviewState == "accepted");
 
+        // New service begins strictly after the totals included in the accepted opening.
+        f.Clock.Now = f.Clock.Now.AddSeconds(1);
         var creation = Guid.NewGuid();
         var first = await f.ReserveBudgetAsync(binding, creation); Assert.True(first.MayCreate);
         var parallel = await f.ReserveBudgetAsync(binding, Guid.NewGuid());
@@ -146,7 +148,10 @@ public sealed partial class ReceptionistOperatorTests
             case "legacy-policy": changedBinding = changedBinding with { BudgetPolicy = null, MaximumSupportedCallSeconds = 360 }; break;
             case "expired-policy": f.Clock.Now = binding.Binding.BudgetPolicy!.ExpiresUtc; break;
             case "voice-overrun": call.ObservedVoiceSeconds = call.ReservedVoiceSeconds + 1; break;
-            case "live-execution-lease": call.SidebandLeaseExpiresUtc = f.Clock.Now.AddMinutes(1); call.SidebandObservationOnly = false; break;
+            case "live-execution-lease":
+                call.SidebandLeaseToken = Guid.NewGuid(); call.SidebandWorkerId = "synthetic-live-worker"; call.SidebandFence = 1;
+                call.SidebandLeaseExpiresUtc = f.Clock.Now.AddMinutes(1); call.SidebandObservationOnly = false;
+                break;
             case "pending-business-work":
             case "uncertain-business-work": db.Add(RecoveryBusinessAction(oldCall, f.Clock.Now, defect.StartsWith("pending", StringComparison.Ordinal) ? "pending" : "uncertain")); break;
             case "mismatched-retirement-marker": marker.VerificationReceipt = "different-review"; break;
@@ -201,7 +206,11 @@ public sealed partial class ReceptionistOperatorTests
         var call = await db.Set<ReceptionistCall>().SingleAsync(x => x.Id == oldCall);
         if (changed == "call-revision") call.Revision = Guid.NewGuid();
         if (changed == "observation-lease")
-        { call.SidebandObservationOnly = true; call.SidebandLeaseToken = Guid.NewGuid(); call.SidebandLeaseExpiresUtc = f.Clock.Now.AddMinutes(1); }
+        {
+            call.SidebandObservationOnly = true; call.SidebandLeaseToken = Guid.NewGuid();
+            call.SidebandWorkerId = "synthetic-observer"; call.SidebandFence = 1;
+            call.SidebandLeaseExpiresUtc = f.Clock.Now.AddMinutes(1);
+        }
         if (changed == "retirement-evidence")
         {
             var marker = await db.Set<ReceptionistActionIntent>().SingleAsync(x => x.CallId == oldCall && x.LogicalActionKey == "__admin_retire_stale_test_call");

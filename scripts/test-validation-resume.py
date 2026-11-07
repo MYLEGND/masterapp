@@ -2465,6 +2465,32 @@ class ReceptionistReleaseImpactTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
             m.fast_track_scope(['Infrastructure/Bookings/UnreviewedAdapter.cs'])
 
+    def test_accounting_recovery_partials_keep_exact_owners_without_schema_or_release_admission(self):
+        runtime = (
+            'Infrastructure/Reception/ReceptionistAdmissionService.AccountingRecovery.cs',
+            'Infrastructure/Reception/ReceptionistOperatorService.AccountingRecovery.cs',
+        )
+        controller = 'AgentPortal/Controllers/FounderEngineeringController.ReceptionistAccounting.cs'
+        tests = 'AgentPortal.Tests/ReceptionistOperatorTests.AccountingRecovery.cs'
+        with patch.object(m, 'api_get') as provider, patch.object(m, 'assert_fast_track_release_execution') as admit:
+            result = m.fast_track_scope(runtime + (controller, tests))
+        self.assertEqual(self.managed, {row['key'] for row in result['matrix']['include']})
+        for path in runtime:
+            self.assertEqual(self.managed, set(result['impacts'][path]))
+        self.assertEqual(['portal'], result['impacts'][controller])
+        self.assertEqual([], result['impacts'][tests])
+        self.assertFalse(result['schema'])
+        self.assertFalse(result['routing'])
+        self.assertNotIn('releaseAdmission', result)
+        provider.assert_not_called()
+        admit.assert_not_called()
+        for path in (
+            'Infrastructure/Reception/ReceptionistAdmissionService.UnreviewedRecovery.cs',
+            'Infrastructure/Reception/ReceptionistOperatorService.UnreviewedRecovery.cs',
+        ):
+            with self.subTest(path=path), self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+                m.fast_track_scope([path])
+
     def test_shared_consumers_are_proven_by_actual_project_references(self):
         import posixpath
         import xml.etree.ElementTree as ET
@@ -3753,6 +3779,7 @@ class ValidationResumePlannerTests(unittest.TestCase):
             "ReceptionistSetupAndAuthorityTests",
             "ReceptionistRuntimeWorkerTests",
             "ReceptionistOperatorTests",
+            "ReceptionistOperatorTests.AccountingRecovery",
         ):
             with self.subTest(test_class=test_class):
                 plan = m.compute_plan(
