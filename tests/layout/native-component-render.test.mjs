@@ -1607,8 +1607,15 @@ test('actual canonical frontend components render in the existing sandboxed CI b
       await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width,height:900,deviceScaleFactor:1,mobile:false}});
       await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+'/receptionist-'+page+'.html'});
       await waitFor("document.querySelector('[data-receptionist-guide]')?.dataset.guideBound==='true'");
+      await execute(`const m=document.querySelector('[data-receptionist-guide]');window.__guideLifecycle={opening:0,shown:0,hidden:0,snapshots:[]};
+        m.addEventListener('show.bs.modal',()=>{const state=window.__guideLifecycle;state.opening++;state.snapshots.push({opening:state.opening,readerHidden:m.querySelector('[data-guide-reader]').hidden,toolbarHidden:m.querySelector('[data-guide-toolbar]').hidden,version:m.querySelector('[data-guide-version]').textContent});});
+        m.addEventListener('shown.bs.modal',()=>{window.__guideLifecycle.shown=window.__guideLifecycle.opening;});
+        m.addEventListener('hidden.bs.modal',()=>{window.__guideLifecycle.hidden=window.__guideLifecycle.opening;});`);
       assert.equal(await execute('return innerWidth'),width);
     };
+    const guideShown=()=>waitFor("window.__guideLifecycle.opening>0&&window.__guideLifecycle.shown===window.__guideLifecycle.opening&&document.querySelector('[data-receptionist-guide]').classList.contains('show')");
+    const guideClosed=()=>waitFor("window.__guideLifecycle.hidden===window.__guideLifecycle.opening&&!document.querySelector('[data-receptionist-guide]').classList.contains('show')&&getComputedStyle(document.querySelector('[data-receptionist-guide]')).display==='none'&&document.querySelectorAll('.modal-backdrop').length===0");
+    const publishedGuide=async()=>{await waitFor("!document.querySelector('[data-guide-reader]').hidden");await guideShown();};
     for(const page of ['setup','connections','content','founder'])for(const width of [1363,393]){
       await receptionistGo(page,width);
       const measurement=await execute(`const scope=document.querySelector('.receptionist-workspace');const visible=e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';const box=e=>{const b=e.getBoundingClientRect();return {x:b.x,right:b.right,width:b.width,height:b.height}};return {page:scope.dataset.fixtureReceptionistPage,width:innerWidth,documentWidth:document.documentElement.scrollWidth,heading:scope.querySelector('h1').textContent,controls:[...scope.querySelectorAll('button,input:not([type=hidden]),select,textarea')].filter(visible).map(e=>({name:e.name||e.textContent.trim(),tag:e.tagName,box:box(e)})),errors:window.__fixtureErrors};`);
@@ -1625,7 +1632,7 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     // Narrow navigation shares the same current step as the desktop list.
     await receptionistGo('setup',320);
     await click('[data-bs-target="#receptionist-setup-guide"]');
-    await waitFor("!document.querySelector('[data-guide-reader]').hidden");
+    await publishedGuide();
     let guide=await execute(`const m=document.querySelector('[data-receptionist-guide]'),body=m.querySelector('.modal-body'),select=m.querySelector('[data-guide-step-select]');return {width:innerWidth,documentWidth:document.documentElement.scrollWidth,bodyWidth:body.clientWidth,bodyScrollWidth:body.scrollWidth,selectVisible:select.getClientRects().length>0,desktopVisible:m.querySelector('.receptionist-guide__desktop-nav').getClientRects().length>0,steps:select.options.length,founderHidden:m.querySelector('[data-guide-audiences]').hidden,editorHidden:m.querySelector('[data-guide-edit]').hidden,version:m.querySelector('[data-guide-version]').textContent,errors:window.__fixtureErrors};`);
     assert.equal(guide.steps,9);assert.ok(guide.selectVisible);assert.equal(guide.desktopVisible,false);
     assert.ok(guide.founderHidden&&guide.editorHidden);assert.ok(guide.documentWidth<=321&&guide.bodyScrollWidth<=guide.bodyWidth+1);
@@ -1636,18 +1643,53 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.equal(await execute("return document.activeElement.hasAttribute('data-guide-step-title')"),true);
     assert.equal(await execute("return document.querySelector('[data-guide-step-select]').value"),'1');
     await keys(['\uE00C']);
-    await waitFor("!document.querySelector('[data-receptionist-guide]').classList.contains('show')");
+    await guideClosed();
     await waitFor("document.activeElement.matches('[data-bs-target=\"#receptionist-setup-guide\"]')");
     assert.equal(await execute("return document.querySelectorAll('.modal-backdrop').length"),0);
     await click('[data-bs-target="#receptionist-setup-guide"]');
-    await waitFor("!document.querySelector('[data-guide-reader]').hidden");
+    await publishedGuide();
     assert.equal(await execute("return window.__fixtureCalls.filter(x=>x==='/fixture/receptionist-guide').length"),2,'Every open must load current canonical instructions');
+    const openingSnapshots=await execute('return window.__guideLifecycle.snapshots');
+    assert.equal(openingSnapshots.length,2);
+    for(const opening of openingSnapshots)assert.deepEqual({readerHidden:opening.readerHidden,toolbarHidden:opening.toolbarHidden,version:opening.version},{readerHidden:true,toolbarHidden:true,version:''},'A new opening must synchronously invalidate the prior published view before the show transition');
+    receptionistRecords.push({guide:'normal-motion-opening-freshness',openingSnapshots});
+    // The reduced-motion journey uses the same Bootstrap lifecycle and guarded
+    // GET transport. A bounded delivery barrier makes overlapping read completion
+    // observable without widening transport admission or racing a shared Boolean.
+    await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setEmulatedMedia',params:{features:[{name:'prefers-reduced-motion',value:'reduce'}]}});
+    try {
+      await keys(['\uE00C']);await guideClosed();
+      await execute(`window.__fixtureGuideDelay=true;const original=window.fetch;const state=window.__guideOverlap={started:[],completed:[],held:false,timedOut:false};let release=null,timer=null;
+        window.__restoreGuideOverlap=()=>{if(release)release();if(timer)clearTimeout(timer);window.fetch=original;window.__fixtureGuideDelay=false;};
+        window.fetch=async function(...args){const u=new URL(args[0],location.href),method=(args[1]?.method||'GET').toUpperCase();
+          if(u.origin!==location.origin||u.pathname!=='/fixture/receptionist-guide'||u.search||method!=='GET')return original.apply(this,args);
+          const id=state.started.length+1;state.started.push(id);const response=await original.apply(this,args);
+          if(id===2){state.held=true;await new Promise(resolve=>{release=()=>{state.held=false;clearTimeout(timer);resolve();};state.release=release;timer=setTimeout(()=>{state.timedOut=true;release();},1000);});}
+          state.completed.push(id);return response;};`);
+      await click('[data-bs-target="#receptionist-setup-guide"]');await guideShown();
+      assert.deepEqual(await execute('return window.__guideOverlap.started'),[1]);
+      assert.deepEqual(await execute('return window.__guideOverlap.completed'),[],'The first opening read must still be pending before closing');
+      await keys(['\uE00C']);await guideClosed();
+      await click('[data-bs-target="#receptionist-setup-guide"]');await guideShown();
+      await waitFor('window.__guideOverlap.started.length===2&&window.__guideOverlap.completed.includes(1)&&window.__guideOverlap.held');
+      const overlap=await execute(`const s=window.__guideOverlap,m=document.querySelector('[data-receptionist-guide]');return {started:s.started,completed:s.completed,held:s.held,timedOut:s.timedOut,readerHidden:m.querySelector('[data-guide-reader]').hidden,version:m.querySelector('[data-guide-version]').textContent,reloadDisabled:m.querySelector('[data-guide-reload]').disabled};`);
+      assert.deepEqual(overlap.started,[1,2]);assert.deepEqual(overlap.completed,[1]);assert.ok(overlap.held&&!overlap.timedOut);
+      assert.ok(overlap.readerHidden&&overlap.reloadDisabled);assert.equal(overlap.version,'','An old completed read cannot certify or unlock the reopened guide');
+      receptionistRecords.push({guide:'superseded-read-completion',...overlap});
+      await execute('window.__guideOverlap.release();');await publishedGuide();
+      assert.deepEqual(await execute('return window.__guideOverlap.completed'),[1,2]);
+      assert.equal(await execute("return window.__fixtureCalls.filter(x=>x==='/fixture/receptionist-guide').length"),4,'Each opening owns exactly one new canonical GET');
+      assert.match(await execute("return document.querySelector('[data-guide-version]').textContent"),/Published version 1/);
+    } finally {
+      await execute('window.__restoreGuideOverlap?.();');
+      await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setEmulatedMedia',params:{features:[]}});
+    }
     assert.deepEqual(await execute('return window.__fixtureErrors'),[]);
     completedScenarios.add('receptionist-business-guide-mobile');
 
     await receptionistGo('founder',1363);
     await click('[data-bs-target="#receptionist-setup-guide"]');
-    await waitFor("!document.querySelector('[data-guide-reader]').hidden");
+    await publishedGuide();
     assert.equal(await execute("return document.querySelector('[data-guide-step-select]').options.length"),12);
     assert.equal(await execute("return document.querySelector('[data-guide-audience=\"founder\"]').getAttribute('aria-pressed')"),'true');
     await captureReceptionist('guide-founder-1363',1363,'current founder platform guide');
@@ -1667,30 +1709,31 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.equal(await execute('return document.documentElement.scrollWidth<=innerWidth+1'),true);
     await captureReceptionist('guide-founder-editor-393',393,'unpublished plain-text preview, publication not invoked');
     await keys(['\uE00C']);
-    await waitFor("!document.querySelector('[data-receptionist-guide]').classList.contains('show')");
+    await guideClosed();
     await click('[data-bs-target="#receptionist-setup-guide"]');
-    await waitFor("!document.querySelector('[data-guide-reader]').hidden");
+    await publishedGuide();
     await click('[data-guide-edit]');
     assert.equal(await execute("return document.querySelector('[data-guide-fields] [data-guide-field=\"instructions\"]').value"),plain,'Closing retains unpublished edits');
     await keys(['\uE00C']);
-    await waitFor("!document.querySelector('[data-receptionist-guide]').classList.contains('show')");
+    await guideClosed();
     await execute('window.__fixtureGuideDelay=true;');
     await click('[data-bs-target="#receptionist-setup-guide"]');
     await waitFor('window.__fixtureGuideReadPending===true');
     const duringRead=plain+' Latest edit while current instructions are loading.';
     await execute("document.querySelector('[data-guide-fields] [data-guide-field=\"instructions\"]').value=arguments[0];",[duringRead]);
-    await waitFor("!document.querySelector('[data-guide-reader]').hidden");
+    await publishedGuide();
     await execute('window.__fixtureGuideDelay=false;');
     await click('[data-guide-edit]');
     assert.equal(await execute("return document.querySelector('[data-guide-fields] [data-guide-field=\"instructions\"]').value"),duringRead,'A successful fresh read must preserve edits made while it was pending');
     await keys(['\uE00C']);
-    await waitFor("!document.querySelector('[data-receptionist-guide]').classList.contains('show')");
+    await guideClosed();
     // A failed fresh GET must not expose the cached reader when a retained draft
     // is deliberately discarded. This finite fixture flag changes GET only;
     // publication remains blocked by the unchanged transport/mutation guard.
     await execute('window.__fixtureGuideUnavailable=true;');
     await click('[data-bs-target="#receptionist-setup-guide"]');
     await waitFor("!document.querySelector('[data-guide-reload]').hidden&&!document.querySelector('[data-guide-reload]').disabled");
+    await guideShown();
     assert.equal(await execute("return document.querySelector('[data-guide-version]').textContent"),'');
     await click('[data-guide-cancel]');
     await command('POST','/session/'+session+'/alert/accept',{});
@@ -1700,10 +1743,10 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     await captureReceptionist('guide-unavailable-393',393,'failed current read remains unavailable after deliberate draft discard');
     await execute('window.__fixtureGuideUnavailable=false;');
     await click('[data-guide-reload]');
-    await waitFor("!document.querySelector('[data-guide-reader]').hidden");
+    await publishedGuide();
     assert.match(await execute("return document.querySelector('[data-guide-version]').textContent"),/Published version 1/);
     await keys(['\uE00C']);
-    await waitFor("!document.querySelector('[data-receptionist-guide]').classList.contains('show')");
+    await guideClosed();
     // Native validation reveals required fields in collapsed source disclosures.
     assert.equal(await execute(`const field=document.querySelector('[name="ExpectedOwnerKey"]');const details=field.closest('details');details.open=false;field.value='';field.reportValidity();return details.open;`),true);
     await captureReceptionist('founder-retirement-393',393,'native invalid field opens retirement disclosure');

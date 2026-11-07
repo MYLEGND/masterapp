@@ -25,7 +25,11 @@
   let audience = 'business';
   let editAudience = 'business';
   let step = 0;
-  let busy = false;
+  let readPending = false;
+  let publishing = false;
+  let modalOpen = false;
+  let openingSequence = 0;
+  let refreshAfterPublication = false;
   let publicationUnverified = false;
   let publicationConflict = false;
   let currentVerified = false;
@@ -108,21 +112,27 @@
     renderStep(focus);
   }
 
-  async function loadCurrent() {
-    if (busy) return;
-    if (draft && !editor.hidden) retainFields();
+  function invalidatePublished() {
     currentVerified = false;
-    const sequence = ++loadSequence;
-    busy = true; reload.disabled = true;
     reader.hidden = true; find('toolbar').hidden = true;
     find('version').textContent = ''; find('publish').disabled = true;
+    reload.hidden = false;
+  }
+
+  async function loadCurrent() {
+    if (!modalOpen || readPending) return;
+    if (publishing) { refreshAfterPublication = true; return; }
+    if (draft && !editor.hidden) retainFields();
+    invalidatePublished();
+    const sequence = ++loadSequence;
+    readPending = true; reload.disabled = true;
     message('Loading the current published instructions…');
     try {
       const response = await fetch(sameOriginUrl(modal.dataset.guideUrl), { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } });
       if (!response.ok) throw new Error('Current setup instructions are unavailable. Reload the guide or ask your platform operator to verify access and deployment.');
       const data = await response.json();
       if (!validGuide(data)) throw new Error('The current published guide could not be verified. Ask your platform operator to check it.');
-      if (sequence !== loadSequence) return;
+      if (sequence !== loadSequence || !modalOpen) return;
       // A retained editor can remain usable while this read is pending. Capture
       // its latest inputs immediately before hiding it, not only when the read began.
       if (draft && !editor.hidden) retainFields();
@@ -138,14 +148,14 @@
         message(`Current published version ${current.version} loaded. The earlier publication result was not confirmed; check both views before starting a new edit.`);
       } else message('Follow the steps below. Live call readiness remains in Call status.');
     } catch (error) {
-      if (sequence !== loadSequence) return;
+      if (sequence !== loadSequence || !modalOpen) return;
       // An unavailable read must not display an older guide as the current canonical version.
       reader.hidden = true; find('toolbar').hidden = true; find('version').textContent = '';
       find('publish').disabled = true;
       message(error.message || 'Current setup instructions are unavailable.');
       reload.hidden = false;
     } finally {
-      if (sequence === loadSequence) { busy = false; reload.disabled = false; }
+      if (sequence === loadSequence) { readPending = false; reload.disabled = false; }
     }
   }
 
@@ -200,7 +210,7 @@
   }
 
   function openEditor() {
-    if (!canEdit() || busy) return;
+    if (!canEdit() || readPending || publishing) return;
     if (!draft) {
       draft = JSON.parse(JSON.stringify({ expectedVersion: current.version, expectedRevision: current.revision,
         business: current.business, founder: current.founder }));
@@ -217,12 +227,23 @@
     }
   }
 
-  modal.addEventListener('shown.bs.modal', () => {
+  modal.addEventListener('show.bs.modal', () => {
     if (!editor.hidden) retainFields();
+    modalOpen = true; openingSequence++;
+    // Invalidate synchronously, before Bootstrap reveals the reopening dialog.
+    // A read from an earlier opening can neither render nor unlock this opening.
+    loadSequence++; readPending = false;
+    invalidatePublished(); reload.disabled = true;
+    message(publishing ? 'Publication is still being checked. Current instructions will load when it finishes.' : 'Loading the current published instructions…');
     loadCurrent();
   });
   // Closing the canonical modal retains unpublished inputs; the modal manager owns focus and scrolling.
-  modal.addEventListener('hide.bs.modal', () => { if (!editor.hidden) retainFields(); });
+  modal.addEventListener('hide.bs.modal', () => {
+    if (!editor.hidden) retainFields();
+    modalOpen = false; openingSequence++;
+    loadSequence++; readPending = false; refreshAfterPublication = false;
+    invalidatePublished();
+  });
   reload.addEventListener('click', () => loadCurrent());
   modal.querySelector('[data-guide-edit]').addEventListener('click', openEditor);
   modal.querySelector('[data-guide-previous]').addEventListener('click', () => { step--; renderStep(true); });
@@ -280,10 +301,11 @@
   });
   editor.addEventListener('submit', async event => {
     event.preventDefault();
-    if (busy || !draft || !canEdit() || publicationUnverified || publicationConflict) return;
+    if (readPending || publishing || !draft || !canEdit() || publicationUnverified || publicationConflict) return;
     retainFields();
     if (!editor.reportValidity()) return;
-    busy = true; find('publish').disabled = true; editor.inert = true; editor.setAttribute('aria-busy', 'true');
+    publishing = true; find('publish').disabled = true; editor.inert = true; editor.setAttribute('aria-busy', 'true');
+    const publicationOpening = openingSequence;
     message('Publishing the two canonical guides…');
     try {
       const token = editor.querySelector('input[name="__RequestVerificationToken"]')?.value;
@@ -302,9 +324,12 @@
         throw new Error(data?.message || 'Publication was not confirmed. Keep your edits and verify the current published guide.');
       }
       if (!validGuide(data) || !data.founder) { publicationUnverified = true; currentVerified = false; throw new Error('Publication returned an unverified result. Keep your edits and reload the current instructions.'); }
-      current = data; currentVerified = true; draft = null; publicationUnverified = false; publicationConflict = false; step = 0;
-      reload.hidden = true; showPublished(true);
-      message(`Version ${current.version} is published. All businesses receive the updated Business setup guide the next time they open it.`);
+      current = data; currentVerified = modalOpen && publicationOpening === openingSequence;
+      draft = null; publicationUnverified = false; publicationConflict = false; step = 0;
+      if (currentVerified) {
+        reload.hidden = true; showPublished(true);
+        message(`Version ${current.version} is published. All businesses receive the updated Business setup guide the next time they open it.`);
+      } else { editor.hidden = true; invalidatePublished(); }
     } catch (error) {
       // Network errors can follow a committed write. Never automatically replay a publication.
       if (error instanceof TypeError) publicationUnverified = true;
@@ -314,8 +339,12 @@
       }
       message(error.message || 'Publication could not be verified. Your edits are retained.');
     } finally {
-      busy = false; editor.inert = false; editor.removeAttribute('aria-busy');
+      publishing = false; editor.inert = false; editor.removeAttribute('aria-busy');
       find('publish').disabled = publicationUnverified || publicationConflict || !currentVerified;
+      if (refreshAfterPublication && modalOpen) {
+        refreshAfterPublication = false;
+        loadCurrent();
+      }
     }
   });
 })();
