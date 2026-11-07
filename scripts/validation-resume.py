@@ -4930,9 +4930,11 @@ def fast_track_scope(paths):
         'Infrastructure/Businesses/BusinessWorkspaceCommitmentsController.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.Receptionist.cs',
         'Infrastructure/Businesses/BusinessWorkspaceControllerBase.ReceptionistManagement.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceControllerBase.ReceptionistGuide.cs',
         'Infrastructure/Businesses/CommerceBusinessProvisioningService.cs',
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs',
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Management.cs',
+        'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Guide.cs',
         'Infrastructure/Households/HouseholdMembershipService.cs',
         'Infrastructure/Businesses/BusinessWorkspaceService.cs',
         'Infrastructure/Businesses/BusinessWorkspaceService.Team.cs',
@@ -4984,6 +4986,7 @@ def fast_track_scope(paths):
         'Infrastructure/Reception/ReceptionistOperatorService.AccountingRecovery.cs',
         'Infrastructure/Reception/ReceptionistOperatorService.Management.cs',
         'Infrastructure/Reception/ReceptionistOperatorService.Stored.cs',
+        'Infrastructure/Reception/ReceptionistOperatorService.Guide.cs',
         'Infrastructure/Reception/ReceptionistRuntimeAuthority.cs',
         'Infrastructure/Reception/ReceptionistRuntimeWorker.cs',
         'Infrastructure/Reception/ReceptionistServiceRegistration.cs',
@@ -4997,6 +5000,7 @@ def fast_track_scope(paths):
         'SHARED/Analytics/ReceptionistManagement.cs',
         'SHARED/Analytics/ReceptionistContentReview.cs',
         'SHARED/Analytics/ReceptionistSetup.cs',
+        'SHARED/Analytics/ReceptionistSetupGuide.cs',
     }
     linked = {}
     for key, row in RELEASE_TARGETS.items():
@@ -5130,6 +5134,7 @@ def fast_track_scope(paths):
         'Infrastructure/Data/MasterAppDbContext.cs', 'Infrastructure/Data/Configurations/CommercePaymentModel.cs',
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.cs',
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Management.cs',
+        'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Guide.cs',
         'Infrastructure/Data/Configurations/CrmHistoryEntryConfiguration.cs',
         'Domain/Entities/WebsiteLeadIntakeLink.cs'} for path in paths)
     backend = schema or bool(shared_server.intersection(paths)) or any(path.startswith(('CommerceCore/', 'Infrastructure/Commerce/', 'Infrastructure/WebsiteRuntime/',

@@ -1892,6 +1892,7 @@ class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
 
     def test_management_entities_and_model_have_exact_shared_schema_ownership(self):
         for path in ('Domain/Entities/ReceptionistManagement.cs',
+                     'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Guide.cs',
                      'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Management.cs'):
             scope=authority.fast_track_scope([path])
             self.assertEqual(set(scope['impacts'][path]), {'portal','client','protect','parfait'})
@@ -1903,10 +1904,13 @@ class ReleaseAdmissionScopeRegressionTests(unittest.TestCase):
     def test_browser_and_management_partials_have_exact_shared_ownership(self):
         paths = (
             'Infrastructure/Businesses/BusinessWorkspaceControllerBase.ReceptionistManagement.cs',
+            'Infrastructure/Businesses/BusinessWorkspaceControllerBase.ReceptionistGuide.cs',
             'Infrastructure/Reception/ReceptionistAdmissionService.Browser.cs',
             'Infrastructure/Reception/ReceptionistBrowserController.cs',
             'Infrastructure/Reception/ReceptionistOperatorService.Management.cs',
             'Infrastructure/Reception/ReceptionistOperatorService.Stored.cs',
+            'Infrastructure/Reception/ReceptionistOperatorService.Guide.cs',
+            'SHARED/Analytics/ReceptionistSetupGuide.cs',
             'SHARED/Analytics/ReceptionistManagement.cs')
         for path in paths:
             with self.subTest(path=path):

@@ -56,7 +56,7 @@ public abstract partial class BusinessWorkspaceControllerBase
             Url.Action(nameof(GrantReceptionistTest), new { businessId })!, Url.Action(nameof(StartReceptionistTest), new { businessId })!,
             summary.CanRunVoiceTest ? null : $"https://portal.mylegnd.com/business/{businessId:D}/receptionist/connections",
             SubmittedPreparation: preparation, SubmittedCredential: credential, Reconciliation: reconciliation, SelfUrl: Url.Action(nameof(ReceptionistConnections), new { businessId }),
-            AdvancedUrl: summary.CanReview && founderRouteAvailable ? Url.Action("Receptionist", "FounderEngineering") : null));
+            AdvancedUrl: summary.CanReview && founderRouteAvailable ? Url.Action("Receptionist", "FounderEngineering") : null, GuideUrl: Url.Action(nameof(ReceptionistGuide), new { businessId })));
     }
 
     private async Task<IActionResult> ReceptionistManagementFailureAsync(MarketingOwnerScope owner, Guid scope,

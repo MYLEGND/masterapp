@@ -87,10 +87,13 @@ internal static partial class RehearsalFixture
 
     internal static void ValidateExpandedFixture(MasterAppDbContext db, CandidateContract.Contract contract)
     {
+        ValidateSetupGuideFixture(db, contract);
+        var guide = HasSetupGuideMigration(db);
         var rows = contract.Migrations.Where(m => ExpandedMigrations.Contains(m.Id)).ToArray();
-        if (rows.Length == 0) return;
+        if (rows.Length == 0 && !guide) return;
         var storeEnd = Array.FindIndex(contract.Migrations, m => m.Id == CandidateContract.StoreMigrations[^1]) + 1;
-        if (storeEnd == 0 || !contract.Migrations.Skip(storeEnd).Select(m => m.Id).SequenceEqual(ExpandedMigrations)
+        var reviewedSuffix = guide ? ExpandedMigrations.Append(SetupGuideMigration) : ExpandedMigrations;
+        if (storeEnd == 0 || !contract.Migrations.Skip(storeEnd).Select(m => m.Id).SequenceEqual(reviewedSuffix)
             || rows.Any(m => !IsExpandedFixture(m))) throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
         var assembly = db.GetService<IMigrationsAssembly>();
         if (!ExactOwnerFixtureOperations(assembly.CreateMigration(assembly.Migrations[OwnerMigration], db.Database.ProviderName!).UpOperations))
@@ -140,7 +143,8 @@ internal static partial class RehearsalFixture
     {
         ValidateExpandedFixture(db, contract);
         if (!contract.Migrations.Any(m => m.Id == OwnerMigration)) { await CandidateContract.Verify(db, contract, applied, ct); return; }
-        if (!applied.Contains(OwnerMigration) || !applied.Contains(PromotionMigration))
+        if (!applied.Contains(OwnerMigration) || !applied.Contains(PromotionMigration) ||
+            HasSetupGuideMigration(db) && !applied.Contains(SetupGuideMigration))
         {
             var rejected = false;
             try { await CandidateContract.Verify(db, contract, applied, ct); }
@@ -153,9 +157,14 @@ internal static partial class RehearsalFixture
         // this disposable physical-plan input. Every other current entry remains.
         var physical = contract with { Migrations = contract.Migrations.Where(m => m.Id != OwnerMigration).ToArray() };
         physical = physical with { Migrations = physical.Migrations.Select(m => m.Id == PromotionMigration
-            ? m with { Supported = true, Indexes = [], ForeignKeys = [] } : m).ToArray() };
+            ? m with { Supported = true, Indexes = [], ForeignKeys = [] }
+            : m.Id == SetupGuideMigration ? m with { Supported = true } : m).ToArray() };
+        // Only this disposable physical projection admits the exact guide table.
+        // ValidateExpandedFixture already checked every raw operation and seed byte;
+        // the production descriptor remains unsupported because it contains InsertData.
         if (applied.Contains(OwnerMigration)) physical = AppliedOwnerFixtureContract(physical);
         await CandidateContract.Verify(db, physical, applied, ct);
+        if (HasSetupGuideMigration(db)) await VerifySetupGuideSeed(db, applied.Contains(SetupGuideMigration), ct);
     }
 
     private static async Task VerifyPromotionStructures(MasterAppDbContext db, bool applied, CancellationToken ct)

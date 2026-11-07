@@ -90,7 +90,7 @@ public partial class WebsiteAnalyticsController
             return View("~/Views/Shared/ReceptionistContentReview.cshtml", new ReceptionistContentReviewPage(preview,
                 Url.Action(nameof(ApplyReceptionistContent), new { agentProfileId })!,
                 Url.Action(nameof(RestoreReceptionistContent), new { agentProfileId })!,
-                Url.Action(nameof(Receptionist), new { agentProfileId })!));
+                Url.Action(nameof(Receptionist), new { agentProfileId })!, GuideUrl: ReceptionistGuideUrl(owner, agentProfileId)));
         }
         catch (InvalidOperationException) { return await ReceptionistSetupFailureAsync(owner, agentProfileId, ReceptionistPlanFailure.MissingContent, 400, cancellationToken); }
     }
@@ -150,7 +150,7 @@ public partial class WebsiteAnalyticsController
             Url.Action(nameof(ApplyReceptionistContent), new { agentProfileId = scope })!,
             Url.Action(nameof(RestoreReceptionistContent), new { agentProfileId = scope })!,
             Url.Action(nameof(Receptionist), new { agentProfileId = scope })!, apply, rollback, failure,
-            Url.Action(nameof(ReviewReceptionistContent), new { agentProfileId = scope })));
+            Url.Action(nameof(ReviewReceptionistContent), new { agentProfileId = scope }), GuideUrl: ReceptionistGuideUrl(owner, scope)));
     }
 
     private async Task<IActionResult> ReceptionistSetupFailureAsync(MarketingOwnerScope owner, Guid? scope,
@@ -179,6 +179,6 @@ public partial class WebsiteAnalyticsController
                 Url.Action(nameof(SaveReceptionist), new { agentProfileId })!,
                 Url.Action(nameof(ReceptionistAdmission), new { agentProfileId })!,
                 Url.Action("Index", new { agentProfileId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { agentProfileId })!, OperatingSnapshot: operating, ManagementUrl: Url.Action(nameof(ReceptionistConnections), new { agentProfileId }),
-                SubmittedAdmission: admission, CalendarSetupUrl: Url.Action("Index", new { agentProfileId }) is { } calendarUrl ? calendarUrl + "#receptionist-calendar" : null));
+                SubmittedAdmission: admission, GuideUrl: ReceptionistGuideUrl(snapshot.Owner, agentProfileId), CalendarSetupUrl: Url.Action("Index", new { agentProfileId }) is { } calendarUrl ? calendarUrl + "#receptionist-calendar" : null));
     }
 }
