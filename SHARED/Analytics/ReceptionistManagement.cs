@@ -12,7 +12,7 @@ public sealed record ReceptionistManagementSummary(Guid ConnectionRevision,
 public sealed record ReceptionistManagementPage(ReceptionistManagementSummary Summary,
     string SaveCredentialUrl, string RevokeCredentialUrl, string ReturnUrl, string? Message = null,
     string? PlanUrl = null, string? ApplyUrl = null, string? ReviewUrl = null, ReceptionistOperationReview? Review = null, string? PrepareUrl = null, string? TestGrantUrl = null, string? TestStartUrl = null, string? TestControlPlaneUrl = null,
-    ReceptionistOperationPreparationInput? SubmittedPreparation = null, ReceptionistCredentialDraft? SubmittedCredential = null, string? SelfUrl = null, string? AdvancedUrl = null, ReceptionistOperationReconciliation? Reconciliation = null);
+    ReceptionistOperationPreparationInput? SubmittedPreparation = null, ReceptionistCredentialDraft? SubmittedCredential = null, string? SelfUrl = null, string? AdvancedUrl = null, ReceptionistOperationReconciliation? Reconciliation = null, string? GuideUrl = null);
 
 // Deliberately excludes Secret: it is never returned to a view after a failed save.
 public sealed record ReceptionistCredentialDraft(Guid ExpectedConnectionRevision, string ProviderProjectKey, string Purpose);

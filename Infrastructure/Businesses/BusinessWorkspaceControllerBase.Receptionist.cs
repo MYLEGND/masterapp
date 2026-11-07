@@ -85,7 +85,7 @@ public abstract partial class BusinessWorkspaceControllerBase
             return View("~/Views/Shared/ReceptionistContentReview.cshtml", new ReceptionistContentReviewPage(preview,
                 Url.Action(nameof(ApplyReceptionistContent), new { businessId })!,
                 Url.Action(nameof(RestoreReceptionistContent), new { businessId })!,
-                Url.Action(nameof(Receptionist), new { businessId })!));
+                Url.Action(nameof(Receptionist), new { businessId })!, GuideUrl: Url.Action(nameof(ReceptionistGuide), new { businessId })));
         }
         catch (InvalidOperationException) { return await ReceptionistSetupFailureAsync(owner, businessId, ReceptionistPlanFailure.MissingContent, 400, cancellationToken); }
     }
@@ -146,7 +146,7 @@ public abstract partial class BusinessWorkspaceControllerBase
             Url.Action(nameof(ApplyReceptionistContent), new { businessId = scope })!,
             Url.Action(nameof(RestoreReceptionistContent), new { businessId = scope })!,
             Url.Action(nameof(Receptionist), new { businessId = scope })!, apply, rollback, failure,
-            Url.Action(nameof(ReviewReceptionistContent), new { businessId = scope })));
+            Url.Action(nameof(ReviewReceptionistContent), new { businessId = scope }), GuideUrl: Url.Action(nameof(ReceptionistGuide), new { businessId = scope })));
     }
 
     private async Task<IActionResult> ReceptionistSetupFailureAsync(MarketingOwnerScope owner, Guid scope,
@@ -175,6 +175,6 @@ public abstract partial class BusinessWorkspaceControllerBase
             new ReceptionistSetupPage(snapshot, input ?? ReceptionistSetupForms.Read(snapshot),
                 Url.Action(nameof(SaveReceptionist), new { businessId })!,
                 Url.Action(nameof(ReceptionistAdmission), new { businessId })!,
-                Url.Action(nameof(Settings), new { businessId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { businessId })!, OperatingSnapshot: operating, ManagementUrl: Url.Action(nameof(ReceptionistConnections), new { businessId }), SubmittedAdmission: admission));
+                Url.Action(nameof(Settings), new { businessId })!, ReceptionistSetupForms.CrmBuckets(snapshot.Owner), message, readiness, Url.Action(nameof(ReviewReceptionistContent), new { businessId })!, OperatingSnapshot: operating, ManagementUrl: Url.Action(nameof(ReceptionistConnections), new { businessId }), SubmittedAdmission: admission, GuideUrl: Url.Action(nameof(ReceptionistGuide), new { businessId })));
     }
 }

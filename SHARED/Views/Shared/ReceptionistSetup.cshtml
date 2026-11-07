@@ -13,25 +13,43 @@
     var setupFailure = ViewData["ReceptionistSetupFailure"] as Shared.Analytics.ReceptionistPlanFailure;
     string Amount(decimal value) => value.ToString(CultureInfo.InvariantCulture);
 }
-<section class="dashboard-page-shell py-4">
-    <header class="dashboard-surface-panel p-3 mb-4">
-        <div class="dashboard-hero-copy">
-            <div><a class="btn btn-clear-search dashboard-command-action" href="@Model.ReturnUrl">Back to your workspace</a></div>
-            <h1 class="dashboard-hero-title mt-3">Receptionist settings</h1>
-    <nav aria-label="Receptionist tasks" class="d-flex flex-wrap gap-2 my-3">
-                <a class="btn btn-clear-search dashboard-command-action" href="#receptionist-call-status">Overview and readiness</a>
-                <a class="btn btn-clear-search dashboard-command-action" href="#conversation">Conversation and services</a>
-                <a class="btn btn-clear-search dashboard-command-action" href="#hours-limits">Hours and budget</a>
-                <a class="btn btn-clear-search dashboard-command-action" href="#appointments">Optional appointments</a>
-                @if (Model.ManagementUrl is not null) { <a class="btn btn-clear-search dashboard-command-action" href="@(Model.ManagementUrl + "#voice-connection")">Voice connection</a><a class="btn btn-clear-search dashboard-command-action" href="@(Model.ManagementUrl + "#operation-reviews")">Review and activation</a><a class="btn btn-clear-search dashboard-command-action" href="@(Model.ManagementUrl + "#voice-test")">Voice testing and help</a> }
-                @if (Model.ContentReviewUrl is not null && Model.Snapshot.ConfigurationId is not null) { <a class="btn btn-clear-search dashboard-command-action" href="@Model.ContentReviewUrl">Review content and recovery</a> }
-            </nav>
-            <p class="dashboard-section-copy">Choose how your receptionist answers callers, which services it can discuss, and the limits it must respect.</p>
+@section Styles {
+    <link rel="stylesheet" href="~/_content/Shared/css/receptionist-workspace.css" asp-append-version="true" />
+}
+<section class="dashboard-page-shell">
+<div class="receptionist-workspace">
+    <header class="receptionist-hero">
+        <div class="receptionist-hero__top">
+            <a href="@Model.ReturnUrl">Back to your workspace</a>
+            <span class="receptionist-eyebrow">Voice receptionist</span>
+        </div>
+        <div class="receptionist-heading">
+            <div>
+                <h1>Receptionist settings</h1>
+                <p class="receptionist-copy">Shape the conversation. Set your services, answering hours and limits, then connect and test your voice receptionist.</p>
+            </div>
+            @if (Model.GuideUrl is not null)
+            {
+                <button class="receptionist-button receptionist-button--primary" type="button" data-bs-toggle="modal" data-bs-target="#receptionist-setup-guide" aria-controls="receptionist-setup-guide">Step-by-step setup guide</button>
+            }
+        </div>
+        <nav aria-label="Receptionist tasks" class="receptionist-nav">
+            <a href="#receptionist-call-status" aria-current="page">Settings and readiness</a>
+            @if (Model.ManagementUrl is not null)
+            {
+                <a href="@(Model.ManagementUrl + "#voice-connection")">Voice connection</a>
+                <a href="@(Model.ManagementUrl + "#operation-reviews")">Review and activation</a>
+                <a href="@(Model.ManagementUrl + "#voice-test")">Voice testing and help</a>
+            }
+            @if (Model.ContentReviewUrl is not null && Model.Snapshot.ConfigurationId is not null)
+            { <a href="@Model.ContentReviewUrl">Review content and recovery</a> }
+        </nav>
+        <div class="receptionist-stack">
             @if (Model.Message is not null)
-            { <p class="dashboard-section-copy" role="status">@Model.Message</p> }
+            { <p class="receptionist-copy" role="status">@Model.Message</p> }
             @if (setupFailure is not null)
             {
-                <div class="dashboard-data-surface p-3" role="alert">
+                <div class="receptionist-notice" role="alert">
                     <p>@setupFailure.Message</p>
                     @if (admission is not null)
                     {
@@ -49,182 +67,218 @@
             }
         </div>
     </header>
-    <section class="dashboard-surface-panel p-3 mb-4" aria-labelledby="receptionist-call-status">
-        <h2 class="dashboard-section-title mb-3" id="receptionist-call-status">Call status</h2>
-        <dl class="row mb-2">
-            <dt class="dashboard-stat-label col-sm-4">Owner permission</dt><dd class="col-sm-8">@(readiness.OwnerPermissionEnabled is true ? "Allowed when ready" : readiness.OwnerPermissionEnabled is false ? "Paused" : "Unknown — reload to verify")</dd>
-            <dt class="dashboard-stat-label col-sm-4">Call readiness</dt><dd class="col-sm-8">@(readiness.AdmissionReason == "outside_reception_hours" ? "Closed according to reception hours" : readiness.CallReadiness)</dd>
-            <dt class="dashboard-stat-label col-sm-4">Control-plane runtime</dt><dd class="col-sm-8">@readiness.RuntimeState</dd>
-            <dt class="dashboard-stat-label col-sm-4">Editable settings version</dt><dd class="col-sm-8">@(snapshot.ConfigurationId.HasValue ? $"Version {snapshot.ConfigurationVersion}" : "No saved version")</dd>
-            <dt class="dashboard-stat-label col-sm-4">Operating version</dt><dd class="col-sm-8">@(readiness.OperatingConfigurationVersion is { } operatingVersion ? $"Version {operatingVersion}" : readiness.BindingScope == "unaccepted" ? "No accepted operating configuration" : "Unknown — reload to verify")</dd>
-            <dt class="dashboard-stat-label col-sm-4">Accepted binding scope</dt><dd class="col-sm-8">@readiness.BindingScope.Replace('_', ' ')</dd>
-            <dt class="dashboard-stat-label col-sm-4">Application test window</dt><dd class="col-sm-8">@readiness.ApplicationWindowState.Replace('_', ' ')</dd>
-            <dt class="dashboard-stat-label col-sm-4">Observed admission check</dt><dd class="col-sm-8">@readiness.AdmissionReason.Replace('_', ' ')</dd>
-            <dt class="dashboard-stat-label col-sm-4">Current carrier route</dt><dd class="col-sm-8">@readiness.CarrierRouteState; @(readiness.CarrierRouteObservedUtc?.ToString("u") ?? "no verified observation")</dd>
-            <dt class="dashboard-stat-label col-sm-4">Restricted AI call acceptance</dt><dd class="col-sm-8">@readiness.RestrictedAiAcceptanceState</dd>
-            <dt class="dashboard-stat-label col-sm-4">Public AI call acceptance</dt><dd class="col-sm-8">@readiness.PublicAiAcceptanceState</dd>
-            <dt class="dashboard-stat-label col-sm-4">Active application call records</dt><dd class="col-sm-8">@(readiness.OpenCalls?.ToString() ?? "unknown")</dd>
-            <dt class="dashboard-stat-label col-sm-4">Locally retired; provider closure unresolved</dt><dd class="col-sm-8">@(readiness.LocallyRetiredProviderUnresolvedCalls?.ToString() ?? "unknown")</dd>
-            <dt class="dashboard-stat-label col-sm-4">Open without a current stop condition</dt><dd class="col-sm-8">@(readiness.OpenCallsWithoutStopCondition?.ToString() ?? "unknown") — not verified live call activity</dd>
-            <dt class="dashboard-stat-label col-sm-4">Awaiting stop or provider closure</dt><dd class="col-sm-8">@(readiness.AwaitingStopOrClosure?.ToString() ?? "unknown")</dd>
-            <dt class="dashboard-stat-label col-sm-4">Observed at (UTC)</dt><dd class="col-sm-8">@(readiness.ObservedUtc?.ToString("u") ?? "unknown")</dd>
+    <section class="receptionist-card" aria-labelledby="receptionist-call-status">
+        <h2 id="receptionist-call-status">Call status</h2>
+        <dl class="receptionist-status-grid">
+            <div><dt>Owner permission</dt><dd>@(readiness.OwnerPermissionEnabled is true ? "Allowed when ready" : readiness.OwnerPermissionEnabled is false ? "Paused" : "Unknown — reload to verify")</dd></div>
+            <div><dt>Call readiness</dt><dd>@(readiness.AdmissionReason == "outside_reception_hours" ? "Closed according to reception hours" : readiness.CallReadiness)</dd></div>
+            <div><dt>Operating version</dt><dd>@(readiness.OperatingConfigurationVersion is { } operatingVersion ? $"Version {operatingVersion}" : readiness.BindingScope == "unaccepted" ? "No accepted operating configuration" : "Unknown — reload to verify")</dd></div>
+            <div><dt>Active application call records</dt><dd>@(readiness.OpenCalls?.ToString() ?? "unknown")</dd></div>
         </dl>
-        @if (readiness.AdmissionReason == "outside_reception_hours") { <p class="dashboard-section-copy" role="status">Outside scheduled reception hours. This does not by itself establish permission, provider acceptance, or readiness during open hours.</p> }
-        @if (!readiness.CanAllowOwnerPermission && Model.ManagementUrl is not null) { <p class="dashboard-section-copy">If permission cannot be enabled, verify the current voice connection and required inquiry acceptance. <a href="@(Model.ManagementUrl + "#voice-connection")">Review voice connection</a>.</p> }
-        <p class="dashboard-section-copy mb-3">Owner permission is not runtime readiness. A valid application test window is not proof of a restricted carrier route or successful two-way AI audio. These read-only observations do not reserve capacity; every incoming call is checked again.</p>
+        <details class="receptionist-disclosure"><summary>Readiness details and provider status</summary><div class="receptionist-disclosure__body">
+            <dl class="receptionist-facts">
+                <dt>Control-plane runtime</dt><dd>@readiness.RuntimeState</dd>
+                <dt>Editable settings version</dt><dd>@(snapshot.ConfigurationId.HasValue ? $"Version {snapshot.ConfigurationVersion}" : "No saved version")</dd>
+                <dt>Accepted binding scope</dt><dd>@readiness.BindingScope.Replace('_', ' ')</dd>
+                <dt>Application test window</dt><dd>@readiness.ApplicationWindowState.Replace('_', ' ')</dd>
+                <dt>Observed admission check</dt><dd>@readiness.AdmissionReason.Replace('_', ' ')</dd>
+                <dt>Current carrier route</dt><dd>@readiness.CarrierRouteState; @(readiness.CarrierRouteObservedUtc?.ToString("u") ?? "no verified observation")</dd>
+                <dt>Restricted AI call acceptance</dt><dd>@readiness.RestrictedAiAcceptanceState</dd>
+                <dt>Public AI call acceptance</dt><dd>@readiness.PublicAiAcceptanceState</dd>
+                <dt>Locally retired; provider closure unresolved</dt><dd>@(readiness.LocallyRetiredProviderUnresolvedCalls?.ToString() ?? "unknown")</dd>
+                <dt>Open without a current stop condition</dt><dd>@(readiness.OpenCallsWithoutStopCondition?.ToString() ?? "unknown") — not verified live call activity</dd>
+                <dt>Awaiting stop or provider closure</dt><dd>@(readiness.AwaitingStopOrClosure?.ToString() ?? "unknown")</dd>
+                <dt>Observed at (UTC)</dt><dd>@(readiness.ObservedUtc?.ToString("u") ?? "unknown")</dd>
+            </dl>
+        </div></details>
+
+        @if (readiness.AdmissionReason == "outside_reception_hours") { <p class="receptionist-copy" role="status">Outside scheduled reception hours. This does not by itself establish permission, provider acceptance, or readiness during open hours.</p> }
+        @if (!readiness.CanAllowOwnerPermission && Model.ManagementUrl is not null) { <p class="receptionist-copy">If permission cannot be enabled, verify the current voice connection and required inquiry acceptance. <a href="@(Model.ManagementUrl + "#voice-connection")">Review voice connection</a>.</p> }
+        <p class="receptionist-copy">Owner permission is not runtime readiness. A valid application test window is not proof of a restricted carrier route or successful two-way AI audio. These read-only observations do not reserve capacity; every incoming call is checked again.</p>
         @if (accounting is not null && readiness.OwnerPermissionEnabled is not null)
         {
-            <p class="dashboard-section-copy mb-3">Owner-account snapshot — recorded amounts, not current call funding eligibility.<br />
+            <p class="receptionist-copy">Owner-account snapshot — recorded amounts, not current call funding eligibility.<br />
             Cash committed: @accounting.CashCommitted.ToString("0.00") @recordedCurrency; reserved for unresolved calls: @accounting.CashReserved.ToString("0.00") @recordedCurrency.<br />
             Service consumption committed: @accounting.ConsumptionCommitted.ToString("0.00") @recordedCurrency; reserved: @accounting.ConsumptionReserved.ToString("0.00") @recordedCurrency.</p>
         }
         @if (snapshot.ConfigurationId.HasValue)
         {
-            <form action="@Model.AdmissionUrl" method="post">
+            <form class="receptionist-form" action="@Model.AdmissionUrl" method="post">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="ExpectedRevision" value="@(admission?.ExpectedRevision ?? snapshot.ConnectionRevision)" />
                 <input type="hidden" name="Enabled" value="@((admission?.Enabled ?? !snapshot.AdmissionEnabled) ? "true" : "false")" />
-                <button class="btn dashboard-command-action @(snapshot.AdmissionEnabled ? "btn-clear-search" : "btn-carrier-settings")" type="submit" disabled="@(setupFailure is not null || (!snapshot.AdmissionEnabled && !readiness.CanAllowOwnerPermission))">@(snapshot.AdmissionEnabled ? "Pause receptionist permission" : "Allow calls when ready")</button>
-                <p class="dashboard-section-copy mt-2 mb-0">Pausing permission fences further dialogue and business actions through the existing stop handling; it does not promise an instantaneous provider hangup.</p>
+                <button class="receptionist-button @(snapshot.AdmissionEnabled ? "receptionist-button--quiet" : "receptionist-button--primary")" type="submit" disabled="@(setupFailure is not null || (!snapshot.AdmissionEnabled && !readiness.CanAllowOwnerPermission))">@(snapshot.AdmissionEnabled ? "Pause receptionist permission" : "Allow calls when ready")</button>
+                <p class="receptionist-copy">Pausing permission fences further dialogue and business actions through the existing stop handling; it does not promise an instantaneous provider hangup.</p>
             </form>
         }
     </section>
-    <form action="@Model.PostUrl" method="post" class="d-grid gap-4">
+    <nav aria-label="Settings sections" class="receptionist-nav">
+        <a href="#conversation">Conversation</a>
+        <a href="#services">Services and inquiries</a>
+        <a href="#approved-answers">Approved answers</a>
+        <a href="#hours-limits">Hours and budget</a>
+        <a href="#appointments">Optional appointments</a>
+    </nav>
+    <form action="@Model.PostUrl" method="post" class="receptionist-stack">
         @Html.AntiForgeryToken()
         <input type="hidden" name="ExpectedRevision" value="@settings.ExpectedRevision" />
         @if (!ViewData.ModelState.IsValid)
         {
-            <div asp-validation-summary="All" class="dashboard-data-surface p-3" role="alert"></div>
+            <div asp-validation-summary="All" class="receptionist-notice" role="alert"></div>
         }
-        <fieldset id="conversation" class="dashboard-surface-panel p-3">
-            <legend class="dashboard-section-title mb-3">Business and conversation</legend>
-            <div class="d-grid gap-3">
-            <label class="dashboard-form-field"><span>Business name</span><input class="form-control" name="BusinessName" value="@settings.BusinessName" maxlength="200" required /></label>
-            <label class="dashboard-form-field"><span>Greeting and conversation guidance</span><textarea class="form-control" name="ConversationInstructions" rows="8" maxlength="65536" required>@settings.ConversationInstructions</textarea></label>
-            <label class="dashboard-form-field"><span>Business policy</span><textarea class="form-control" name="BusinessPolicy" rows="12" maxlength="65536" required>@settings.BusinessPolicy</textarea></label>
-                <label class="dashboard-form-field" for="CompactVoicePolicy"><span>Optional concise voice policy</span>
+        <fieldset id="conversation" class="receptionist-card">
+            <legend>Business and conversation</legend>
+            <div class="receptionist-form">
+            <label class="receptionist-field"><span>Business name</span><input name="BusinessName" value="@settings.BusinessName" maxlength="200" required /></label>
+            <label class="receptionist-field"><span>Greeting and conversation guidance</span><textarea name="ConversationInstructions" rows="8" maxlength="65536" required>@settings.ConversationInstructions</textarea></label>
+            <details class="receptionist-disclosure" open="@(string.IsNullOrWhiteSpace(settings.BusinessPolicy) || !ViewData.ModelState.IsValid)">
+                <summary>Business policy, concise guidance and privacy</summary>
+                <div class="receptionist-disclosure__body">
+            <label class="receptionist-field"><span>Business policy</span><textarea name="BusinessPolicy" rows="12" maxlength="65536" required>@settings.BusinessPolicy</textarea></label>
+                <label class="receptionist-field" for="CompactVoicePolicy"><span>Optional concise voice policy</span>
                 <textarea id="CompactVoicePolicy" name="CompactVoicePolicy" rows="8" maxlength="8000">@Model.Input.CompactVoicePolicy</textarea></label>
                 <p>Leave blank to retain the full policy in conversation. If supplied, review it against the full policy above: include identity, listening, service boundaries, qualification, handoff limits, privacy and truthful results. Applying it requires content review; it does not change server permissions.</p>
-            <label class="dashboard-form-field"><span>Contact permissions and retention policy</span><textarea class="form-control" name="ContactAndRetentionNotes" rows="5" maxlength="32768">@settings.ContactAndRetentionNotes</textarea></label>
+            <label class="receptionist-field"><span>Contact permissions and retention policy</span><textarea name="ContactAndRetentionNotes" rows="5" maxlength="32768">@settings.ContactAndRetentionNotes</textarea></label>
+                </div>
+            </details>
         </div></fieldset>
-        <fieldset class="dashboard-surface-panel p-3">
-            <legend class="dashboard-section-title mb-3">Services and inquiries</legend>
-            <div class="d-grid gap-3">
-            <label class="client-create-record-option"><input type="checkbox" name="RequestIntake" value="true" checked="@settings.RequestIntake" /> Save caller-confirmed service inquiries</label>
+        <fieldset id="services" class="receptionist-card">
+            <legend>Services and inquiries</legend>
+            <div class="receptionist-form">
+            <label class="receptionist-check"><input type="checkbox" name="RequestIntake" value="true" checked="@settings.RequestIntake" /> Save caller-confirmed service inquiries</label>
             <input type="hidden" name="RequestIntake" value="false" />
-            <label class="client-create-record-option"><input type="checkbox" name="NotifyOwner" value="true" checked="@settings.NotifyOwner" /> Use the workspace's existing inquiry notifications</label>
+            <label class="receptionist-check"><input type="checkbox" name="NotifyOwner" value="true" checked="@settings.NotifyOwner" /> Use the workspace's existing inquiry notifications</label>
             <input type="hidden" name="NotifyOwner" value="false" />
-            <p class="dashboard-section-copy mb-0">Add a service in the empty row and save to add another. Save settings before assigning a new service to a specific answer.</p>
+            <p class="receptionist-copy">Add a service in the empty row and save to add another. Save settings before assigning a new service to a specific answer.</p>
             @for (var i = 0; i < (settings.Services?.Count ?? 0); i++)
             {
                 var service = settings.Services![i] ?? new Shared.Analytics.ReceptionistServiceInput();
-                <div class="dashboard-data-surface p-3 d-grid gap-2">
-                    <h3 class="dashboard-section-title">@(string.IsNullOrEmpty(service.ServiceKey) ? "Add a service" : service.DisplayName)</h3>
+                <details class="receptionist-disclosure" open="@(string.IsNullOrEmpty(service.ServiceKey) || !ViewData.ModelState.IsValid)">
+                    <summary>@(string.IsNullOrEmpty(service.ServiceKey) ? "Add a service" : service.DisplayName)</summary>
+                    <div class="receptionist-disclosure__body receptionist-form-grid">
                     <input type="hidden" name="Services[@i].ServiceKey" value="@service.ServiceKey" />
-                    <label class="dashboard-form-field"><span>Service name</span><input class="form-control" name="Services[@i].DisplayName" value="@service.DisplayName" maxlength="120" /></label>
-                    <label class="dashboard-form-field"><span>Ways callers ask for this service, one per line</span><textarea class="form-control" name="Services[@i].Aliases" rows="3" maxlength="4000">@service.Aliases</textarea></label>
-                    <label class="dashboard-form-field"><span>Useful discovery question</span><input class="form-control" name="Services[@i].DiscoveryQuestion" value="@service.DiscoveryQuestion" maxlength="320" /></label>
-                    <label class="dashboard-form-field"><span>Approved service summary</span><textarea class="form-control" name="Services[@i].PublicSummary" rows="3" maxlength="1600">@service.PublicSummary</textarea></label>
-                    <label class="dashboard-form-field"><span>Inquiry destination</span><select class="form-select" name="Services[@i].CrmBucket">
+                    <label class="receptionist-field"><span>Service name</span><input name="Services[@i].DisplayName" value="@service.DisplayName" maxlength="120" /></label>
+                    <label class="receptionist-field"><span>Ways callers ask for this service, one per line</span><textarea name="Services[@i].Aliases" rows="3" maxlength="4000">@service.Aliases</textarea></label>
+                    <label class="receptionist-field"><span>Useful discovery question</span><input name="Services[@i].DiscoveryQuestion" value="@service.DiscoveryQuestion" maxlength="320" /></label>
+                    <label class="receptionist-field"><span>Approved service summary</span><textarea name="Services[@i].PublicSummary" rows="3" maxlength="1600">@service.PublicSummary</textarea></label>
+                    <label class="receptionist-field"><span>Inquiry destination</span><select name="Services[@i].CrmBucket">
                         <option value="">Choose a destination</option>
                         @foreach (var bucket in Model.CrmBuckets)
                         { <option value="@bucket" selected="@(service.CrmBucket == bucket)">@bucket</option> }
                     </select></label>
-                    <details><summary>Approved appointment mapping for this service</summary>
+                    <details class="receptionist-disclosure"><summary>Approved appointment mapping for this service</summary><div class="receptionist-disclosure__body">
                         <p>Use the existing calendar service approved for this workspace. Empty fields leave appointments unavailable for this service.</p>
-                        <label class="dashboard-form-field"><span>Approved calendar service ID</span><input class="form-control" name="Services[@i].BookingServiceId" value="@service.BookingServiceId" maxlength="200" autocomplete="off" /></label>
-                        <label class="dashboard-form-field"><span>Appointment timezone</span><input class="form-control" name="Services[@i].BookingTimeZoneId" value="@service.BookingTimeZoneId" maxlength="200" /></label>
-                        <label class="dashboard-form-field"><span>Appointment duration in minutes</span><input class="form-control" type="number" name="Services[@i].BookingDurationMinutes" value="@service.BookingDurationMinutes" min="5" max="240" /></label>
-                    </details>
+                        <label class="receptionist-field"><span>Approved calendar service ID</span><input name="Services[@i].BookingServiceId" value="@service.BookingServiceId" maxlength="200" autocomplete="off" /></label>
+                        <label class="receptionist-field"><span>Appointment timezone</span><input name="Services[@i].BookingTimeZoneId" value="@service.BookingTimeZoneId" maxlength="200" /></label>
+                        <label class="receptionist-field"><span>Appointment duration in minutes</span><input type="number" name="Services[@i].BookingDurationMinutes" value="@service.BookingDurationMinutes" min="5" max="240" /></label>
+                    </div></details>
                     @if (!string.IsNullOrEmpty(service.ServiceKey))
-                    { <label class="client-create-record-option"><input type="checkbox" name="Services[@i].Remove" value="true" checked="@service.Remove" /> Remove this service when saving</label> }
+                    { <label class="receptionist-check"><input type="checkbox" name="Services[@i].Remove" value="true" checked="@service.Remove" /> Remove this service when saving</label> }
                 </div>
+                </details>
             }
         </div></fieldset>
-        <fieldset id="appointments" class="dashboard-surface-panel p-3">
-            <legend class="dashboard-section-title mb-3">Appointment readiness</legend>
+        <fieldset id="approved-answers" class="receptionist-card">
+            <legend>Approved answers</legend>
+            <div class="receptionist-form">
+            <p class="receptionist-copy">Provide the caller questions this answer addresses. Use a dated answer when the information is only established as of a particular date.</p>
+            @for (var i = 0; i < (settings.Answers?.Count ?? 0); i++)
+            {
+                var answer = settings.Answers![i] ?? new Shared.Analytics.ReceptionistAnswerInput();
+                var firstQuestion = (answer.Questions ?? string.Empty).Split('\n')[0].Trim();
+                var answerTitle = string.IsNullOrEmpty(answer.Key) ? "Add an answer"
+                    : string.IsNullOrWhiteSpace(firstQuestion) ? $"Answer {i + 1}"
+                    : firstQuestion.Length > 120 ? firstQuestion[..120] + "…" : firstQuestion;
+                <details class="receptionist-disclosure" open="@(string.IsNullOrEmpty(answer.Key) || !ViewData.ModelState.IsValid)">
+                    <summary>@answerTitle</summary>
+                    <div class="receptionist-disclosure__body receptionist-form-grid">
+                    <input type="hidden" name="Answers[@i].Key" value="@answer.Key" />
+                    <label class="receptionist-field"><span>Related service</span><select name="Answers[@i].ServiceKey">
+                        <option value="">General business question</option>
+                        @foreach (var service in (settings.Services ?? []).Where(x => x is not null && !string.IsNullOrEmpty(x.ServiceKey) && !x.Remove))
+                        { <option value="@service.ServiceKey" selected="@(answer.ServiceKey == service.ServiceKey)">@service.DisplayName</option> }
+                    </select></label>
+                    <label class="receptionist-field receptionist-field--wide"><span>Caller questions, one per line</span><textarea name="Answers[@i].Questions" rows="3" maxlength="4000">@answer.Questions</textarea></label>
+                    <label class="receptionist-field receptionist-field--wide"><span>Approved answer</span><textarea name="Answers[@i].Answer" rows="4" maxlength="2400">@answer.Answer</textarea></label>
+                    <label class="receptionist-field"><span>Information status</span><select name="Answers[@i].Status">
+                        <option value="">Choose a status</option>
+                        <option value="approved" selected="@(answer.Status == "approved")">Approved</option>
+                        <option value="dated" selected="@(answer.Status == "dated")">Dated information</option>
+                    </select></label>
+                    <label class="receptionist-field"><span>Information date, when dated</span><input type="date" name="Answers[@i].AsOfDate" value="@answer.AsOfDate" /></label>
+                    @if (!string.IsNullOrEmpty(answer.Key))
+                    { <label class="receptionist-check"><input type="checkbox" name="Answers[@i].Remove" value="true" checked="@answer.Remove" /> Remove this answer when saving</label> }
+                </div>
+                </details>
+            }
+        </div></fieldset>
+        <fieldset id="hours-limits" class="receptionist-card">
+            <legend>Hours and limits</legend>
+            <div class="receptionist-form">
+            <label class="receptionist-field"><span>Business time zone</span><input name="TimeZoneId" value="@settings.TimeZoneId" maxlength="100" placeholder="Area/City" required /></label>
+            <div class="receptionist-table-wrap"><table class="receptionist-table"><thead><tr><th>Open</th><th>Day</th><th>From</th><th>Until</th></tr></thead><tbody>
+            @for (var i = 0; i < (settings.Hours?.Count ?? 0); i++)
+            {
+                var hours = settings.Hours![i] ?? new Shared.Analytics.ReceptionistHoursInput();
+                <tr><td><label class="receptionist-check"><input type="checkbox" name="Hours[@i].Enabled" value="true" checked="@hours.Enabled" aria-label="Open on @hours.Day" /></label><input type="hidden" name="Hours[@i].Enabled" value="false" /></td>
+                    <td>@hours.Day<input type="hidden" name="Hours[@i].Day" value="@hours.Day" /></td>
+                    <td><div class="receptionist-field"><input type="time" name="Hours[@i].Start" value="@(hours.Start?.ToString("HH:mm", CultureInfo.InvariantCulture))" aria-label="@hours.Day start time" /></div></td>
+                    <td><div class="receptionist-field"><input type="time" name="Hours[@i].End" value="@(hours.End?.ToString("HH:mm", CultureInfo.InvariantCulture))" aria-label="@hours.Day end time" /></div></td></tr>
+            }
+            </tbody></table></div>
+            <div class="receptionist-form-grid">
+                <label class="receptionist-field"><span>Currency</span><input name="Currency" value="@settings.Currency" maxlength="3" pattern="[A-Z]{3}" placeholder="Three-letter currency" required /></label>
+                <label class="receptionist-field"><span>Monthly cash limit</span><input type="number" name="MonthlyCashLimit" value="@Amount(settings.MonthlyCashLimit)" min="0" step="0.0001" required /></label>
+                <label class="receptionist-field"><span>Monthly service consumption limit</span><input type="number" name="MonthlyConsumptionLimit" value="@Amount(settings.MonthlyConsumptionLimit)" min="0" step="0.0001" required /></label>
+                <label class="receptionist-field"><span>Monthly voice minutes</span><input type="number" name="MonthlyVoiceMinutesLimit" value="@Amount(settings.MonthlyVoiceMinutesLimit)" min="0" step="any" required /></label>
+                <label class="receptionist-field"><span>Concurrent calls</span><input type="number" name="MaximumConcurrentCalls" value="@settings.MaximumConcurrentCalls" min="1" step="1" required /></label>
+                <label class="receptionist-field"><span>Maximum seconds per call</span><input type="number" name="MaximumCallSeconds" value="@settings.MaximumCallSeconds" min="1" step="1" required /></label>
+                <label class="receptionist-field"><span>New-call window, in seconds</span><input type="number" name="AdmissionWindowSeconds" value="@settings.AdmissionWindowSeconds" min="1" step="1" required /></label>
+                <label class="receptionist-field"><span>Maximum calls starting within that window</span><input type="number" name="MaximumCallsPerWindow" value="@settings.MaximumCallsPerWindow" min="1" step="1" required /></label>
+            </div>
+            <p class="receptionist-copy">Cash and service consumption are tracked separately. Unresolved provider charges remain reserved. Changing these limits requires verification and does not add provider funds.</p>
+        </div></fieldset>
+        <details id="appointments" class="receptionist-disclosure" open="@(settings.BookingEnabled || !ViewData.ModelState.IsValid)">
+            <summary>Optional appointments</summary>
+            <div class="receptionist-disclosure__body">
+            <fieldset class="receptionist-stack">
+            <legend>Appointment readiness</legend>
             <input type="hidden" name="BookingFieldsPresent" value="true" />
             <p>Appointments are optional: an unavailable calendar does not itself block approved calls and caller-confirmed inquiries.
             @if (Model.CalendarSetupUrl is not null)
             { <a href="@Model.CalendarSetupUrl">Open this owner's calendar connection setup</a><span> in Marketing Setup.</span> }
             else { <span>Calendar connection setup is not available from this business page; ask an authorized workspace operator to review the existing connection.</span> }</p>
             <p>Saving these settings requests a reviewed capability. It does not enable booking, authorize calendar access or send an invitation. Service mappings above must match the existing connected calendar.</p>
-            <label><input type="checkbox" name="BookingEnabled" value="true" checked="@settings.BookingEnabled" /> Request appointment capability</label><input type="hidden" name="BookingEnabled" value="false" />
-            <label><input type="checkbox" name="BookingQaOnly" value="true" checked="@settings.BookingQaOnly" /> Synthetic QA only: no calendar appointment or invitation</label><input type="hidden" name="BookingQaOnly" value="false" />
-            <label><input type="checkbox" name="BookingAllowConsentedCustomerEmail" value="true" checked="@settings.BookingAllowConsentedCustomerEmail" /> Permit a customer email invitation only after the caller explicitly confirms it</label><input type="hidden" name="BookingAllowConsentedCustomerEmail" value="false" />
+            <label class="receptionist-check"><input type="checkbox" name="BookingEnabled" value="true" checked="@settings.BookingEnabled" /> Request appointment capability</label><input type="hidden" name="BookingEnabled" value="false" />
+            <label class="receptionist-check"><input type="checkbox" name="BookingQaOnly" value="true" checked="@settings.BookingQaOnly" /> Synthetic QA only: no calendar appointment or invitation</label><input type="hidden" name="BookingQaOnly" value="false" />
+            <label class="receptionist-check"><input type="checkbox" name="BookingAllowConsentedCustomerEmail" value="true" checked="@settings.BookingAllowConsentedCustomerEmail" /> Permit a customer email invitation only after the caller explicitly confirms it</label><input type="hidden" name="BookingAllowConsentedCustomerEmail" value="false" />
             <p>Workspace inquiry notifications are separate. If the caller declines the invitation, Shayla does not create an external appointment.</p>
-            <label class="dashboard-form-field"><span>Minimum notice in minutes</span><input class="form-control" type="number" name="BookingMinimumNoticeMinutes" value="@settings.BookingMinimumNoticeMinutes" min="0" max="43200" /></label>
-            <label class="dashboard-form-field"><span>Minimum business days of notice</span><input class="form-control" type="number" name="BookingMinimumNoticeBusinessDays" value="@settings.BookingMinimumNoticeBusinessDays" min="0" max="30" /></label>
+            <label class="receptionist-field"><span>Minimum notice in minutes</span><input type="number" name="BookingMinimumNoticeMinutes" value="@settings.BookingMinimumNoticeMinutes" min="0" max="43200" /></label>
+            <label class="receptionist-field"><span>Minimum business days of notice</span><input type="number" name="BookingMinimumNoticeBusinessDays" value="@settings.BookingMinimumNoticeBusinessDays" min="0" max="30" /></label>
             <p>Business days follow the open weekdays in your reception hours. Notice runs to the same local time on the counted day, skipping closed weekdays. Appointments are also restricted to those open weekdays when business-day notice is enabled. Both notice limits apply. Calendar availability can impose stricter limits.</p>
-            <label class="dashboard-form-field"><span>Maximum days ahead</span><input class="form-control" type="number" name="BookingMaximumAdvanceDays" value="@settings.BookingMaximumAdvanceDays" min="1" max="90" /></label>
-            <details id="appointment-review-details" class="dashboard-data-surface p-3" open="@(new[] { "BookingCalendarConfigurationSha256", "BookingCalendarTargetSha256", "BookingPrivacyAcceptanceReference", "BookingAgentProfileId" }.Any(key => ViewData.ModelState.TryGetValue(key, out var entry) && entry.Errors.Count > 0))">
-                <summary>Advanced reviewed appointment mapping</summary>
+            <label class="receptionist-field"><span>Maximum days ahead</span><input type="number" name="BookingMaximumAdvanceDays" value="@settings.BookingMaximumAdvanceDays" min="1" max="90" /></label>
+            <details id="appointment-review-details" class="receptionist-disclosure" open="@(new[] { "BookingCalendarConfigurationSha256", "BookingCalendarTargetSha256", "BookingPrivacyAcceptanceReference", "BookingAgentProfileId" }.Any(key => ViewData.ModelState.TryGetValue(key, out var entry) && entry.Errors.Count > 0))">
+                <summary>Advanced reviewed appointment mapping</summary><div class="receptionist-disclosure__body">
                 <p>For authorized reviewed setup: use the exact reviewed calendar configuration and target, genuine booking privacy evidence, and an explicitly authorized booking agent profile. These values do not automatically follow calendar changes; review any change before replacing them. Do not substitute a tracking profile or guess an identity from an email address.</p>
-            <label class="dashboard-form-field"><span>Reviewed calendar configuration fingerprint</span><input class="form-control" name="BookingCalendarConfigurationSha256" value="@settings.BookingCalendarConfigurationSha256" maxlength="64" autocomplete="off" /></label>
-            <label class="dashboard-form-field"><span>Reviewed calendar target fingerprint</span><input class="form-control" name="BookingCalendarTargetSha256" value="@settings.BookingCalendarTargetSha256" maxlength="64" autocomplete="off" /></label>
-            <label class="dashboard-form-field"><span>Approved booking privacy evidence reference</span><input class="form-control" name="BookingPrivacyAcceptanceReference" value="@settings.BookingPrivacyAcceptanceReference" maxlength="512" /></label>
-            <label class="dashboard-form-field"><span>Existing authorized booking agent profile ID</span><input class="form-control" name="BookingAgentProfileId" value="@settings.BookingAgentProfileId" maxlength="36" /></label>
-            </details>
+            <label class="receptionist-field"><span>Reviewed calendar configuration fingerprint</span><input name="BookingCalendarConfigurationSha256" value="@settings.BookingCalendarConfigurationSha256" maxlength="64" autocomplete="off" /></label>
+            <label class="receptionist-field"><span>Reviewed calendar target fingerprint</span><input name="BookingCalendarTargetSha256" value="@settings.BookingCalendarTargetSha256" maxlength="64" autocomplete="off" /></label>
+            <label class="receptionist-field"><span>Approved booking privacy evidence reference</span><input name="BookingPrivacyAcceptanceReference" value="@settings.BookingPrivacyAcceptanceReference" maxlength="512" /></label>
+            <label class="receptionist-field"><span>Existing authorized booking agent profile ID</span><input name="BookingAgentProfileId" value="@settings.BookingAgentProfileId" maxlength="36" /></label>
+            </div></details>
         </fieldset>
-        <fieldset class="dashboard-surface-panel p-3">
-            <legend class="dashboard-section-title mb-3">Approved answers</legend>
-            <div class="d-grid gap-3">
-            <p class="dashboard-section-copy mb-0">Provide the caller questions this answer addresses. Use a dated answer when the information is only established as of a particular date.</p>
-            @for (var i = 0; i < (settings.Answers?.Count ?? 0); i++)
-            {
-                var answer = settings.Answers![i] ?? new Shared.Analytics.ReceptionistAnswerInput();
-                <div class="dashboard-data-surface p-3 d-grid gap-2">
-                    <h3 class="dashboard-section-title">@(string.IsNullOrEmpty(answer.Key) ? "Add an answer" : $"Answer {i + 1}")</h3>
-                    <input type="hidden" name="Answers[@i].Key" value="@answer.Key" />
-                    <label class="dashboard-form-field"><span>Related service</span><select class="form-select" name="Answers[@i].ServiceKey">
-                        <option value="">General business question</option>
-                        @foreach (var service in (settings.Services ?? []).Where(x => x is not null && !string.IsNullOrEmpty(x.ServiceKey) && !x.Remove))
-                        { <option value="@service.ServiceKey" selected="@(answer.ServiceKey == service.ServiceKey)">@service.DisplayName</option> }
-                    </select></label>
-                    <label class="dashboard-form-field"><span>Caller questions, one per line</span><textarea class="form-control" name="Answers[@i].Questions" rows="3" maxlength="4000">@answer.Questions</textarea></label>
-                    <label class="dashboard-form-field"><span>Approved answer</span><textarea class="form-control" name="Answers[@i].Answer" rows="4" maxlength="2400">@answer.Answer</textarea></label>
-                    <label class="dashboard-form-field"><span>Information status</span><select class="form-select" name="Answers[@i].Status">
-                        <option value="">Choose a status</option>
-                        <option value="approved" selected="@(answer.Status == "approved")">Approved</option>
-                        <option value="dated" selected="@(answer.Status == "dated")">Dated information</option>
-                    </select></label>
-                    <label class="dashboard-form-field"><span>Information date, when dated</span><input class="form-control" type="date" name="Answers[@i].AsOfDate" value="@answer.AsOfDate" /></label>
-                    @if (!string.IsNullOrEmpty(answer.Key))
-                    { <label class="client-create-record-option"><input type="checkbox" name="Answers[@i].Remove" value="true" checked="@answer.Remove" /> Remove this answer when saving</label> }
-                </div>
-            }
-        </div></fieldset>
-        <fieldset id="hours-limits" class="dashboard-surface-panel p-3">
-            <legend class="dashboard-section-title mb-3">Hours and limits</legend>
-            <div class="d-grid gap-3">
-            <label class="dashboard-form-field"><span>Business time zone</span><input class="form-control" name="TimeZoneId" value="@settings.TimeZoneId" maxlength="100" placeholder="Area/City" required /></label>
-            <div class="dashboard-data-surface"><table class="dashboard-data-table"><thead><tr><th>Open</th><th>Day</th><th>From</th><th>Until</th></tr></thead><tbody>
-            @for (var i = 0; i < (settings.Hours?.Count ?? 0); i++)
-            {
-                var hours = settings.Hours![i] ?? new Shared.Analytics.ReceptionistHoursInput();
-                <tr><td><label class="client-create-record-option"><input type="checkbox" name="Hours[@i].Enabled" value="true" checked="@hours.Enabled" aria-label="Open on @hours.Day" /></label><input type="hidden" name="Hours[@i].Enabled" value="false" /></td>
-                    <td>@hours.Day<input type="hidden" name="Hours[@i].Day" value="@hours.Day" /></td>
-                    <td><div class="dashboard-form-field"><input class="form-control" type="time" name="Hours[@i].Start" value="@(hours.Start?.ToString("HH:mm", CultureInfo.InvariantCulture))" aria-label="@hours.Day start time" /></div></td>
-                    <td><div class="dashboard-form-field"><input class="form-control" type="time" name="Hours[@i].End" value="@(hours.End?.ToString("HH:mm", CultureInfo.InvariantCulture))" aria-label="@hours.Day end time" /></div></td></tr>
-            }
-            </tbody></table></div>
-            <div class="dashboard-form-grid">
-                <label class="dashboard-form-field"><span>Currency</span><input class="form-control" name="Currency" value="@settings.Currency" maxlength="3" pattern="[A-Z]{3}" placeholder="Three-letter currency" required /></label>
-                <label class="dashboard-form-field"><span>Monthly cash limit</span><input class="form-control" type="number" name="MonthlyCashLimit" value="@Amount(settings.MonthlyCashLimit)" min="0" step="0.0001" required /></label>
-                <label class="dashboard-form-field"><span>Monthly service consumption limit</span><input class="form-control" type="number" name="MonthlyConsumptionLimit" value="@Amount(settings.MonthlyConsumptionLimit)" min="0" step="0.0001" required /></label>
-                <label class="dashboard-form-field"><span>Monthly voice minutes</span><input class="form-control" type="number" name="MonthlyVoiceMinutesLimit" value="@Amount(settings.MonthlyVoiceMinutesLimit)" min="0" step="any" required /></label>
-                <label class="dashboard-form-field"><span>Concurrent calls</span><input class="form-control" type="number" name="MaximumConcurrentCalls" value="@settings.MaximumConcurrentCalls" min="1" step="1" required /></label>
-                <label class="dashboard-form-field"><span>Maximum seconds per call</span><input class="form-control" type="number" name="MaximumCallSeconds" value="@settings.MaximumCallSeconds" min="1" step="1" required /></label>
-                <label class="dashboard-form-field"><span>New-call window, in seconds</span><input class="form-control" type="number" name="AdmissionWindowSeconds" value="@settings.AdmissionWindowSeconds" min="1" step="1" required /></label>
-                <label class="dashboard-form-field"><span>Maximum calls starting within that window</span><input class="form-control" type="number" name="MaximumCallsPerWindow" value="@settings.MaximumCallsPerWindow" min="1" step="1" required /></label>
             </div>
-            <p class="dashboard-section-copy mb-0">Cash and service consumption are tracked separately. Unresolved provider charges remain reserved. Changing these limits requires verification and does not add provider funds.</p>
-        </div></fieldset>
-        <div class="dashboard-surface-panel p-3">
-            <p class="dashboard-section-copy mb-3">Saving creates an inactive draft. It does not change the operating configuration or call permission. Review and apply the draft before calls can use it; existing charges and reservations remain accounted for.</p>
-            <button class="btn btn-carrier-settings dashboard-command-action" type="submit">Save receptionist settings</button>
+        </details>
+        <div class="receptionist-card receptionist-save">
+            <p class="receptionist-copy">Saving creates an inactive draft. It does not change the operating configuration or call permission. Review and apply the draft before calls can use it; existing charges and reservations remain accounted for.</p>
+            <button class="receptionist-button receptionist-button--primary" type="submit">Save receptionist settings</button>
         </div>
     </form>
     @if (Model.ContentReviewUrl is not null && Model.Snapshot.ConfigurationId is not null)
-    { <p class="dashboard-section-copy"><a href="@Model.ContentReviewUrl">Review saved content, apply it while paused, or restore an earlier draft</a></p> }
+    { <p class="receptionist-copy"><a href="@Model.ContentReviewUrl">Review saved content, apply it while paused, or restore an earlier draft</a></p> }
+</div>
 </section>
+
+@if (Model.GuideUrl is { } guideUrl)
+{
+    @await Html.PartialAsync("~/Views/Shared/_ReceptionistSetupGuide.cshtml", new Shared.Analytics.ReceptionistSetupGuideLinks(guideUrl))
+}

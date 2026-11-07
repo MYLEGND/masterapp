@@ -26,6 +26,28 @@ public sealed record ReceptionistOperatorPreparation(DateTime ObservedUtc, strin
     ReceptionistPreparationHistory? HistoricalAcceptedConfiguration, IReadOnlyList<string> RemainingRequirements);
 
 public sealed record ReceptionistPreparedRetirement(Guid Id, string Sha256);
+public sealed record ReceptionistPreparedAccounting(Guid Id, string Sha256);
+public sealed record ReceptionistAccountingDraft(string ExpectedOwnerKey, Guid ConfigurationId,
+    Guid ExpectedConnectionRevision, Guid BudgetAccountId, Guid ExpectedAccountRevision, string Operation,
+    string EvidenceReference, string EvidenceSha256, DateTime EvidenceObservedUtc,
+    decimal? KnownCashCommitted = null, decimal? KnownConsumptionCommitted = null,
+    long? KnownVoiceSeconds = null, DateTime? ReconciledThroughUtc = null, bool? Enabled = null);
+public sealed record ReceptionistAccountingPeriod(Guid Id, Guid Revision, DateTime StartsUtc, DateTime EndsUtc,
+    bool OpeningReconciled, DateTime ReconciledThroughUtc, decimal CashLimit, decimal ConsumptionLimit,
+    decimal CashCommitted, decimal ConsumptionCommitted, long VoiceSecondsCommitted);
+public sealed record ReceptionistAccountingCeilings(Guid SourcePeriodId, Guid SourcePeriodRevision,
+    decimal CashLimit, decimal ConsumptionLimit);
+public sealed record ReceptionistAccountingAccountPreparation(ReceptionistPreparationAccount Account,
+    bool AdmissionEnabled, DateTime CurrentMonthStartsUtc, DateTime CurrentMonthEndsUtc,
+    ReceptionistAccountingPeriod? CurrentPeriod, ReceptionistAccountingCeilings? ExistingCeilings,
+    decimal CashHeld, decimal ConsumptionHeld, long VoiceHeld, int RetiredVoiceCarryCount,
+    int UnresolvedNonCallCharges, IReadOnlyList<string> AdmissionBlockers);
+public sealed record ReceptionistAccountingPreparation(DateTime ObservedUtc, string Status,
+    Guid MarketingConnectionId, string OwnerKey, string Provider, Guid ConnectionRevision,
+    Guid ConfigurationId, long ConfigurationVersion, string ConfigurationSha256, string? ProviderProjectKey,
+    bool OwnerPermissionEnabled, bool CurrentBindingAccepted, string? CurrentTransport, string? BudgetPolicyMode,
+    DateTime? BudgetPolicyExpiresUtc, bool RetiredVoiceCarryPolicyCurrent, long MonthlyVoiceSecondsLimit,
+    IReadOnlyList<string> ConfigurationBlockers, IReadOnlyList<ReceptionistAccountingAccountPreparation> Accounts);
 public sealed record ReceptionistRetirementDraft(string ExpectedOwnerKey, Guid ConfigurationId, Guid CallId,
     string EvidenceReference, string EvidenceSha256, DateTime EvidenceObservedUtc, string Reason);
 public sealed record ReceptionistRetirementPreparation(DateTime ObservedUtc, string Status,

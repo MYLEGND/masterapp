@@ -44,6 +44,13 @@ public sealed partial class ReceptionistOperatorService(MarketingConnectionStore
         return admission.ReadOperatorPreparationAsync(expectedOwnerKey, configurationId, ct);
     }
 
+    public Task<ReceptionistAccountingPreparation> PrepareAccountingAsync(string expectedOwnerKey,
+        Guid configurationId, CancellationToken ct = default)
+    {
+        RequireFounder();
+        return admission.ReadAccountingPreparationAsync(expectedOwnerKey, configurationId, ct);
+    }
+
     public Task<IReadOnlyList<ReceptionistOperatorPackageSummary>> CatalogAsync(CancellationToken ct = default)
     {
         var actor = RequireFounder();
@@ -194,6 +201,7 @@ public sealed partial class ReceptionistOperatorService(MarketingConnectionStore
         ReceptionistOperatorState state, bool prepareBinding, string packageSha, CancellationToken ct)
     {
         if (state.CompletedReference is not null) return (null, string.Empty);
+        admission.ValidateBudgetAdmissionPreview(package, state);
         if (package.Operation == "create_acceptance_window" && package.Window!.ExpiresUtc <= clock.GetUtcNow().UtcDateTime)
             throw new InvalidOperationException("The proposed acceptance window expired.");
         if (package.Operation == "accept_binding")

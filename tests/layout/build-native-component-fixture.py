@@ -253,6 +253,149 @@ if(q.get('public')==='1')window.LEGEND_PUBLIC_CMS_RENDER_INPUT={...payload,serve
     return {'scripture':scripture_outputs,'routes':outputs,'routeMapping':route_mapping,'assets':assets,'projection':proof,'limits':['Actual source shell, native static nodes, all inline styles and shipped CMS; finite synthetic model only.','One synthetic option row per model loop: NOT full-route height, content parity or Razor/controller execution.','No quote submission, provider, analytics, save or publish; all fetches finite offline GET fixtures.','Small effective viewport is not real browser zoom proof.','Header/footer, route handlers, native validation and server quote calculations are not executed; geometry is relative to component canvas.','Additional authored node/breakpoint width preservation remains in the existing website contract suite, not this native matrix.']}
 
 
+def build_receptionist_fixtures(out, source, exactly, head, css, bootjs, modaljs, safety):
+    """Bounded source components, not whole-page/Razor/authentication proof.
+
+    Project the real header, selected native forms and disclosures from each of
+    the four receptionist views. Dynamic values are synthetic and all mutation,
+    microphone, provider and network authority remains unavailable.
+    """
+    import html
+    paths = {
+        'setup': 'SHARED/Views/Shared/ReceptionistSetup.cshtml',
+        'connections': 'SHARED/Views/Shared/ReceptionistManagement.cshtml',
+        'content': 'SHARED/Views/Shared/ReceptionistContentReview.cshtml',
+        'founder': 'AgentPortal/Views/FounderEngineering/Receptionist.cshtml'
+    }
+    views = {key: source(path) for key, path in paths.items()}
+
+    def between(text, start, finish):
+        if text.count(start) != 1: raise ValueError('Receptionist fixture start changed: ' + start)
+        tail = text.split(start, 1)[1]
+        if finish not in tail: raise ValueError('Receptionist fixture end changed: ' + finish)
+        return start + tail.split(finish, 1)[0] + finish
+
+    def native_element(text, start, tag):
+        if text.count(start) != 1: raise ValueError('Receptionist element anchor changed: ' + start)
+        begin = text.index(start)
+        depth = 0
+        for match in re.finditer(r'</?' + tag + r'\b[^>]*>', text[begin:]):
+            depth += -1 if match[0].startswith('</') else 1
+            if depth == 0: return text[begin:begin + match.end()]
+        raise ValueError('Unbalanced receptionist component: ' + start)
+
+    conditions = {'Model.GuideUrl is not null': True, 'Model.ManagementUrl is not null': True,
+                  'Model.ContentReviewUrl is not null && Model.Snapshot.ConfigurationId is not null': True,
+                  'Model.Summary.CanReview && Model.AdvancedUrl is not null': False,
+                  'Model.Summary.CanRunVoiceTest': True, 'Model.TestControlPlaneUrl is not null': False}
+    common = {'@Model.ReturnUrl': '#fixture-settings', '@Model.ContentReviewUrl': '#fixture-content',
+              '@Model.SaveCredentialUrl': '#fixture-blocked-credential', '@Model.ApplyUrl': '#fixture-blocked-apply',
+              '@Model.TestGrantUrl': '#fixture-blocked-test-grant', '@Model.TestStartUrl': '#fixture-blocked-test-start',
+              '@Model.RollbackUrl': '#fixture-blocked-restore', '@Model.PostUrl': '#fixture-blocked-save',
+              '@(Model.ManagementUrl + "#voice-connection")': '#voice-connection',
+              '@(Model.ManagementUrl + "#operation-reviews")': '#operation-reviews',
+              '@(Model.ManagementUrl + "#voice-test")': '#voice-test'}
+
+    def project(text, values=None):
+        text = text.replace('@Html.AntiForgeryToken()', '<input type="hidden" name="__RequestVerificationToken" value="synthetic-no-authority">')
+        for old, new in sorted({**common, **(values or {})}.items(), key=lambda item: -len(item[0])):
+            text = text.replace(old, html.escape(str(new), quote=True))
+        # Only known static Founder read links; all remain inert in this fixture.
+        text = re.sub(r'@Url.Action\("(ReceptionistAccounting|ReceptionistBookingReadiness|ReceptionistBookingRecoveryPreparation|ReceptionistRetirementPreparation)"\)', '#fixture-read-only', text)
+        text = quote_razor_projection(text, {}, conditions)
+        text = re.sub(r'\s(?:open|selected|checked|disabled)=""', '', text)
+        text = re.sub(r'\sasp-[\w-]+="[^"]*"', '', text)
+        text = re.sub(r'<a(?![^>]*\bhref=)([^>]*)>', r'<a href="#fixture-navigation"\1>', text)
+        if '@' in text or '<script' in text.lower() or 'src="~/' in text:
+            raise ValueError('Unresolved receptionist projection')
+        return text
+
+    heroes = {key: project(between(view, '<header class="receptionist-hero">', '</nav>') + '</header>') for key, view in views.items()}
+    conversation = native_element(views['setup'], '<fieldset id="conversation"', 'fieldset')
+    conversation = project(conversation, {'@settings.BusinessName': 'Synthetic Roadster Studio',
+        '@settings.ConversationInstructions': 'Introduce yourself as the AI receptionist. Ask how you can help, listen, and confirm the next step.',
+        '@(string.IsNullOrWhiteSpace(settings.BusinessPolicy) || !ViewData.ModelState.IsValid)': '',
+        '@settings.BusinessPolicy': 'Use approved business information. Confirm an inquiry before saving it.',
+        '@Model.Input.CompactVoicePolicy': '', '@settings.ContactAndRetentionNotes': 'Use the approved inquiry route.'})
+    hours = native_element(views['setup'], '<fieldset id="hours-limits"', 'fieldset')
+    row = between(hours, '<tr><td><label class="receptionist-check">', '</td></tr>')
+    rows = ''.join(project(row, {'@i': str(index), '@hours.Day': day, '@hours.Enabled': 'checked',
+        '@(hours.Start?.ToString("HH:mm", CultureInfo.InvariantCulture))': '09:00',
+        '@(hours.End?.ToString("HH:mm", CultureInfo.InvariantCulture))': '17:00'})
+        for index, day in enumerate(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']))
+    hours = re.sub(r'@for \(var i = 0; i < \(settings.Hours\?\.Count \?\? 0\); i\+\+\)\s*\{[\s\S]*?\n\s*\}', lambda _: rows, hours, count=1)
+    hours = project(hours, {'@settings.TimeZoneId': 'America/New_York', '@settings.Currency': 'USD',
+        '@Amount(settings.MonthlyCashLimit)': '25', '@Amount(settings.MonthlyConsumptionLimit)': '25',
+        '@Amount(settings.MonthlyVoiceMinutesLimit)': '300', '@settings.MaximumConcurrentCalls': '1',
+        '@settings.MaximumCallSeconds': '360', '@settings.AdmissionWindowSeconds': '60', '@settings.MaximumCallsPerWindow': '1'})
+    save = project(native_element(views['setup'], '<div class="receptionist-card receptionist-save">', 'div'))
+    status = between(views['setup'], '<section class="receptionist-card" aria-labelledby="receptionist-call-status">', '</dl>') + '</section>'
+    status = project(status, {
+        '@(readiness.OwnerPermissionEnabled is true ? "Allowed when ready" : readiness.OwnerPermissionEnabled is false ? "Paused" : "Unknown — reload to verify")': 'Paused',
+        '@(readiness.AdmissionReason == "outside_reception_hours" ? "Closed according to reception hours" : readiness.CallReadiness)': 'Not ready',
+        '@(readiness.OperatingConfigurationVersion is { } operatingVersion ? $"Version {operatingVersion}" : readiness.BindingScope == "unaccepted" ? "No accepted operating configuration" : "Unknown — reload to verify")': 'Version 1',
+        '@(readiness.OpenCalls?.ToString() ?? "unknown")': '0'})
+    setup = status + '<form class="receptionist-stack" action="#fixture-blocked-save">' + conversation + hours + save + '</form>'
+    credential = native_element(views['connections'], '<form action="@Model.SaveCredentialUrl"', 'form')
+    credential = project(credential, {
+        '@(credentialDraft?.ExpectedConnectionRevision ?? Model.Summary.ConnectionRevision)': '00000000-0000-4000-8000-000000000001',
+        '@CredentialAttempt("ProviderProjectKey", credentialDraft?.ProviderProjectKey)': 'proj_synthetic_fixture',
+        '@(CredentialAttempt("Purpose", credentialDraft?.Purpose) != "voice-webhook")': 'selected',
+        '@(CredentialAttempt("Purpose", credentialDraft?.Purpose) == "voice-webhook")': ''})
+    connection_intro = between(views['connections'], '<section class="receptionist-card receptionist-stack" aria-labelledby="receptionist-connection-title">', '</div>')
+    voice_test = project(native_element(views['connections'], '<section id="voice-test"', 'section'))
+    # Its real voice script is deliberately not embedded. Even an accidental click is blocked.
+    voice_test = exactly(voice_test, 'data-receptionist-start>', 'data-receptionist-start data-fixture-forbid-mutation>')
+    connections = connection_intro + credential + '</section>' + voice_test
+    policy = between(views['content'], '<details class="receptionist-disclosure" open="@(item.Title == "Saved draft")">',
+                     '@if (item.Content.CompactVoicePolicy is not null)')
+    policy = policy.rsplit('@if', 1)[0] + '</div></details></div></details>'
+    policy = project(policy, {'@(item.Title == "Saved draft")': 'open', '@item.Title': 'Saved draft',
+        '@item.Content.BusinessName': 'Synthetic Roadster Studio', '@item.Content.ConversationInstructions': 'A clear AI introduction and one useful question.',
+        '@(item.Content.CompactVoicePolicy ?? item.Content.BusinessPolicy)': 'Use approved answers, confirm inquiries, and offer the approved fallback.'})
+    apply = native_element(views['content'], '<form class="receptionist-form" method="post" action="@Model.ApplyUrl">', 'form')
+    apply = project(apply, {'@(submittedRevision is null ? preview.ExpectedRevision.ToString() : Attempt("ExpectedRevision", submittedRevision))': 'synthetic-revision',
+        '@(Model.SubmittedApply is null ? preview.ReviewHash : Attempt("ReviewHash", Model.SubmittedApply.ReviewHash))': 'synthetic-no-authority',
+        '@(Model.SubmittedApply?.ConfirmContentReview == true)': '', '@(Model.Failure is not null)': ''})
+    content = '<section id="content-review" class="receptionist-card receptionist-stack">' + policy + apply + '</section>'
+    founder_preparation = project(native_element(views['founder'], '<section class="receptionist-card receptionist-stack" aria-labelledby="receptionist-preparation-title">', 'section'))
+    retirement = between(views['founder'], '<section class="receptionist-card receptionist-stack" aria-labelledby="retire-test-title">', '</details>') + '</section>'
+    retirement = project(retirement, {'@(!ViewData.ModelState.IsValid)': ''})
+    bodies = {'setup': setup, 'connections': connections, 'content': content, 'founder': founder_preparation + retirement}
+    partial = source('SHARED/Views/Shared/_ReceptionistSetupGuide.cshtml')
+    partial = exactly(partial, '@model Shared.Analytics.ReceptionistSetupGuideLinks', '')
+    partial = exactly(partial, '@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers', '')
+    partial = exactly(partial, '@Model.ReadUrl', '/fixture/receptionist-guide')
+    partial = exactly(partial, '@Html.AntiForgeryToken()', '<input type="hidden" name="__RequestVerificationToken" value="synthetic-no-authority">')
+    partial = exactly(partial, '<script src="~/_content/Shared/js/receptionist-workspace.js" asp-append-version="true" defer></script>', '')
+    if '@' in partial: raise ValueError('Unresolved guide partial Razor')
+    seed = source('Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Guide.cs')
+    documents = {}
+    for audience in ['Business', 'Founder']:
+        match = re.search(r'private const string Initial' + audience + r'Guide = """\s*([\s\S]*?)\s*""";', seed)
+        if not match: raise ValueError('Guide seed source changed')
+        documents[audience.lower()] = json.loads(match[1])
+    component_css = source('SHARED/wwwroot/css/receptionist-workspace.css')
+    component_js = source('SHARED/wwwroot/js/receptionist-workspace.js')
+    if '</style' in component_css.lower() or '</script' in component_js.lower(): raise ValueError('Unexpected receptionist asset terminator')
+    outputs = {}
+    for page, body in bodies.items():
+        guide = {'version': 1, 'revision': '00000000-0000-4000-8000-000000000001', 'publishedUtc': '2026-11-07T15:00:00Z', 'business': documents['business']}
+        if page == 'founder': guide.update(founder=documents['founder'], publishUrl='/fixture/receptionist-guide/publish')
+        payload = json.dumps(guide).replace('<', '\\u003c')
+        guide_transport = " if(u.pathname==='/fixture/receptionist-guide'&&!u.search){if(options.cache!=='no-store')deny('Guide must read current instructions');if(window.__fixtureGuideDelay===true){window.__fixtureGuideReadPending=true;await new Promise(resolve=>setTimeout(resolve,400));window.__fixtureGuideReadPending=false;}if(window.__fixtureGuideUnavailable===true)return new Response('{}',{status:503});return new Response(JSON.stringify(" + payload + "),{status:200})};\n"
+        guarded = exactly(safety, " if(u.pathname==='/mobile/agent/booking/appointments'", guide_transport + " if(u.pathname==='/mobile/agent/booking/appointments'")
+        html_page = '<!doctype html><html><head>' + head + css + '<style data-source="SHARED/wwwroot/css/receptionist-workspace.css">' + component_css + '</style></head><body class="legend-app d-flex flex-column min-vh-100">'
+        html_page += guarded + '<main class="legend-app-content"><section class="dashboard-page-shell"><div class="receptionist-workspace" data-fixture-receptionist-page="' + page + '">' + heroes[page] + body + '</div></section></main>'
+        html_page += partial + bootjs + modaljs + '<script data-source="SHARED/wwwroot/js/receptionist-workspace.js">' + component_js + '</script></body></html>'
+        filename = 'receptionist-' + page + '.html'; (out / filename).write_text(html_page); outputs[page] = filename
+    return {'routes': outputs, 'sourceViews': paths, 'limits': [
+        'Finite source-derived component projections, not complete Razor pages or server authorization proof.',
+        'Headers, selected forms, status, hours, policy and retirement controls use real markup/classes and synthetic values.',
+        'Guide uses its real partial, seed prose, Bootstrap, shared modal manager and component script; fresh-read DTOs are fixture-only.',
+        'All POST, publication, microphone, provider, storage and external-network effects remain blocked.']}
+
+
 def build(root, out):
     root, out = root.resolve(), out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -500,9 +643,11 @@ document.addEventListener('click',e=>{if(e.target.closest('#btnBookAppointment,[
     (out / 'standalone.html').write_text(mobile)
     substitutions.extend(['Standalone exact host/script; Model values and future date synthetic; canonical partial/style/script tags embedded.', 'Representative contrast selectors; exact Onboarding inline styles with Razor @@ escape resolved; not full Razor execution.', 'Remote fonts blocked; system fallback metrics. No API/authentication/tenant/live journey proof.'])
     quotes = build_quote_fixtures(root, out, raw)
+    receptionist = build_receptionist_fixtures(out, source, exactly, head,
+        bootstrap + foundation + shell + site + shared, bootjs, modaljs, safety)
     sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True, timeout=5).strip()
     if not re.fullmatch('[0-9a-f]{40}', sha): raise ValueError('Invalid checkout identity')
-    manifest = {'checkout': sha, 'syntheticDate': fixture_date, 'quotes': quotes, 'inputs': inputs, 'substitutions': substitutions, 'outputs': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir() if p.is_file() and p.name != 'manifest.json'}}
+    manifest = {'checkout': sha, 'syntheticDate': fixture_date, 'quotes': quotes, 'receptionist': receptionist, 'inputs': inputs, 'substitutions': substitutions, 'outputs': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir() if p.is_file() and p.name != 'manifest.json'}}
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     return manifest
 

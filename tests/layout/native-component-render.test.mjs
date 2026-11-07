@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn, execFile} from 'node:child_process';
 import {createServer} from 'node:http';
-import {mkdtemp, readFile, appendFile, readdir, readlink} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, writeFile, appendFile, readdir, readlink} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
@@ -924,9 +924,11 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     return value - 10000;
   };
   let manifest,chromeVersion,driverVersion,checked,driverBindings,versionProbeFailure,scrollDiagnostic,localeDiagnostic,placementDiagnostic,lifecycleDiagnostic,quoteDiagnostic;
-  const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus',...['life','disability','dental-vision-hearing'].map(route=>'quote-source:'+route),'quote-responsive-studio','protect-scripture-keyboard','studio-header-projection','protect-footer-component-flow'];
+  const requiredScenarios=[...hosts.flatMap(host=>widths.map(width=>'viewport:'+host+':'+width)),'modal-order-and-wrap','locale-month-rollover','long-profile-and-offset','live-mobile-boundary','client-home-focus',...['life','disability','dental-vision-hearing'].map(route=>'quote-source:'+route),'quote-responsive-studio','protect-scripture-keyboard','studio-header-projection','protect-footer-component-flow',...['setup','connections','content','founder'].flatMap(page=>[1363,393].map(width=>'receptionist:'+page+':'+width)),'receptionist-business-guide-mobile','receptionist-founder-guide-editor'];
   const completedScenarios=new Set();
   const quoteRecords=[];
+  const receptionistRecords=[];
+  const receptionistScreenshots=[];
   const records=[]; let acceptanceComplete=false; let failure; let server,driver,session,driverOrigin; let serverHost; let driverLog='';
   const rejected=[];
   let cleanupPromise;
@@ -998,6 +1000,12 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.ok(['cold','no-trigger','trigger'].includes(mode));
     const bytes=await readFile(path.join(dir,file));assert.equal(hash(bytes),manifest.outputs[file]);
     routes.set('/scripture-'+mode+'.html',bytes);
+  }
+  assert.deepEqual(Object.keys(manifest.receptionist.routes).sort(),['connections','content','founder','setup']);
+  for (const [page,file] of Object.entries(manifest.receptionist.routes)) {
+    assert.equal(file,'receptionist-'+page+'.html');
+    const bytes=await readFile(path.join(dir,file));assert.equal(hash(bytes),manifest.outputs[file]);
+    routes.set('/'+file,bytes);
   }
   for(const [route,file] of Object.entries(manifest.quotes.assets)) {
     assert.match(route,/^\/images\/ads\/[a-z-]+\.png$/);assert.match(file,/^quote-asset-[a-z-]+\.png$/);
@@ -1574,13 +1582,186 @@ test('actual canonical frontend components render in the existing sandboxed CI b
     assert.deepEqual(rejected,[],'Unexpected HTTP in footer component fixture');
     completedScenarios.add('protect-footer-component-flow');
 
+    // Reuse the admitted session, fixed GET-only server, watchdog and cleanup.
+    // The relational/MVC suite separately proves persistence and authorization.
+    const receptionistEvidence=path.join(process.env.RUNNER_TEMP,'receptionist-visual-review');
+    await mkdir(receptionistEvidence,{recursive:true});
+    if(process.env.GITHUB_OUTPUT)await appendFile(process.env.GITHUB_OUTPUT,'receptionist_head='+checked+'\n');
+    const captureReceptionist=async(name,width,state)=>{
+      assert.match(name,/^[a-z0-9-]+$/);
+      const bytes=Buffer.from(await command('GET','/session/'+session+'/screenshot'),'base64');
+      assert.ok(bytes.length>1000&&bytes.length<12_000_000,'Bounded receptionist viewport PNG required');
+      assert.equal(bytes.subarray(1,4).toString(),'PNG');
+      const filename=name+'.png';await writeFile(path.join(receptionistEvidence,filename),bytes);
+      receptionistScreenshots.push({filename,viewport:{width,height:900},state,sha256:hash(bytes),bytes:bytes.length});
+      const relevant=Object.fromEntries(Object.entries(manifest.inputs).filter(([p])=>
+        /Receptionist|receptionist|legend-(?:web-foundation|app-shell|modal)|bootstrap|dashboard-home-shared|native-component|AgentPortal\/wwwroot\/css\/site\.css/.test(p)));
+      await writeFile(path.join(receptionistEvidence,'manifest.json'),JSON.stringify({checkout:checked,
+        kind:'sanitized-source-component-review',inputs:relevant,fixture:manifest.receptionist,
+        screenshots:receptionistScreenshots,observations:receptionistRecords,
+        limits:manifest.receptionist.limits},null,2)+'\n');
+    };
+    const receptionistGo=async(page,width)=>{
+      remaining();
+      await command('POST','/session/'+session+'/window/rect',{width:Math.max(width,800),height:1000});
+      await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width,height:900,deviceScaleFactor:1,mobile:false}});
+      await command('POST','/session/'+session+'/url',{url:'http://'+serverHost+'/receptionist-'+page+'.html'});
+      await waitFor("document.querySelector('[data-receptionist-guide]')?.dataset.guideBound==='true'");
+      await execute(`const m=document.querySelector('[data-receptionist-guide]');window.__guideLifecycle={opening:0,shown:0,hidden:0,snapshots:[]};
+        m.addEventListener('show.bs.modal',()=>{const state=window.__guideLifecycle;state.opening++;state.snapshots.push({opening:state.opening,readerHidden:m.querySelector('[data-guide-reader]').hidden,toolbarHidden:m.querySelector('[data-guide-toolbar]').hidden,version:m.querySelector('[data-guide-version]').textContent});});
+        m.addEventListener('shown.bs.modal',()=>{window.__guideLifecycle.shown=window.__guideLifecycle.opening;});
+        m.addEventListener('hidden.bs.modal',()=>{window.__guideLifecycle.hidden=window.__guideLifecycle.opening;});`);
+      assert.equal(await execute('return innerWidth'),width);
+    };
+    const guideShown=()=>waitFor("window.__guideLifecycle.opening>0&&window.__guideLifecycle.shown===window.__guideLifecycle.opening&&document.querySelector('[data-receptionist-guide]').classList.contains('show')");
+    const guideClosed=()=>waitFor("window.__guideLifecycle.hidden===window.__guideLifecycle.opening&&!document.querySelector('[data-receptionist-guide]').classList.contains('show')&&getComputedStyle(document.querySelector('[data-receptionist-guide]')).display==='none'&&document.querySelectorAll('.modal-backdrop').length===0");
+    const publishedGuide=async()=>{await waitFor("!document.querySelector('[data-guide-reader]').hidden");await guideShown();};
+    for(const page of ['setup','connections','content','founder'])for(const width of [1363,393]){
+      await receptionistGo(page,width);
+      const measurement=await execute(`const scope=document.querySelector('.receptionist-workspace');const visible=e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden';const box=e=>{const b=e.getBoundingClientRect();return {x:b.x,right:b.right,width:b.width,height:b.height}};return {page:scope.dataset.fixtureReceptionistPage,width:innerWidth,documentWidth:document.documentElement.scrollWidth,heading:scope.querySelector('h1').textContent,controls:[...scope.querySelectorAll('button,input:not([type=hidden]),select,textarea')].filter(visible).map(e=>({name:e.name||e.textContent.trim(),tag:e.tagName,box:box(e)})),errors:window.__fixtureErrors};`);
+      assert.equal(measurement.page,page);assert.ok(measurement.documentWidth<=width+1,JSON.stringify(measurement));
+      assert.ok(measurement.controls.length>=2);
+      for(const item of measurement.controls){
+        assert.ok(item.box.x>=-1&&item.box.right<=width+1,'Receptionist control clipped:'+JSON.stringify({page,width,item}));
+        if(item.tag==='BUTTON')assert.ok(item.box.height>=43.9,'Receptionist touch target:'+JSON.stringify({page,width,item}));
+      }
+      assert.deepEqual(measurement.errors,[]);receptionistRecords.push(measurement);
+      await captureReceptionist(page+'-'+width,width,'source component, initial presentation');
+      completedScenarios.add('receptionist:'+page+':'+width);
+    }
+    // Narrow navigation shares the same current step as the desktop list.
+    await receptionistGo('setup',320);
+    await click('[data-bs-target="#receptionist-setup-guide"]');
+    await publishedGuide();
+    let guide=await execute(`const m=document.querySelector('[data-receptionist-guide]'),body=m.querySelector('.modal-body'),select=m.querySelector('[data-guide-step-select]');return {width:innerWidth,documentWidth:document.documentElement.scrollWidth,bodyWidth:body.clientWidth,bodyScrollWidth:body.scrollWidth,selectVisible:select.getClientRects().length>0,desktopVisible:m.querySelector('.receptionist-guide__desktop-nav').getClientRects().length>0,steps:select.options.length,founderHidden:m.querySelector('[data-guide-audiences]').hidden,editorHidden:m.querySelector('[data-guide-edit]').hidden,version:m.querySelector('[data-guide-version]').textContent,errors:window.__fixtureErrors};`);
+    assert.equal(guide.steps,9);assert.ok(guide.selectVisible);assert.equal(guide.desktopVisible,false);
+    assert.ok(guide.founderHidden&&guide.editorHidden);assert.ok(guide.documentWidth<=321&&guide.bodyScrollWidth<=guide.bodyWidth+1);
+    assert.deepEqual(guide.errors,[]);receptionistRecords.push({guide:'business',...guide});
+    await captureReceptionist('guide-business-320',320,'current business guide with compact native step navigation');
+    await click('[data-guide-next]');
+    assert.equal(await execute("return document.querySelector('[data-guide-progress]').textContent"),'Step 2 of 9');
+    assert.equal(await execute("return document.activeElement.hasAttribute('data-guide-step-title')"),true);
+    assert.equal(await execute("return document.querySelector('[data-guide-step-select]').value"),'1');
+    await keys(['\uE00C']);
+    await guideClosed();
+    await waitFor("document.activeElement.matches('[data-bs-target=\"#receptionist-setup-guide\"]')");
+    assert.equal(await execute("return document.querySelectorAll('.modal-backdrop').length"),0);
+    await click('[data-bs-target="#receptionist-setup-guide"]');
+    await publishedGuide();
+    assert.equal(await execute("return window.__fixtureCalls.filter(x=>x==='/fixture/receptionist-guide').length"),2,'Every open must load current canonical instructions');
+    const openingSnapshots=await execute('return window.__guideLifecycle.snapshots');
+    assert.equal(openingSnapshots.length,2);
+    for(const opening of openingSnapshots)assert.deepEqual({readerHidden:opening.readerHidden,toolbarHidden:opening.toolbarHidden,version:opening.version},{readerHidden:true,toolbarHidden:true,version:''},'A new opening must synchronously invalidate the prior published view before the show transition');
+    receptionistRecords.push({guide:'normal-motion-opening-freshness',openingSnapshots});
+    // The reduced-motion journey uses the same Bootstrap lifecycle and guarded
+    // GET transport. A bounded delivery barrier makes overlapping read completion
+    // observable without widening transport admission or racing a shared Boolean.
+    await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setEmulatedMedia',params:{features:[{name:'prefers-reduced-motion',value:'reduce'}]}});
+    try {
+      await keys(['\uE00C']);await guideClosed();
+      await execute(`window.__fixtureGuideDelay=true;const original=window.fetch;const state=window.__guideOverlap={started:[],completed:[],held:false,timedOut:false};let release=null,timer=null;
+        window.__restoreGuideOverlap=()=>{if(release)release();if(timer)clearTimeout(timer);window.fetch=original;window.__fixtureGuideDelay=false;};
+        window.fetch=async function(...args){const u=new URL(args[0],location.href),method=(args[1]?.method||'GET').toUpperCase();
+          if(u.origin!==location.origin||u.pathname!=='/fixture/receptionist-guide'||u.search||method!=='GET')return original.apply(this,args);
+          const id=state.started.length+1;state.started.push(id);const response=await original.apply(this,args);
+          if(id===2){state.held=true;await new Promise(resolve=>{release=()=>{state.held=false;clearTimeout(timer);resolve();};state.release=release;timer=setTimeout(()=>{state.timedOut=true;release();},1000);});}
+          state.completed.push(id);return response;};`);
+      await click('[data-bs-target="#receptionist-setup-guide"]');await guideShown();
+      assert.deepEqual(await execute('return window.__guideOverlap.started'),[1]);
+      assert.deepEqual(await execute('return window.__guideOverlap.completed'),[],'The first opening read must still be pending before closing');
+      await keys(['\uE00C']);await guideClosed();
+      await click('[data-bs-target="#receptionist-setup-guide"]');await guideShown();
+      await waitFor('window.__guideOverlap.started.length===2&&window.__guideOverlap.completed.includes(1)&&window.__guideOverlap.held');
+      const overlap=await execute(`const s=window.__guideOverlap,m=document.querySelector('[data-receptionist-guide]');return {started:s.started,completed:s.completed,held:s.held,timedOut:s.timedOut,readerHidden:m.querySelector('[data-guide-reader]').hidden,version:m.querySelector('[data-guide-version]').textContent,reloadDisabled:m.querySelector('[data-guide-reload]').disabled};`);
+      assert.deepEqual(overlap.started,[1,2]);assert.deepEqual(overlap.completed,[1]);assert.ok(overlap.held&&!overlap.timedOut);
+      assert.ok(overlap.readerHidden&&overlap.reloadDisabled);assert.equal(overlap.version,'','An old completed read cannot certify or unlock the reopened guide');
+      receptionistRecords.push({guide:'superseded-read-completion',...overlap});
+      await execute('window.__guideOverlap.release();');await publishedGuide();
+      assert.deepEqual(await execute('return window.__guideOverlap.completed'),[1,2]);
+      assert.equal(await execute("return window.__fixtureCalls.filter(x=>x==='/fixture/receptionist-guide').length"),4,'Each opening owns exactly one new canonical GET');
+      assert.match(await execute("return document.querySelector('[data-guide-version]').textContent"),/Published version 1/);
+    } finally {
+      await execute('window.__restoreGuideOverlap?.();');
+      await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setEmulatedMedia',params:{features:[]}});
+    }
+    assert.deepEqual(await execute('return window.__fixtureErrors'),[]);
+    completedScenarios.add('receptionist-business-guide-mobile');
+
+    await receptionistGo('founder',1363);
+    await click('[data-bs-target="#receptionist-setup-guide"]');
+    await publishedGuide();
+    assert.equal(await execute("return document.querySelector('[data-guide-step-select]').options.length"),12);
+    assert.equal(await execute("return document.querySelector('[data-guide-audience=\"founder\"]').getAttribute('aria-pressed')"),'true');
+    await captureReceptionist('guide-founder-1363',1363,'current founder platform guide');
+    await command('POST','/session/'+session+'/goog/cdp/execute',{cmd:'Emulation.setDeviceMetricsOverride',params:{width:393,height:900,deviceScaleFactor:1,mobile:false}});
+    await click('[data-guide-audience="business"]');
+    assert.equal(await execute("return document.querySelector('[data-guide-step-select]').options.length"),9);
+    await click('[data-guide-edit]');
+    await waitFor("!document.querySelector('[data-guide-editor]').hidden");
+    const editable=await element('[data-guide-fields] [data-guide-field="instructions"]');
+    await command('POST','/session/'+session+'/element/'+editable+'/clear',{});
+    const plain='<img src=x onerror=alert(1)> is plain text.\\n<script>window.fixtureInjected=true</script>';
+    await command('POST','/session/'+session+'/element/'+editable+'/value',{text:plain});
+    await click('[data-guide-preview]');
+    assert.equal(await execute("return document.querySelector('[data-guide-edit-preview]').textContent.includes('<img src=x onerror=alert(1)>')"),true);
+    assert.equal(await execute("return document.querySelector('[data-guide-edit-preview]').querySelectorAll('img,script').length"),0);
+    assert.equal(await execute('return window.fixtureInjected===true'),false);
+    assert.equal(await execute('return document.documentElement.scrollWidth<=innerWidth+1'),true);
+    await captureReceptionist('guide-founder-editor-393',393,'unpublished plain-text preview, publication not invoked');
+    await keys(['\uE00C']);
+    await guideClosed();
+    await click('[data-bs-target="#receptionist-setup-guide"]');
+    await publishedGuide();
+    await click('[data-guide-edit]');
+    assert.equal(await execute("return document.querySelector('[data-guide-fields] [data-guide-field=\"instructions\"]').value"),plain,'Closing retains unpublished edits');
+    await keys(['\uE00C']);
+    await guideClosed();
+    await execute('window.__fixtureGuideDelay=true;');
+    await click('[data-bs-target="#receptionist-setup-guide"]');
+    await waitFor('window.__fixtureGuideReadPending===true');
+    const duringRead=plain+' Latest edit while current instructions are loading.';
+    await execute("document.querySelector('[data-guide-fields] [data-guide-field=\"instructions\"]').value=arguments[0];",[duringRead]);
+    await publishedGuide();
+    await execute('window.__fixtureGuideDelay=false;');
+    await click('[data-guide-edit]');
+    assert.equal(await execute("return document.querySelector('[data-guide-fields] [data-guide-field=\"instructions\"]').value"),duringRead,'A successful fresh read must preserve edits made while it was pending');
+    await keys(['\uE00C']);
+    await guideClosed();
+    // A failed fresh GET must not expose the cached reader when a retained draft
+    // is deliberately discarded. This finite fixture flag changes GET only;
+    // publication remains blocked by the unchanged transport/mutation guard.
+    await execute('window.__fixtureGuideUnavailable=true;');
+    await click('[data-bs-target="#receptionist-setup-guide"]');
+    await waitFor("!document.querySelector('[data-guide-reload]').hidden&&!document.querySelector('[data-guide-reload]').disabled");
+    await guideShown();
+    assert.equal(await execute("return document.querySelector('[data-guide-version]').textContent"),'');
+    await click('[data-guide-cancel]');
+    await command('POST','/session/'+session+'/alert/accept',{});
+    await waitFor("!document.querySelector('[data-guide-reload]').disabled");
+    assert.equal(await execute("return document.querySelector('[data-guide-reader]').hidden"),true);
+    assert.equal(await execute("return document.querySelector('[data-guide-version]').textContent"),'','Discard must not relabel cached instructions as current');
+    await captureReceptionist('guide-unavailable-393',393,'failed current read remains unavailable after deliberate draft discard');
+    await execute('window.__fixtureGuideUnavailable=false;');
+    await click('[data-guide-reload]');
+    await publishedGuide();
+    assert.match(await execute("return document.querySelector('[data-guide-version]').textContent"),/Published version 1/);
+    await keys(['\uE00C']);
+    await guideClosed();
+    // Native validation reveals required fields in collapsed source disclosures.
+    assert.equal(await execute(`const field=document.querySelector('[name="ExpectedOwnerKey"]');const details=field.closest('details');details.open=false;field.value='';field.reportValidity();return details.open;`),true);
+    await captureReceptionist('founder-retirement-393',393,'native invalid field opens retirement disclosure');
+    assert.deepEqual(await execute('return window.__fixtureErrors'),[]);
+    assert.equal(await execute("return document.querySelectorAll('.modal-backdrop').length"),0);
+    assert.deepEqual(rejected,[],'No unexpected transport during receptionist component review');
+    completedScenarios.add('receptionist-founder-guide-editor');
+
     requireCompleteScenarios(requiredScenarios,completedScenarios);
     acceptanceComplete=true;
   } catch(error) {if(lifecycleDiagnostic){try{lifecycleDiagnostic.bookingFailure=await execute(`return (${bookingLifecycleSnapshot.toString()})(document,window)`);if(lifecycleDiagnostic.phase==='nested-booking')lifecycleDiagnostic.control=await execute(`return (${sheetControlSnapshot.toString()})(document,window)`);lifecycleDiagnostic.state=await execute(`return {activeId:document.activeElement?.id||'',surfaces:['homeFocusHub','fixtureFocusSheet','qvBookingModal'].map(id=>{const e=document.getElementById(id);return e?{id,hidden:e.hidden,ariaHidden:e.getAttribute('aria-hidden'),open:e.classList.contains('open'),show:e.classList.contains('show'),rects:e.getClientRects().length}:null})}`);}catch{lifecycleDiagnostic.snapshotUnavailable=true;}console.log('NATIVE_LIFECYCLE_FAILURE '+JSON.stringify(lifecycleDiagnostic));}if(placementDiagnostic)console.log('NATIVE_MOBILE_PLACEMENT_FAILURE '+JSON.stringify(placementDiagnostic));if(scrollDiagnostic)console.log('NATIVE_SCROLL_FAILURE '+JSON.stringify(scrollDiagnostic));commandFailure=error.commandFailure;versionProbeFailure=error.versionProbe;failure=String(error.stack||error);throw error;} finally {
     clearTimeout(watchdog);let cleanupError;
     try{await cleanup();}catch(error){cleanupError=error;acceptanceComplete=false;failure=(failure||'')+' Cleanup failed: '+error.message;}
     removeCancellation();
-    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,versionProbeFailure,commandFailure,scrollDiagnostic,localeDiagnostic,placementDiagnostic,lifecycleDiagnostic,quoteDiagnostic,quoteRecords,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
+    const report={status:acceptanceComplete?'PASS':'INCOMPLETE_OR_FAILED',failure,versionProbeFailure,commandFailure,scrollDiagnostic,localeDiagnostic,placementDiagnostic,lifecycleDiagnostic,quoteDiagnostic,quoteRecords,receptionistRecords,receptionistScreenshots,checkout:manifest?.checkout,nodeVersion:process.version,driverBindings,requiredScenarios,completedScenarios:[...completedScenarios],image:process.env.ImageVersion,chromeVersion,driverVersion,manifest,completed:records.length,required:hosts.length*widths.length,records,limits:['Component fixture; no Razor/server/authentication/business/API proof','System font fallback; no pixel-identical production claim','Live journeys and native safe-area device inset remain required']};
     console.log('NATIVE_COMPONENT_REPORT '+JSON.stringify(report));
     if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,'\nNative component rendering: '+records.length+'/'+hosts.length*widths.length+' cases completed. Checkout '+(manifest?.checkout||'UNPROVEN')+'. See job log for exact inputs and assertions.\n');
     if(cleanupError)throw cleanupError;

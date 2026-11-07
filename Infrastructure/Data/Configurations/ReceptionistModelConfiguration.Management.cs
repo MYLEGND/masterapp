@@ -62,5 +62,6 @@ public static partial class ReceptionistModelConfiguration
         Text(window, nameof(ReceptionistAcceptanceWindow.ReviewedByActorId), 450);
         window.Property(x => x.Revision).IsConcurrencyToken();
         window.HasIndex(x => new { x.MarketingConnectionId, x.ConfigurationVersionId, x.ExpiresUtc });
+        ConfigureSetupGuide(model, collation);
     }
 }

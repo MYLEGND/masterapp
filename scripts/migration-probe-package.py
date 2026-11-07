@@ -678,7 +678,8 @@ def test_schema_contract(directory):
         ('20261103170724_SharedCommerceAutomationState', 'a37f31f2f2f5d2f6a82b6e3b645a3aff82cde8fd4cc24ee261d09c3a2f245b30', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
         ('20261103174446_SharedCommerceShippingState', '28661e65b1183ce05e6764e9c9050d9e748c4547e1850f0bd189bb89d2efc02e', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
         ('20261104012500_ParfaitMemberPageRestrictions', '3431b5357098c33623f2fa8d1233439c7cb7fb48f4c761c247406d5957592023', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
-        ('20261104014500_TrainingPromotionMemberLimits', '43410794881f1459251f1a7038111ccaa7f752332e5f91a37fbb865e83478cc1', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS')]
+        ('20261104014500_TrainingPromotionMemberLimits', '43410794881f1459251f1a7038111ccaa7f752332e5f91a37fbb865e83478cc1', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
+        ('20261107153025_AddReceptionistSetupGuide', 'ec54ce063d0ab6f9507b3d337e8dc771bc56f1da56329e42d350e75acd54ed6a', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS')]
     migrations = current['migrations']
     for index, (migration_id, digest, marker) in enumerate(reviewed):
         entries = [row for row in migrations if row.get('id') == migration_id]
@@ -698,8 +699,10 @@ def test_schema_contract(directory):
         '-c', 'Release', '--nologo', '-o', str(directory), '-m:1', '-nr:false',
         '-p:UseSharedCompilation=false'], check=True)
     scenarios = ['payment-and-successors']
-    if any(row.get('id') == reviewed[-1][0] for row in migrations):
+    if any(row.get('id') == '20261104014500_TrainingPromotionMemberLimits' for row in migrations):
         scenarios.extend(['expanded-store-only', 'standalone-reconciliation-only'])
+    if any(row.get('id') == '20261107153025_AddReceptionistSetupGuide' for row in migrations):
+        scenarios.append('receptionist-guide-only')
     if any(row.get('id') == reviewed[10][0] for row in migrations):
         scenarios.extend(['canonical-payment-training-management-browser-diagnostics-crm-store', 'training-management-browser-diagnostics-crm-store', 'management-browser-diagnostics-crm-store', 'browser-diagnostics-crm-store', 'diagnostics-crm-store', 'crm-store', 'store-all', 'store-crm-provisioning-membership', 'store-provisioning-membership', 'store-membership'])
     elif any(row.get('id') == reviewed[6][0] for row in migrations):

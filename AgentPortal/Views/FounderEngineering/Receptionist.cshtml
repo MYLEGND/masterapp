@@ -20,94 +20,245 @@
 }
 
 @section Styles {
-    <link rel="stylesheet" href="~/css/founder-engineering-command-center.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Shared/css/receptionist-workspace.css" asp-append-version="true" />
 }
 
-<main class="eng-command" data-receptionist-operator>
-    <header class="eng-hero">
-        <div class="eng-hero-copy">
+<section class="dashboard-page-shell">
+<div class="receptionist-workspace" data-receptionist-operator>
+    <header class="receptionist-hero">
+        <div class="receptionist-hero__top">
             <a asp-action="Index">Back to Engineering Command Center</a>
-            <p><a class="eng-button" asp-controller="WebsiteAnalytics" asp-action="Receptionist">Open receptionist home</a></p>
-            <div class="eng-kicker">FOUNDER OPERATIONS</div>
-            <h1>Receptionist activation and accounting</h1>
-            <p>Preview one reviewed operation, check its owner and exact change, then apply that state. Each result shows whether the change was recorded and independently verified.</p>
+            <span class="receptionist-eyebrow">Founder operations</span>
         </div>
+        <div class="receptionist-heading">
+            <div>
+                <h1>Receptionist activation and accounting</h1>
+                <p class="receptionist-copy">Review the infrastructure, account conditions and recovery evidence behind the receptionist. Preview each exact change before applying it.</p>
+            </div>
+            <button class="receptionist-button receptionist-button--primary" type="button" data-bs-toggle="modal" data-bs-target="#receptionist-setup-guide" aria-controls="receptionist-setup-guide">Founder setup guide</button>
+        </div>
+        <nav aria-label="Founder receptionist tasks" class="receptionist-nav">
+            <a asp-controller="WebsiteAnalytics" asp-action="Receptionist">Receptionist settings</a>
+            <a href="#receptionist-preparation-title" aria-current="page">Configuration review</a>
+            <a href="#accounting-recovery-title">Accounting and recovery</a>
+            <a href="#retire-test-title">Expired test calls</a>
+            <a href="#receptionist-packages-title">Reviewed operations</a>
+        </nav>
+        <p class="receptionist-copy">Each result distinguishes a recorded change from independently verified state. Provider closure and call readiness retain their separate checks.</p>
     </header>
 
     @if (Model.Error is not null)
     {
-        <div class="eng-alert is-error" role="alert">@Model.Error</div>
+        <div class="receptionist-notice" role="alert">@Model.Error</div>
     }
 
-    <section class="eng-action-center" aria-labelledby="receptionist-preparation-title">
+    <section class="receptionist-card receptionist-stack" aria-labelledby="receptionist-preparation-title">
         <h2 id="receptionist-preparation-title">Prepare a configuration review</h2>
         <p>Read the exact current configuration fingerprint and scoped account revisions. This read-only observation does not approve a binding, apply an operation, or enable calls. Earlier configuration acceptance is shown separately.</p>
-        <form asp-action="ReceptionistPreparation" method="get">
-            <label for="receptionist-preparation-owner">Settings owner key</label>
-            <input id="receptionist-preparation-owner" name="expectedOwnerKey" required maxlength="450" autocomplete="off" />
-            <label for="receptionist-preparation-configuration">Configuration ID (original pinned version for recovery)</label>
-            <input id="receptionist-preparation-configuration" name="configurationId" required maxlength="36" autocomplete="off" />
-            <label for="receptionist-preparation-call">Original call ID (required for local retirement)</label>
-            <input id="receptionist-preparation-call" name="callId" maxlength="36" autocomplete="off" />
-            <button type="submit">Read preparation metadata</button>
-            <button type="submit" formaction="@Url.Action("ReceptionistBookingReadiness")">Read saved booking readiness</button>
-            <button type="submit" formaction="@Url.Action("ReceptionistBookingRecoveryPreparation")">Read booking recovery metadata</button>
-            <button type="submit" formaction="@Url.Action("ReceptionistRetirementPreparation")">Read local retirement metadata</button>
+        <form class="receptionist-form-grid" asp-action="ReceptionistPreparation" method="get">
+            <label class="receptionist-field" for="receptionist-preparation-owner"><span>Settings owner key</span><input id="receptionist-preparation-owner" name="expectedOwnerKey" required maxlength="450" autocomplete="off" /></label>
+            <label class="receptionist-field" for="receptionist-preparation-configuration"><span>Configuration ID (original pinned version for recovery)</span><input id="receptionist-preparation-configuration" name="configurationId" required maxlength="36" autocomplete="off" /></label>
+            <label class="receptionist-field receptionist-field--wide" for="receptionist-preparation-call"><span>Original call ID (required for local retirement)</span><input id="receptionist-preparation-call" name="callId" maxlength="36" autocomplete="off" /></label>
+            <div class="receptionist-actions">
+            <button class="receptionist-button receptionist-button--quiet" type="submit">Read preparation metadata</button>
+            <button class="receptionist-button receptionist-button--quiet" type="submit" formaction="@Url.Action("ReceptionistAccounting")">Read current accounting and recovery</button>
+            <button class="receptionist-button receptionist-button--quiet" type="submit" formaction="@Url.Action("ReceptionistBookingReadiness")">Read saved booking readiness</button>
+            <button class="receptionist-button receptionist-button--quiet" type="submit" formaction="@Url.Action("ReceptionistBookingRecoveryPreparation")">Read booking recovery metadata</button>
+            <button class="receptionist-button receptionist-button--quiet" type="submit" formaction="@Url.Action("ReceptionistRetirementPreparation")">Read local retirement metadata</button>
+            </div>
         </form>
         <p>Independent provider, capability, cost and reviewer evidence is still required before a reviewed operation can be registered. No call test window starts here.</p>
         <p>Local retirement metadata uses the original call and its pinned historical configuration. It does not contact the provider, release reservations, or establish closure. A separate reviewed retirement package and preview are required.</p>
         <p>Booking recovery metadata can use the original call's pinned configuration ID. It returns scoped action revisions for review and does not contact the calendar. If the result needs a narrower scope, add the original call ID.</p>
     </section>
 
-    <section class="eng-action-center" aria-labelledby="retire-test-title">
-        <h2 id="retire-test-title">Prepare local retirement of an expired test call</h2>
-        <p>The original call and historical configuration determine all revisions and accounting dimensions. Supply your actual dated evidence and reason. This only prepares a review.</p>
-        <p>Local retirement does not contact the provider or establish provider closure. Unknown voice usage, cash and consumption and all reservations remain held. Accounting may still block another test.</p>
-        <form asp-action="PrepareSavedRetirement" method="post">
-            @Html.AntiForgeryToken()
-            <label>Settings owner key <input name="ExpectedOwnerKey" required maxlength="160" /></label>
-            <label>Original historical configuration ID <input name="ConfigurationId" required /></label>
-            <label>Original call ID <input name="CallId" required /></label>
-            <label>Evidence reference <input name="EvidenceReference" required maxlength="200" /></label>
-            <label>Evidence SHA-256 <input name="EvidenceSha256" required pattern="[a-f0-9]{64}" maxlength="64" /></label>
-            <label>Evidence observed at UTC (YYYY-MM-DDTHH:MM:SSZ) <input name="EvidenceObservedUtc" required placeholder="2026-11-02T12:00:00Z" /></label>
-            <label>Reason <textarea name="Reason" required maxlength="500"></textarea></label>
-            <button type="submit" class="eng-button">Prepare retirement review</button>
-        </form>
-        @if (Model.PendingRetirementReview is { } pending && pending.PendingReviewRevision is { } revision && Guid.TryParseExact(pending.Key.Substring(6), "N", out var pendingId))
+    <section class="receptionist-card receptionist-stack" aria-labelledby="accounting-recovery-title">
+        <h2 id="accounting-recovery-title">Current accounting and recovery</h2>
+        <p>A locally retired call is no longer an active application call. Its unfinished accounting remains reserved. A current, separately reviewed budget risk policy can carry an eligible retired test call's full voice hold into this month without claiming provider closure or final charges.</p>
+        <p>Read the current operating configuration above to see the exact accounting conditions. These controls only prepare a review; they do not fund a provider, increase limits, enable owner call permission or start a test.</p>
+        @if (Model.Accounting is { } accounting)
         {
-            <h3>Review exact proposed retirement</h3>
-            <p>This review does not contact the provider or apply retirement. Provider closure and accounting remain unresolved unless separately verified.</p>
-            <dl class="eng-status-card">@foreach (var fact in pending.Facts) { <dt>@fact.Label</dt><dd>@fact.Value</dd> }</dl>
-            <form asp-action="ReviewSavedRetirement" method="post">
+            <dl class="receptionist-facts">
+                <dt>Observed at UTC</dt><dd>@accounting.ObservedUtc.ToString("u")</dd>
+                <dt>Settings owner</dt><dd>@accounting.OwnerKey</dd>
+                <dt>Configuration</dt><dd>Version @accounting.ConfigurationVersion · @accounting.ConfigurationId</dd>
+                <dt>Accepted voice transport</dt><dd>@(accounting.CurrentTransport ?? "Unaccepted")</dd>
+                <dt>Budget policy</dt><dd>@(accounting.BudgetPolicyMode ?? "No reviewed budget risk policy")</dd>
+                <dt>Policy expires UTC</dt><dd>@(accounting.BudgetPolicyExpiresUtc?.ToString("u") ?? "Not applicable")</dd>
+                <dt>Historical hold policy currently eligible</dt><dd>@(accounting.RetiredVoiceCarryPolicyCurrent ? "Yes; individual calls and all limits still checked" : "No")</dd>
+                <dt>Monthly voice allowance</dt><dd>@accounting.MonthlyVoiceSecondsLimit seconds</dd>
+            </dl>
+            @if (accounting.ConfigurationBlockers.Count > 0)
+            {
+                <h3>Current configuration conditions</h3>
+                <ul>@foreach (var blocker in accounting.ConfigurationBlockers) { <li>@blocker</li> }</ul>
+            }
+            @foreach (var status in accounting.Accounts)
+            {
+                <article class="receptionist-inset receptionist-stack">
+                    <h3>@status.Account.Kind accounting · @status.Account.Currency</h3>
+                    <dl class="receptionist-facts">
+                        <dt>Existing account</dt><dd>@status.Account.Id · @status.Account.ScopeKey</dd>
+                        <dt>Accounting calendar</dt><dd>@status.Account.TimeZoneId</dd>
+                        <dt>Current month UTC</dt><dd>@status.CurrentMonthStartsUtc.ToString("u") – @status.CurrentMonthEndsUtc.ToString("u")</dd>
+                        <dt>Accounting permission</dt><dd>@(status.AdmissionEnabled ? "Enabled; owner permission and call readiness remain separate" : "Paused")</dd>
+                        <dt>Current opening</dt><dd>@(status.CurrentPeriod is null ? "Missing; totals are unknown" : status.CurrentPeriod.OpeningReconciled ? "Recorded" : "Unreconciled")</dd>
+                        <dt>Unresolved cash / service reservations</dt><dd>@status.CashHeld / @status.ConsumptionHeld</dd>
+                        <dt>Unfinished voice held</dt><dd>@status.VoiceHeld seconds</dd>
+                        <dt>Retired test calls eligible for full voice hold</dt><dd>@status.RetiredVoiceCarryCount</dd>
+                        <dt>Unresolved non-call charges</dt><dd>@status.UnresolvedNonCallCharges</dd>
+                        @if (status.CurrentPeriod is { } period)
+                        {
+                            <dt>Current cash / service committed</dt><dd>@period.CashCommitted / @period.ConsumptionCommitted</dd>
+                            <dt>Current cash / service ceilings</dt><dd>@period.CashLimit / @period.ConsumptionLimit</dd>
+                            <dt>Current voice committed</dt><dd>@period.VoiceSecondsCommitted seconds</dd>
+                            <dt>Opening reconciled through UTC</dt><dd>@period.ReconciledThroughUtc.ToString("u")</dd>
+                        }
+                    </dl>
+                    @if (status.AdmissionBlockers.Count > 0)
+                    {
+                        <h4>Accounting conditions to resolve</h4>
+                        <ul>@foreach (var blocker in status.AdmissionBlockers) { <li>@blocker</li> }</ul>
+                    }
+                    @if (status.CurrentPeriod is null && status.ExistingCeilings is { } ceilings)
+                    {
+                        <h4>Prepare this month's opening</h4>
+                        <p>Existing accepted ceilings are @ceilings.CashLimit cash and @ceilings.ConsumptionLimit service consumption. They cannot be increased here. Enter real current-period totals and their reconciliation cutoff, including an explicit zero only when supported by your evidence. Unknown historical reservations remain additional holds.</p>
+                        <form class="receptionist-form-grid" asp-action="PrepareSavedAccounting" method="post">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="ExpectedOwnerKey" value="@accounting.OwnerKey" />
+                            <input type="hidden" name="ConfigurationId" value="@accounting.ConfigurationId" />
+                            <input type="hidden" name="ExpectedConnectionRevision" value="@accounting.ConnectionRevision" />
+                            <input type="hidden" name="BudgetAccountId" value="@status.Account.Id" />
+                            <input type="hidden" name="ExpectedAccountRevision" value="@status.Account.Revision" />
+                            <input type="hidden" name="Operation" value="open_budget_period" />
+                            <label class="receptionist-field"><span>Known current cash committed</span><input name="KnownCashCommitted" type="number" required min="0" step="0.000001" /></label>
+                            <label class="receptionist-field"><span>Known current service consumption</span><input name="KnownConsumptionCommitted" type="number" required min="0" step="0.000001" /></label>
+                            <label class="receptionist-field"><span>Known current voice seconds</span><input name="KnownVoiceSeconds" type="number" required min="0" step="1" /></label>
+                            <label class="receptionist-field"><span>Reconciled through UTC (YYYY-MM-DDTHH:MM:SSZ)</span><input name="ReconciledThroughUtc" required maxlength="32" /></label>
+                            <label class="receptionist-field"><span>Accounting evidence reference</span><input name="EvidenceReference" required maxlength="200" /></label>
+                            <label class="receptionist-field"><span>Evidence SHA-256</span><input name="EvidenceSha256" required pattern="[a-f0-9]{64}" maxlength="64" /></label>
+                            <label class="receptionist-field"><span>Evidence observed at UTC (YYYY-MM-DDTHH:MM:SSZ)</span><input name="EvidenceObservedUtc" required maxlength="32" /></label>
+                            <button class="receptionist-button receptionist-button--primary" type="submit">Prepare opening review</button>
+                        </form>
+                    }
+                    else if (status.CurrentPeriod is null)
+                    {
+                        <p>No previous accepted ceilings are available. This recovery flow cannot create an accounting account or invent new limits.</p>
+                    }
+                    @if (status.AdmissionEnabled || status.AdmissionBlockers.Count == 0)
+                    {
+                        <h4>Prepare accounting permission</h4>
+                        <p>This is separate from the owner's permission to receive calls. A fresh preview rechecks current policy, retained holds and accounting limits before applying.</p>
+                        <form class="receptionist-form-grid" asp-action="PrepareSavedAccounting" method="post">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="ExpectedOwnerKey" value="@accounting.OwnerKey" />
+                            <input type="hidden" name="ConfigurationId" value="@accounting.ConfigurationId" />
+                            <input type="hidden" name="ExpectedConnectionRevision" value="@accounting.ConnectionRevision" />
+                            <input type="hidden" name="BudgetAccountId" value="@status.Account.Id" />
+                            <input type="hidden" name="ExpectedAccountRevision" value="@status.Account.Revision" />
+                            <input type="hidden" name="Operation" value="set_budget_admission" />
+                            <label class="receptionist-field"><span>Accounting evidence reference</span><input name="EvidenceReference" required maxlength="200" /></label>
+                            <label class="receptionist-field"><span>Evidence SHA-256</span><input name="EvidenceSha256" required pattern="[a-f0-9]{64}" maxlength="64" /></label>
+                            <label class="receptionist-field"><span>Evidence observed at UTC (YYYY-MM-DDTHH:MM:SSZ)</span><input name="EvidenceObservedUtc" required maxlength="32" /></label>
+                            <button class="receptionist-button receptionist-button--quiet" name="Enabled" value="@(status.AdmissionEnabled ? "false" : "true")" type="submit">@(status.AdmissionEnabled ? "Prepare accounting pause" : "Prepare accounting enablement")</button>
+                        </form>
+                    }
+                </article>
+            }
+            <p>These observations do not reserve capacity or verify live provider activity. Each incoming call still rechecks its accepted scope, owner permission, hours, test window when required, all budgets, rate and concurrency limits.</p>
+        }
+        @if (Model.PendingAccountingReview is { } accountingReview && accountingReview.PendingReviewRevision is { } accountingRevision && Guid.TryParseExact(accountingReview.Key.Substring(6), "N", out var accountingId))
+        {
+            <h3>Review exact proposed accounting change</h3>
+            <p>@OperationLabel(accountingReview.Operation). Accepting this review does not apply it or establish provider closure.</p>
+            <dl class="receptionist-facts">@foreach (var fact in accountingReview.Facts) { <dt>@fact.Label</dt><dd>@fact.Value</dd> }</dl>
+            <form class="receptionist-actions" asp-action="ReviewSavedAccounting" method="post">
                 @Html.AntiForgeryToken()
-                <input type="hidden" name="Id" value="@pendingId" />
-                <input type="hidden" name="Hash" value="@pending.Sha256" />
-                <input type="hidden" name="Revision" value="@revision" />
-                <button name="Accepted" value="true" type="submit">Accept this exact review</button>
-                <button name="Accepted" value="false" type="submit">Reject this review</button>
+                <input type="hidden" name="Id" value="@accountingId" />
+                <input type="hidden" name="Hash" value="@accountingReview.Sha256" />
+                <input type="hidden" name="Revision" value="@accountingRevision" />
+                <button class="receptionist-button receptionist-button--primary" name="Accepted" value="true" type="submit">Accept this exact accounting review</button>
+                <button class="receptionist-button receptionist-button--quiet" name="Accepted" value="false" type="submit">Reject this accounting review</button>
             </form>
         }
-        @foreach (var saved in Model.SavedRetirements ?? [])
+        @foreach (var saved in Model.SavedAccountingOperations ?? [])
         {
-            <article class="eng-action-card">
-                <p>Retirement review: @saved.ReviewState; expires @saved.ExpiresUtc.ToString("u")</p>
+            <article class="receptionist-inset receptionist-stack">
+                <p>@OperationLabel(saved.Operation) · @saved.ReviewState · expires @saved.ExpiresUtc.ToString("u")</p>
                 @if (saved.ReviewState == "pending")
                 {
-                    <form asp-action="PreviewSavedRetirement" method="post">
+                    <form class="receptionist-form" asp-action="PreviewSavedAccounting" method="post">
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="Id" value="@saved.Key.Substring(6)" />
                         <input type="hidden" name="Hash" value="@saved.Sha256" />
-                        <button type="submit">Preview review</button>
+                        <button class="receptionist-button receptionist-button--quiet" type="submit">Preview accounting review</button>
                     </form>
                 }
                 @if (saved.ReviewState == "accepted")
                 {
-                    <form asp-action="PlanReceptionist" method="post">
+                    <form class="receptionist-form" asp-action="PlanReceptionist" method="post">
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="PackageKey" value="@saved.Key" />
                         <input type="hidden" name="PackageSha256" value="@saved.Sha256" />
-                        <button type="submit">Preview reviewed retirement</button>
+                        <button class="receptionist-button receptionist-button--quiet" type="submit">Preview reviewed accounting change</button>
+                    </form>
+                }
+            </article>
+        }
+    </section>
+
+    <section class="receptionist-card receptionist-stack" aria-labelledby="retire-test-title">
+        <h2 id="retire-test-title">Prepare local retirement of an expired test call</h2>
+        <p>The original call and historical configuration determine all revisions and accounting dimensions. Supply your actual dated evidence and reason. This only prepares a review.</p>
+        <p>Local retirement does not contact the provider or establish provider closure. Unknown voice usage, cash and consumption and all reservations remain held. Accounting may still block another test.</p>
+        <details class="receptionist-disclosure" open="@(!ViewData.ModelState.IsValid)"><summary>Prepare a retirement review</summary><div class="receptionist-disclosure__body">
+        <form class="receptionist-form-grid" asp-action="PrepareSavedRetirement" method="post">
+            @Html.AntiForgeryToken()
+            <label class="receptionist-field"><span>Settings owner key</span><input name="ExpectedOwnerKey" required maxlength="160" /></label>
+            <label class="receptionist-field"><span>Original historical configuration ID</span><input name="ConfigurationId" required /></label>
+            <label class="receptionist-field"><span>Original call ID</span><input name="CallId" required /></label>
+            <label class="receptionist-field"><span>Evidence reference</span><input name="EvidenceReference" required maxlength="200" /></label>
+            <label class="receptionist-field"><span>Evidence SHA-256</span><input name="EvidenceSha256" required pattern="[a-f0-9]{64}" maxlength="64" /></label>
+            <label class="receptionist-field"><span>Evidence observed at UTC (YYYY-MM-DDTHH:MM:SSZ)</span><input name="EvidenceObservedUtc" required placeholder="2026-11-02T12:00:00Z" /></label>
+            <label class="receptionist-field receptionist-field--wide"><span>Reason</span><textarea name="Reason" required maxlength="500"></textarea></label>
+            <button type="submit" class="receptionist-button receptionist-button--primary">Prepare retirement review</button>
+        </form>
+        </div></details>
+        @if (Model.PendingRetirementReview is { } pending && pending.PendingReviewRevision is { } revision && Guid.TryParseExact(pending.Key.Substring(6), "N", out var pendingId))
+        {
+            <h3>Review exact proposed retirement</h3>
+            <p>This review does not contact the provider or apply retirement. Provider closure and accounting remain unresolved unless separately verified.</p>
+            <dl class="receptionist-facts">@foreach (var fact in pending.Facts) { <dt>@fact.Label</dt><dd>@fact.Value</dd> }</dl>
+            <form class="receptionist-actions" asp-action="ReviewSavedRetirement" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="Id" value="@pendingId" />
+                <input type="hidden" name="Hash" value="@pending.Sha256" />
+                <input type="hidden" name="Revision" value="@revision" />
+                <button class="receptionist-button receptionist-button--primary" name="Accepted" value="true" type="submit">Accept this exact review</button>
+                <button class="receptionist-button receptionist-button--quiet" name="Accepted" value="false" type="submit">Reject this review</button>
+            </form>
+        }
+        @foreach (var saved in Model.SavedRetirements ?? [])
+        {
+            <article class="receptionist-inset receptionist-stack">
+                <p>Retirement review: @saved.ReviewState; expires @saved.ExpiresUtc.ToString("u")</p>
+                @if (saved.ReviewState == "pending")
+                {
+                    <form class="receptionist-form" asp-action="PreviewSavedRetirement" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="Id" value="@saved.Key.Substring(6)" />
+                        <input type="hidden" name="Hash" value="@saved.Sha256" />
+                        <button class="receptionist-button receptionist-button--quiet" type="submit">Preview review</button>
+                    </form>
+                }
+                @if (saved.ReviewState == "accepted")
+                {
+                    <form class="receptionist-form" asp-action="PlanReceptionist" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="PackageKey" value="@saved.Key" />
+                        <input type="hidden" name="PackageSha256" value="@saved.Sha256" />
+                        <button class="receptionist-button receptionist-button--quiet" type="submit">Preview reviewed retirement</button>
                     </form>
                 }
             </article>
@@ -118,14 +269,14 @@
     {
         var verified = receipt.CommitKnown && receipt.ReadBackVerified;
         var alreadySatisfied = receipt.Outcome == "already_satisfied" && !receipt.CommitKnown && receipt.ReadBackVerified;
-        <section class="eng-action-center" aria-labelledby="receptionist-result-title">
+        <section class="receptionist-card receptionist-stack" aria-labelledby="receptionist-result-title">
             <h2 id="receptionist-result-title">@(alreadySatisfied
                 ? "Current state verified; no new change was required"
                 : verified
                 ? receipt.Outcome == "already_applied" ? "Previously applied change verified" : "Change applied and verified"
                 : receipt.CommitKnown ? "Change recorded; verification still needed" : "Operation result is not yet confirmed")</h2>
             <p>@OperationLabel(receipt.Operation)</p>
-            <dl class="eng-status-card">
+            <dl class="receptionist-facts">
                 <dt>Durable change recorded</dt><dd>@(alreadySatisfied ? "No new change was required" : receipt.CommitKnown ? "Confirmed" : "Not confirmed")</dd>
                 <dt>Independent readback</dt><dd>@(receipt.ReadBackVerified ? "Verified" : "Not verified")</dd>
                 @if (!string.IsNullOrWhiteSpace(receipt.DurableReference))
@@ -135,27 +286,27 @@
             </dl>
             @if (!verified && !alreadySatisfied)
             {
-                <p class="eng-alert is-error" role="alert">Review the current durable state and provider evidence before making another change. This result does not authorize a retry of the previous operation.</p>
+                <p class="receptionist-notice" role="alert">Review the current durable state and provider evidence before making another change. This result does not authorize a retry of the previous operation.</p>
             }
         </section>
     }
 
     @if (Model.Plan is { } plan)
     {
-        <section class="eng-action-center" aria-labelledby="receptionist-plan-title">
+        <section class="receptionist-card receptionist-stack" aria-labelledby="receptionist-plan-title">
             <h2 id="receptionist-plan-title">Review: @plan.Label</h2>
             <p>@OperationLabel(plan.Operation)</p>
-            <dl class="eng-status-card">
+            <dl class="receptionist-facts">
                 @foreach (var fact in plan.Facts)
                 { <dt>@fact.Label</dt><dd>@fact.Value</dd> }
             </dl>
-            <details class="eng-technical">
-                <summary>Exact reviewed configuration</summary>
-                <dl><dt>Package</dt><dd>@plan.PackageKey</dd><dt>Fingerprint</dt><dd><code>@plan.PackageSha256</code></dd></dl>
-            </details>
+            <details class="receptionist-disclosure">
+                <summary>Exact reviewed configuration</summary><div class="receptionist-disclosure__body">
+                <dl class="receptionist-facts"><dt>Package</dt><dd>@plan.PackageKey</dd><dt>Fingerprint</dt><dd><code>@plan.PackageSha256</code></dd></dl>
+            </div></details>
             @if (plan.Blockers.Count > 0)
             {
-                <div class="eng-alert is-error" role="alert">
+                <div class="receptionist-notice" role="alert">
                     <h3>Resolve these items before applying</h3>
                     <ul>@foreach (var blocker in plan.Blockers) { <li>@blocker</li> }</ul>
                 </div>
@@ -163,12 +314,12 @@
             @if (plan.CanApply && plan.Blockers.Count == 0 && !string.IsNullOrWhiteSpace(plan.ExpectedStateToken))
             {
                 <p>Applying uses this exact configuration and current state. If either changes, review a new preview.</p>
-                <form asp-action="ApplyReceptionist" method="post">
+                <form class="receptionist-form" asp-action="ApplyReceptionist" method="post">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="PackageKey" value="@plan.PackageKey" />
                     <input type="hidden" name="PackageSha256" value="@plan.PackageSha256" />
                     <input type="hidden" name="ExpectedStateToken" value="@plan.ExpectedStateToken" />
-                    <button type="submit" class="eng-button is-primary">Apply reviewed change</button>
+                    <button type="submit" class="receptionist-button receptionist-button--primary">Apply reviewed change</button>
                 </form>
             }
             else
@@ -178,32 +329,38 @@
         </section>
     }
 
-    <section class="eng-action-center" aria-labelledby="receptionist-packages-title">
+    <section class="receptionist-card receptionist-stack" aria-labelledby="receptionist-packages-title">
         <h2 id="receptionist-packages-title">Reviewed operations</h2>
         <p>Previewing reads the current configuration and evidence. It does not apply a change.</p>
         @if (Model.Packages.Count == 0)
         {
-            <div class="eng-action-empty">
+            <div class="receptionist-notice">
                 <strong>No reviewed operations are available.</strong>
                 <span>Complete the required provider and accounting evidence in the existing operator configuration, then reload this page.</span>
             </div>
         }
         else
         {
-            <div class="eng-action-list">
+            <div class="receptionist-stack">
                 @foreach (var package in Model.Packages)
                 {
-                    <article class="eng-action-card">
-                        <div class="eng-action-copy"><h3>@package.Label</h3></div>
-                        <form asp-action="PlanReceptionist" method="post">
+                    <article class="receptionist-inset receptionist-stack">
+                        <div class="receptionist-stack"><h3>@package.Label</h3></div>
+                        <form class="receptionist-form" asp-action="PlanReceptionist" method="post">
                             @Html.AntiForgeryToken()
                             <input type="hidden" name="PackageKey" value="@package.PackageKey" />
                             <input type="hidden" name="PackageSha256" value="@package.PackageSha256" />
-                            <button type="submit" class="eng-button">Preview planned change</button>
+                            <button type="submit" class="receptionist-button receptionist-button--quiet">Preview planned change</button>
                         </form>
                     </article>
                 }
             </div>
         }
     </section>
-</main>
+</div>
+</section>
+
+@if (Url.Action("ReceptionistGuide", "FounderEngineering") is { } guideUrl)
+{
+    @await Html.PartialAsync("~/Views/Shared/_ReceptionistSetupGuide.cshtml", new Shared.Analytics.ReceptionistSetupGuideLinks(guideUrl))
+}

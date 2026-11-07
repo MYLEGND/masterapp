@@ -88,7 +88,8 @@ public sealed partial class ReceptionistAdmissionService
         SetBudgetAdmissionCoreAsync(accountId, expectedRevision, enabled, null, ct);
 
     private async Task SetBudgetAdmissionCoreAsync(Guid accountId, Guid expectedRevision, bool enabled,
-        Func<MasterAppDbContext, Task>? guard, CancellationToken ct)
+        Func<MasterAppDbContext, Task>? guard, CancellationToken ct,
+        Guid? reviewedConnectionId = null, Guid? reviewedConfigurationId = null)
     {
         await ReceptionistSql.TransactionAsync(options, [accountId], async write =>
         {
@@ -97,22 +98,9 @@ public sealed partial class ReceptionistAdmissionService
             if (account.Revision != expectedRevision) throw new DbUpdateConcurrencyException("Accounting acceptance changed. Reload it first.");
             if (enabled)
             {
-                var now = clock.GetUtcNow().UtcDateTime;
-                var period = await write.Set<ReceptionistBudgetPeriod>().SingleOrDefaultAsync(x => x.BudgetAccountId == accountId && x.StartUtc <= now && x.EndUtc > now, ct);
-                if (period?.OpeningReconciled != true) throw new InvalidOperationException("An accepted current accounting opening is required.");
-                if (account.Kind == "owner" && await write.Set<ReceptionistCall>().AnyAsync(x => x.OwnerBudgetAccountId == accountId &&
-                    (x.VoiceAllocationUncertain || (x.ProviderClosedUtc == null && write.Set<ReceptionistBudgetPeriod>().Any(p => p.Id == x.OwnerBudgetPeriodId && p.EndUtc <= now))), ct))
-                    throw new InvalidOperationException("Unallocated monthly voice usage must be reconciled before admission can resume.");
-                if (await write.Set<ReceptionistAccountCharge>().AnyAsync(x =>
-                    (account.Kind == "owner" ? x.OwnerBudgetAccountId == accountId : x.FundingBudgetAccountId == accountId) && (!x.CashFinal || !x.ConsumptionFinal), ct))
-                    throw new InvalidOperationException("Unresolved non-call cash and consumption must be reconciled before admission can resume.");
-                var outstanding = await write.Set<ReceptionistCostReservation>().AsNoTracking().Where(x =>
-                    (account.Kind == "owner" ? x.OwnerBudgetAccountId == accountId : x.FundingBudgetAccountId == accountId) && (!x.CashFinal || !x.ConsumptionFinal)).ToListAsync(ct);
-                if (outstanding.Any(x => (!x.CashFinal && x.CashObserved > x.CashReserved) || (!x.ConsumptionFinal && x.ConsumptionObserved > x.ConsumptionReserved)))
-                    throw new InvalidOperationException("An exceeded reservation requires verified final costs before admission can resume.");
-                if (checked(period.CashCommitted + outstanding.Sum(CashRemaining)) > period.CashLimit ||
-                    checked(period.ConsumptionCommitted + outstanding.Sum(ConsumptionRemaining)) > period.ConsumptionLimit)
-                    throw new InvalidOperationException("Known charges and unresolved reservations exceed the approved accounting ceiling.");
+                var check = await CheckBudgetAdmissionAsync(write, account, clock.GetUtcNow().UtcDateTime, ct,
+                    reviewedConnectionId, reviewedConfigurationId);
+                if (check.Blockers.Count > 0) throw new InvalidOperationException(BudgetAdmissionMessage(check.Blockers[0]));
             }
             if (account.AdmissionEnabled != enabled) account.ControlRevision = Guid.NewGuid();
             account.AdmissionEnabled = enabled; account.Revision = Guid.NewGuid();

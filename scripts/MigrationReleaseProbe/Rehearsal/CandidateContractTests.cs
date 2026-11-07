@@ -14,6 +14,7 @@ internal static class CandidateContractTests
         using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
             .UseSqlServer("Server=127.0.0.1;Database=ContractTests;Integrated Security=true").Options);
         var assembly = db.GetService<IMigrationsAssembly>();
+        SetupGuideContractTests(db, assembly);
         const string owner = "20261103081639_ScopedMerchantWebsiteOwners";
         if (assembly.Migrations.ContainsKey(owner))
         {
@@ -669,6 +670,68 @@ internal static class CandidateContractTests
         Check(CandidateContract.CheckCanonical("([A]=1 OR [A]=2) AND [A]=3", columns) !=
             CandidateContract.CheckCanonical("[A]=1 OR ([A]=2 AND [A]=3)", columns), "boolean parentheses retain semantics");
     }
+    private static void SetupGuideContractTests(MasterAppDbContext db, IMigrationsAssembly assembly)
+    {
+        const string id = RehearsalFixture.SetupGuideMigration;
+        if (!assembly.Migrations.TryGetValue(id, out var migration)) return;
+        IReadOnlyList<MigrationOperation> Operations() => assembly.CreateMigration(migration, db.Database.ProviderName!).UpOperations;
+        Check(RehearsalFixture.ExactSetupGuideOperations(Operations()), "exact guide schema and immutable seed operations");
+        var descriptor = CandidateContract.Describe(id, Operations());
+        Check(!descriptor.Supported, "guide InsertData remains unsupported by production observer");
+        try
+        {
+            // This must reject before opening any connection.
+            CandidateContract.Verify(db, new CandidateContract.Contract(3, [descriptor]), [], CancellationToken.None).GetAwaiter().GetResult();
+            throw new Exception("Production guide append authority was widened");
+        }
+        catch (ProbeObservationFailure error) when (error.Message == "MIGRATION_COMPATIBILITY_UNPROVEN") { }
+        foreach (var mutate in new Action<IReadOnlyList<MigrationOperation>>[] {
+            x => ((CreateTableOperation)x[0]).Name = "UnknownGuide",
+            x => ((CreateTableOperation)x[0]).Columns[0].ClrType = typeof(int),
+            x => ((CreateTableOperation)x[0]).Columns[0].ColumnType = "int",
+            x => ((CreateTableOperation)x[0]).Columns[2].IsNullable = true,
+            x => ((CreateTableOperation)x[0]).Columns[2].MaxLength = 4096,
+            x => ((CreateTableOperation)x[0]).Columns[2].Collation = null,
+            x => ((CreateTableOperation)x[0]).Columns[2].DefaultValue = "unknown",
+            x => ((CreateTableOperation)x[0]).PrimaryKey!.Columns = ["Revision"],
+            x => ((CreateTableOperation)x[0]).CheckConstraints[0].Sql = "[Version] >= 0",
+            x => ((CreateTableOperation)x[0]).Columns[0].AddAnnotation("Unknown", true),
+            x => ((InsertDataOperation)x[1]).Values[0, 0] = 2L,
+            x => ((InsertDataOperation)x[1]).Values[0, 1] += " ",
+            x => ((InsertDataOperation)x[1]).Values[0, 2] = "unknown actor",
+            x => ((InsertDataOperation)x[1]).Values[0, 3] = new DateTime(2026, 11, 7, 15, 0, 1, DateTimeKind.Utc),
+            x => ((InsertDataOperation)x[1]).Values[0, 3] = new DateTime(2026, 11, 7, 15, 0, 0, DateTimeKind.Unspecified),
+            x => ((InsertDataOperation)x[1]).Values[0, 4] += " ",
+            x => ((InsertDataOperation)x[1]).Values[0, 5] = Guid.Empty,
+            x => ((InsertDataOperation)x[1]).Table = "UnknownGuide",
+            x => ((InsertDataOperation)x[1]).Columns[0] = "Revision",
+            x => ((InsertDataOperation)x[1]).Values = new object[2, 6],
+            x => x[1].AddAnnotation("Unknown", true),
+            x => ((CreateIndexOperation)x[2]).IsUnique = false,
+            x => ((CreateIndexOperation)x[2]).Columns = ["Version"],
+            x => ((CreateIndexOperation)x[2]).Filter = "[Version] > 1",
+            x => x[2].AddAnnotation("Unknown", true)
+        })
+        {
+            var changed = Operations(); mutate(changed);
+            Check(!RehearsalFixture.ExactSetupGuideOperations(changed), "guide schema, annotation or seed mutation rejected");
+        }
+        Check(!RehearsalFixture.ExactSetupGuideOperations(Operations().Reverse().ToArray()), "reordered guide operations rejected");
+        Check(!RehearsalFixture.ExactSetupGuideOperations(Operations().Where(x => x is not InsertDataOperation).ToArray()), "missing guide seed rejected");
+        Check(!RehearsalFixture.ExactSetupGuideOperations(Operations().Concat(new MigrationOperation[] {
+            new SqlOperation { Sql = "SELECT 1" } }).ToArray()), "extra guide operation rejected");
+        var current = CandidateContract.Current(db);
+        foreach (var changed in new[] {
+            current with { Migrations = current.Migrations.Where(x => x.Id != id).ToArray() },
+            current with { Migrations = current.Migrations.Select(x => x.Id == id ? x with { Supported = true } : x).ToArray() },
+            current with { Migrations = current.Migrations.Concat(new[] { descriptor }).ToArray() }
+        })
+        {
+            try { RehearsalFixture.ValidateExpandedFixture(db, changed); throw new Exception("Unreviewed guide suffix accepted"); }
+            catch (ProbeObservationFailure error) when (error.Message == "MIGRATION_COMPATIBILITY_UNPROVEN") { }
+        }
+    }
+
     private static void Check(bool condition, string assertion)
     { if (!condition) { Console.Error.WriteLine("CONTRACT_ASSERTION_FAILED: " + assertion); throw new InvalidOperationException(); } }
 }
