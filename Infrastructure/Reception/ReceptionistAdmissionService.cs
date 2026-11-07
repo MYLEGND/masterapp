@@ -226,14 +226,21 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
         if (accounts.Count != accountIds.Length || accounts.Any(x => !x.AdmissionEnabled || x.Currency != configuration.Currency) ||
             accounts.Any(x => x.Id == ownerAccount.Id ? x.Kind != "owner" || x.ScopeKey != current.OwnerKey : x.Kind != "funding"))
             return new("accounting_disabled_or_mismatched");
+        var carriedVoice = await RetiredVoiceCarryCallIdsAsync(read, current, current.ReceptionistActiveConfigurationId ?? Guid.Empty,
+            binding, ownerAccount.Id, now, ct);
+        if (await read.Set<ReceptionistCall>().AnyAsync(x => x.OwnerBudgetAccountId == ownerAccount.Id &&
+            (!x.VoiceUsageFinal || x.VoiceAllocationUncertain) && x.ObservedVoiceSeconds > x.ReservedVoiceSeconds, ct))
+            return new("voice_reservation_exceeded");
         var boundaryCalls = await read.Set<ReceptionistCall>().Where(x => x.OwnerBudgetAccountId == ownerAccount.Id &&
+            !carriedVoice.Contains(x.Id) &&
             x.ProviderClosedUtc == null && !x.VoiceUsageFinal && read.Set<ReceptionistBudgetPeriod>().Any(period =>
                 period.Id == x.OwnerBudgetPeriodId && period.EndUtc <= now)).ToListAsync(ct);
         if (boundaryCalls.Count > 0)
         {
             return new("voice_allocation_unreconciled") { BoundaryCalls = boundaryCalls };
         }
-        if (await read.Set<ReceptionistCall>().AnyAsync(x => x.OwnerBudgetAccountId == ownerAccount.Id && x.VoiceAllocationUncertain, ct))
+        if (await read.Set<ReceptionistCall>().AnyAsync(x => x.OwnerBudgetAccountId == ownerAccount.Id &&
+            x.VoiceAllocationUncertain && !carriedVoice.Contains(x.Id), ct))
             return new("voice_allocation_unreconciled");
         var periods = await read.Set<ReceptionistBudgetPeriod>().Where(x => accountIds.Contains(x.BudgetAccountId) &&
             x.StartUtc <= now && x.EndUtc > now).ToListAsync(ct);
@@ -268,9 +275,11 @@ public sealed partial class ReceptionistAdmissionService(DbContextOptions<Master
                 return new(isOwner ? "owner_consumption_limit" : "funding_consumption_limit");
         }
         var unfinishedVoice = await read.Set<ReceptionistCall>().AsNoTracking()
-            .Where(x => x.OwnerBudgetAccountId == ownerAccount.Id && !x.VoiceUsageFinal)
-            .Select(x => new { x.ReservedVoiceSeconds, x.ObservedVoiceSeconds }).ToListAsync(ct);
-        if (checked(ownerPeriod.VoiceSecondsCommitted + unfinishedVoice.Sum(x => Math.Max(0, x.ReservedVoiceSeconds - x.ObservedVoiceSeconds)) +
+            .Where(x => x.OwnerBudgetAccountId == ownerAccount.Id && (!x.VoiceUsageFinal || x.VoiceAllocationUncertain))
+            .Select(x => new { x.Id, x.ReservedVoiceSeconds, x.ObservedVoiceSeconds }).ToListAsync(ct);
+        // Unallocated historical observations never reduce the full hold carried into this period.
+        if (checked(ownerPeriod.VoiceSecondsCommitted + unfinishedVoice.Sum(x => carriedVoice.Contains(x.Id)
+                ? x.ReservedVoiceSeconds : Math.Max(0, x.ReservedVoiceSeconds - x.ObservedVoiceSeconds)) +
             configuration.MaximumCallSeconds) > configuration.MonthlyVoiceSecondsLimit) return new("owner_voice_minutes_limit");
         var retiredActions = RetirementActions(read);
         if (await read.Set<ReceptionistCall>().CountAsync(x => x.OwnerBudgetAccountId == ownerAccount.Id && x.ProviderClosedUtc == null &&

@@ -148,7 +148,8 @@ public sealed partial class ReceptionistAdmissionService
                 break;
             case "set_budget_admission":
                 await SetBudgetAdmissionCoreAsync(package.BudgetAccountId!.Value,
-                    package.ExpectedAccountRevisions[package.BudgetAccountId.Value], package.Enabled!.Value, guard, ct);
+                    package.ExpectedAccountRevisions[package.BudgetAccountId.Value], package.Enabled!.Value, guard, ct,
+                    package.MarketingConnectionId, package.ConfigurationId);
                 break;
             case "reconcile_call_cost":
                 await ReconcileCostCoreAsync(package.CallId!.Value, package.ComponentKey!, package.ReceiptReference,
@@ -352,12 +353,24 @@ public sealed partial class ReceptionistAdmissionService
             (ids.Contains(x.OwnerBudgetAccountId) || ids.Contains(x.FundingBudgetAccountId)) && (!x.CashFinal || !x.ConsumptionFinal))
             .Take(4097).ToListAsync(ct);
         var voice = await read.Set<ReceptionistCall>().AsNoTracking().Where(x => ids.Contains(x.OwnerBudgetAccountId) &&
-            (!x.VoiceUsageFinal || x.VoiceAllocationUncertain)).Select(x => new
-            { x.Id, x.OwnerBudgetAccountId, x.OwnerBudgetPeriodId, x.ReservedUtc, x.ProviderClosedUtc, x.ReservedVoiceSeconds, x.ObservedVoiceSeconds, x.VoiceUsageFinal, x.VoiceAllocationUncertain })
+            (!x.VoiceUsageFinal || x.VoiceAllocationUncertain || x.ProviderClosedUtc == null)).Select(x => new
+            { x.Id, x.Revision, x.MarketingConnectionId, x.ConfigurationVersionId, x.OwnerBudgetAccountId,
+                x.OwnerBudgetPeriodId, x.ControlledTest, x.Provider, x.ProviderProjectKey, x.ProviderSessionId,
+                x.ReservedUtc, x.MustStopUtc, x.ProviderClosedUtc, x.ReservedVoiceSeconds, x.ObservedVoiceSeconds,
+                x.VoiceUsageFinal, x.VoiceAllocationUncertain, x.SidebandLeaseToken, x.SidebandLeaseExpiresUtc,
+                x.SidebandObservationOnly, x.SidebandFence, x.SidebandWorkerId })
             .Take(4097).ToListAsync(ct);
-        if (periods.Count > 4096 || reservations.Count > 4096 || charges.Count > 4096 || voice.Count > 4096)
+        var voiceIds = voice.Select(x => x.Id).ToArray();
+        var voiceRecoveryActions = await read.Set<ReceptionistActionIntent>().AsNoTracking().Where(x => voiceIds.Contains(x.CallId) &&
+            (x.LogicalActionKey == RetirementKey || (x.State == "pending" || x.State == "uncertain") &&
+                x.CapabilityKey != StopCapability && x.CapabilityKey != "__runtime_stop")).Take(4097).ToArrayAsync(ct);
+        if (periods.Count > 4096 || reservations.Count > 4096 || charges.Count > 4096 || voice.Count > 4096 || voiceRecoveryActions.Length > 4096)
             throw new InvalidOperationException("The scoped reconciliation exceeds the supported review bound.");
         var now = clock.GetUtcNow().UtcDateTime;
+        BudgetAdmissionCheck? budgetCheck = null;
+        if (package.Operation == "set_budget_admission" && package.Enabled == true)
+            budgetCheck = await CheckBudgetAdmissionAsync(read, accounts.Single(x => x.Id == package.BudgetAccountId), now, ct,
+                package.MarketingConnectionId, package.ConfigurationId);
         ReceptionistActionIntent? bookingAction = null;
         if (package.Operation == "reconcile_booking_action")
         {
@@ -397,15 +410,38 @@ public sealed partial class ReceptionistAdmissionService
             connection.ReceptionistActiveConfigurationId, connection.ReceptionistProviderProjectKey,
             connection.ReceptionistAdmissionEnabled, connection.ReceptionistControlRevision,
             ConfigurationId = version.Id, version.ConfigurationSha256, latestConfigurationId,
+            AcceptedBindingSha256 = ReceptionistConfigurationCodec.Hash(version.AcceptedBindingJson ?? string.Empty),
+            RetiredVoiceCarryPolicyCurrent = RetiredVoiceCarryPolicyCurrent(connection, version.Id, binding, now),
+            CarriedVoiceCallIds = budgetCheck?.CarriedCallIds.OrderBy(x => x).ToArray(),
             CallRevision = call?.Revision,
             BookingActionRevision = bookingAction?.Revision, Windows = windows,
             Accounts = accounts.OrderBy(x => x.Id), Periods = periods.OrderBy(x => x.Id),
             Reservations = reservations.OrderBy(x => x.Id), Charges = charges.OrderBy(x => x.Id), Voice = voice.OrderBy(x => x.Id),
+            VoiceRecoveryActions = voiceRecoveryActions.OrderBy(x => x.Id),
+            VoiceExecutionLeaseActive = voice.OrderBy(x => x.Id).Select(x => new { x.Id,
+                Active = x.SidebandLeaseExpiresUtc > now && !x.SidebandObservationOnly, ExpiredDeadline = x.MustStopUtc <= now }),
             CurrentPeriods = periods.Where(x => x.StartUtc <= now && x.EndUtc > now).Select(x => x.Id).OrderBy(x => x)
         }));
+        var facts = OperatorFacts(package, connection, version, configuration, accounts, periods,
+            reservations, charges, call, now, bookingAction).ToList();
+        if (budgetCheck is not null)
+        {
+            facts.Add(new("Accounting enablement conditions", budgetCheck.Blockers.Count == 0 ? "Satisfied at this observation; rechecked on apply" :
+                string.Join(" ", budgetCheck.Blockers.Select(BudgetAdmissionMessage))));
+            facts.Add(new("Unfinished voice held", budgetCheck.VoiceHeld.ToString(CultureInfo.InvariantCulture) + " seconds"));
+            facts.Add(new("Retired test calls carried with full voice hold", budgetCheck.CarriedCallIds.Length.ToString(CultureInfo.InvariantCulture)));
+            if (binding?.BudgetPolicy is { } currentPolicy)
+            {
+                facts.Add(new("Current accepted scope", binding.ControlledTestOnly ? "Restricted tests only" : "Separately accepted public activation"));
+                facts.Add(new("Current budget risk policy", currentPolicy.Mode + "; expires " + currentPolicy.ExpiresUtc.ToString("O")));
+                facts.Add(new("Current owner risk acceptance", currentPolicy.OwnerAcceptanceReceipt));
+                facts.Add(new("Current accepted configuration", currentPolicy.AcceptedConfigurationId.ToString("D")));
+            }
+            facts.Add(new("Historical accounting", "Provider closure, final usage and all cost records remain unchanged. Historical voice holds remain reserved in full."));
+        }
         return new(owner, connection, version, configuration, binding, call, accounts, stateHash,
-            completed.Reference, completed.Satisfied, OperatorFacts(package, connection, version, configuration, accounts, periods,
-                reservations, charges, call, now, bookingAction)) { BookingActionRevision = bookingAction?.Revision, LatestConfigurationId = latestConfigurationId };
+            completed.Reference, completed.Satisfied, facts) { BookingActionRevision = bookingAction?.Revision,
+                LatestConfigurationId = latestConfigurationId, BudgetAdmissionBlockers = budgetCheck?.Blockers };
     }
 
     private async Task<(string? Reference, bool Satisfied)> OperatorCompletionAsync(MasterAppDbContext read,
@@ -650,6 +686,7 @@ internal sealed record ReceptionistOperatorState(MarketingOwnerScope Owner, Mark
 {
     internal Guid? BookingActionRevision { get; init; }
     internal Guid LatestConfigurationId { get; init; }
+    internal IReadOnlyList<string>? BudgetAdmissionBlockers { get; init; }
     internal void RequirePackageRevisions(ReceptionistOperatorPackage package)
     {
         if (Connection.Revision != package.ExpectedConnectionRevision ||
