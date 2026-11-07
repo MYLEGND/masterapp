@@ -1,6 +1,7 @@
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Shared.Analytics;
 
 namespace Infrastructure.Reception;
 
