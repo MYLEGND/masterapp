@@ -3881,3 +3881,31 @@ verifying the voice connection, and opening a fresh controlled test window. A
 two-way call must end and release its slot, then a second call must start before
 public activation. This source change alone does not make Shayla active or ready.
 No production effects, receiver ACK or completed live acceptance are claimed here.
+
+### 2026-11-07 - PR 766 controller-fixture correction after exact CI
+
+First published candidate `f855b5acfd7d3b11a691b9ea207a639575e7f0bb`
+(source anchor `c46661115a4678bd21bd2b11798870a1eede8c90`) compiled the
+runtime and full regression project. Required security run `42333979043` and
+isolated build/contracts run `42333979085` passed. Architecture run
+`42333979054` failed exactly one test in its advertising/receptionist group:
+805 passed, 1 failed, 0 skipped, 806 total. The failing
+`FounderRetirementControllerCarriesPreparedReviewThroughApplyAndReplay`
+fixture omitted MVC's `ITempDataDictionaryFactory`; `Controller.View` failed
+before the rest of the controller assertions could execute.
+
+The sole correction registers logging, data protection and controllers with views
+in that direct-controller fixture before the existing operation singleton. Test
+assertions and all runtime code remain unchanged. Independent review verified
+that reversing only this registration change recreates the prior accepted test
+blob exactly. Updated test Git blob:
+`055b85e90e86202fe36e2380ddd841e452817c69`; SHA-256:
+`76acb85655fc406cfef7da409cf1bcad5e424141f51e8bb7405e482310db4aaf`.
+
+This correction is accepted for CI publication only. Exact updated CI and final
+source-merge acceptance remain pending. The prior passing evidence remains valid
+only where the unchanged canonical workflow proves reusable inputs. No local .NET
+execution, native continuity attestation, production deployment, live call repair
+or hosted HTTP middleware acceptance is claimed. The existing sourceIntegration
+request will be rebound to the corrected implementation anchor; its baseline,
+validate-only mode, empty targets and immutable resource history remain unchanged.

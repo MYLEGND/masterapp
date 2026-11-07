@@ -1302,7 +1302,12 @@ public sealed partial class ReceptionistOperatorTests
             using var dependencies = new ServiceCollection().AddSingleton(f.Options).AddSingleton<IOpenAiReceptionistClient>(provider).BuildServiceProvider();
             var operation = new ReceptionistOperatorService(f.Store, new ReceptionistAdmissionService(f.Options, f.Clock, dependencies),
                 f.Host, f.Protector, f.Http, f.Clock, dependencies);
-            using var requestServices = new ServiceCollection().AddSingleton(operation).BuildServiceProvider();
+            var requestServiceCollection = new ServiceCollection();
+            requestServiceCollection.AddLogging();
+            requestServiceCollection.AddDataProtection();
+            requestServiceCollection.AddControllersWithViews();
+            requestServiceCollection.AddSingleton(operation);
+            using var requestServices = requestServiceCollection.BuildServiceProvider();
             f.Http.HttpContext!.RequestServices = requestServices;
             var controller = new AgentPortal.Controllers.FounderEngineeringController(null!)
             { ControllerContext = new ControllerContext { HttpContext = f.Http.HttpContext } };
