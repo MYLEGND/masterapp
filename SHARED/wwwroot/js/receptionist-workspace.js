@@ -19,7 +19,7 @@
   const reader = find('reader');
   const editor = find('editor');
   const fields = find('fields');
-  const reload = find('reload');
+  const reload = modal.querySelector('[data-guide-reload]');
   let current = null;
   let draft = null;
   let audience = 'business';
@@ -224,9 +224,9 @@
   // Closing the canonical modal retains unpublished inputs; the modal manager owns focus and scrolling.
   modal.addEventListener('hide.bs.modal', () => { if (!editor.hidden) retainFields(); });
   reload.addEventListener('click', () => loadCurrent());
-  find('edit').addEventListener('click', openEditor);
-  find('previous').addEventListener('click', () => { step--; renderStep(true); });
-  find('next').addEventListener('click', () => { step++; renderStep(true); });
+  modal.querySelector('[data-guide-edit]').addEventListener('click', openEditor);
+  modal.querySelector('[data-guide-previous]').addEventListener('click', () => { step--; renderStep(true); });
+  modal.querySelector('[data-guide-next]').addEventListener('click', () => { step++; renderStep(true); });
   find('step-select').addEventListener('change', event => { step = Number(event.target.value); renderStep(true); });
   find('steps').addEventListener('click', event => {
     const button = event.target.closest('[data-guide-step]');
@@ -251,13 +251,13 @@
     else if (button.dataset.guideStepAction === 'down' && index < steps.length - 1) [steps[index + 1], steps[index]] = [steps[index], steps[index + 1]];
     renderEditor(Math.min(index, steps.length - 1));
   });
-  find('add-step').addEventListener('click', () => {
+  modal.querySelector('[data-guide-add-step]').addEventListener('click', () => {
     if (!draft) return;
     retainFields(); const steps = draft[editAudience].steps;
     if (steps.length >= 16) return;
     steps.push({ title: '', instructions: '' }); renderEditor(steps.length - 1);
   });
-  find('preview').addEventListener('click', () => {
+  modal.querySelector('[data-guide-preview]').addEventListener('click', () => {
     retainFields(); const document = draft?.[editAudience]; if (!document) return;
     const preview = find('edit-preview'); preview.replaceChildren(create('h4', '', 'Unpublished preview'),
       create('h5', '', document.title), create('p', 'receptionist-copy', document.introduction));
@@ -267,7 +267,7 @@
     });
     preview.hidden = false;
   });
-  find('cancel').addEventListener('click', () => {
+  modal.querySelector('[data-guide-cancel]').addEventListener('click', () => {
     retainFields();
     if (draft && window.confirm('Discard these unpublished edits and return to the current published guide?')) {
       const needsCurrentRead = !currentVerified || publicationUnverified || publicationConflict;
