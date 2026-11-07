@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized Parfait-only CSS cleanup and mandatory normal source incorporation. This request authorizes source integration only, with no GitHub production publication or other resource mutation.",
-  "purpose": "Preserve already deployed5ac ancestry and reviewed Parfait-only cocoa-border CSS correction. All non-Parfait styling remains unchanged. Parfait-only native deployment remains separately gated; no backend, payment, shipping configuration, SQL, IAM or routing change.",
-  "requestId": "parfait-css-source-integration-20261104-v1",
+  "authorization": "Founder requested completing the preserved Shayla repair on the current GitHub branch and will sync and perform direct deployment from the existing Mac workflow. This request authorizes source integration only.",
+  "purpose": "Integrate the reviewed expired controlled-test call retirement and focused regression corrections while preserving newer canonical source and unresolved provider usage and accounting. Deployment and live recovery remain with the Founder on the Mac.",
+  "requestId": "shayla-stale-call-source-integration-20261107-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -78,7 +78,7 @@
   },
   "sourceIntegration": {
     "schemaVersion": 1,
-    "baseRevision": "2ced2b136402f86a7e8f07b2dc8249c4d8732dbb",
-    "sourceRevision": "c6913872fe9197f20fa5df221288219b7d4f3fc6"
+    "baseRevision": "ce09b597a2c02dce8ad06742bf74aaadfddaff63",
+    "sourceRevision": "c46661115a4678bd21bd2b11798870a1eede8c90"
   }
 }
