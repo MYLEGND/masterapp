@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requested completing the preserved Shayla repair on the current GitHub branch and will sync and perform direct deployment from the existing Mac workflow. This request authorizes source integration only.",
-  "purpose": "Recover reviewed retired controlled-test accounting across periods under the exact accepted budget policy, retain unresolved provider usage and cost holds, and expose typed Founder accounting recovery controls. Deployment and live voice acceptance remain with the existing Mac workflow.",
-  "requestId": "shayla-retired-accounting-source-integration-20261107-v1",
+  "authorization": "Founder requested a coherent receptionist workspace and one live-editable canonical setup guide with Business and Founder views on the existing release branch. The Founder will sync and perform direct deployment from the existing Mac workflow. This request authorizes source integration only.",
+  "purpose": "Unify receptionist settings, connections, content review and Founder recovery presentation; publish one audited global setup guide with strict Founder editing and scoped business reads. Preserve the integrated stale-call retirement and accounting repair. Schema application, deployment and real voice acceptance remain with the existing Mac workflow.",
+  "requestId": "shayla-receptionist-ui-guide-source-integration-20261107-v1",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -78,7 +78,7 @@
   },
   "sourceIntegration": {
     "schemaVersion": 1,
-    "baseRevision": "6ea6c298dd3acee8d818c33deeec5a960dc8c23a",
-    "sourceRevision": "a6c811c299957801fb10951ec3f0bf722f055682"
+    "baseRevision": "bb369e31635908592683fb8566897c9d59715a86",
+    "sourceRevision": "b5689b0c00d0b1a9db99efd11ba97b83283095c9"
   }
 }
