@@ -1,0 +1,73 @@
+@model Shared.Analytics.ReceptionistSetupGuideLinks
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+<div class="modal fade receptionist-guide" id="receptionist-setup-guide" tabindex="-1"
+     aria-labelledby="receptionist-guide-title" aria-describedby="receptionist-guide-description"
+     data-receptionist-guide data-guide-url="@Model.ReadUrl">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <p class="receptionist-guide__meta">RECEPTIONIST / SETUP GUIDE</p>
+                    <h2 class="modal-title" id="receptionist-guide-title">Your path to a ready receptionist</h2>
+                    <p class="receptionist-copy" id="receptionist-guide-description">One published guide, kept current for every business.</p>
+                </div>
+                <button class="receptionist-button receptionist-button--quiet" type="button" data-bs-dismiss="modal" aria-label="Close setup guide">Close</button>
+            </div>
+            <div class="modal-body">
+                <p class="receptionist-guide__meta" data-guide-version></p>
+                <div class="receptionist-actions receptionist-guide__toolbar" data-guide-toolbar hidden>
+                    <div class="receptionist-actions" role="group" aria-label="Setup guide view" data-guide-audiences hidden>
+                        <button class="receptionist-button receptionist-button--quiet" type="button" data-guide-audience="business" aria-pressed="false">Business setup</button>
+                        <button class="receptionist-button receptionist-button--quiet" type="button" data-guide-audience="founder" aria-pressed="false">Founder setup</button>
+                    </div>
+                    <button class="receptionist-button receptionist-button--quiet" type="button" data-guide-edit hidden>Edit canonical instructions</button>
+                </div>
+                <p class="receptionist-guide__notice" role="status" aria-live="polite" data-guide-status>Open the guide to load the current published instructions.</p>
+                <button class="receptionist-button receptionist-button--quiet" type="button" data-guide-reload hidden>Reload current instructions</button>
+
+                <section data-guide-reader hidden>
+                    <h3 data-guide-document-title></h3>
+                    <p class="receptionist-copy" data-guide-introduction></p>
+                    <div class="receptionist-guide__layout">
+                        <label class="receptionist-field receptionist-guide__step-picker"><span>Jump to step</span><select data-guide-step-select></select></label>
+                        <nav class="receptionist-guide__desktop-nav" aria-label="Setup steps"><ol class="receptionist-guide__nav" data-guide-steps></ol></nav>
+                        <article class="receptionist-guide__step">
+                            <p class="receptionist-guide__step-number" data-guide-progress></p>
+                            <h4 class="receptionist-guide__step-title" tabindex="-1" data-guide-step-title></h4>
+                            <div class="receptionist-guide__copy" data-guide-instructions></div>
+                            <div class="receptionist-actions receptionist-guide__actions">
+                                <button class="receptionist-button receptionist-button--quiet" type="button" data-guide-previous>Previous step</button>
+                                <button class="receptionist-button receptionist-button--primary" type="button" data-guide-next>Next step</button>
+                            </div>
+                        </article>
+                    </div>
+                </section>
+
+                <form class="receptionist-guide__editor" method="post" data-guide-editor hidden>
+                    @Html.AntiForgeryToken()
+                    <h3 tabindex="-1" data-guide-editor-title>Edit the canonical setup instructions</h3>
+                    <p class="receptionist-copy">Publish updates both shared views together. Every business reads the same Business setup guide; only the Founder can read and edit the Founder setup guide. Editing instructions does not change voice settings or call permission.</p>
+                    <div class="receptionist-actions" role="group" aria-label="Guide to edit">
+                        <button class="receptionist-button receptionist-button--quiet" type="button" data-guide-editor-audience="business" aria-pressed="false">Edit Business setup</button>
+                        <button class="receptionist-button receptionist-button--quiet" type="button" data-guide-editor-audience="founder" aria-pressed="false">Edit Founder setup</button>
+                    </div>
+                    <div class="receptionist-guide__fields" data-guide-fields></div>
+                    <div class="receptionist-actions">
+                        <button class="receptionist-button receptionist-button--quiet" type="button" data-guide-add-step>Add a step</button>
+                        <button class="receptionist-button receptionist-button--quiet" type="button" data-guide-preview>Preview these edits</button>
+                    </div>
+                    <div class="receptionist-inset" data-guide-edit-preview hidden></div>
+                    <p class="receptionist-copy">Publish only public business guidance in the Business view. Keep account identifiers, credentials, customer information and private evidence out of both views. Previous published revisions remain preserved.</p>
+                    <div class="receptionist-actions">
+                        <button class="receptionist-button receptionist-button--primary" type="submit" data-guide-publish>Publish canonical instructions</button>
+                        <button class="receptionist-button receptionist-button--quiet" type="button" data-guide-cancel>Return to published guide</button>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <p class="receptionist-copy">Use Call status for live readiness. These instructions do not activate calls.</p>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="~/_content/Shared/js/receptionist-workspace.js" asp-append-version="true" defer></script>

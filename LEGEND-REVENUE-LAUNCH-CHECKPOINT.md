@@ -3996,3 +3996,94 @@ activation. Historical accounting may remain unresolved under the bounded
 conservative carry policy; it is not silently finalized or billed by this patch.
 No deployment, real-call success, public activation, receiver completion or
 independent acceptance is claimed by this source checkpoint.
+
+## Receptionist workspace and canonical setup guide — 2026-11-07
+
+The Founder requested one consistent receptionist presentation and a live editable,
+canonical setup guide before the next Mac sync and direct deployment. This source
+continuation starts from `bb369e31635908592683fb8566897c9d59715a86` on
+`Legend/fast-track-release`, preserving the accepted stale-call retirement and
+conservative accounting recovery. The coordinator inspected the four existing
+live pages; live styling and guide availability are not changed by this source work.
+
+The four existing setup, connection/testing, content review and Founder operation
+views now share `SHARED/wwwroot/css/receptionist-workspace.css`, consuming the
+existing application palette and modal tokens. Feature markup no longer borrows
+unrelated engineering/form presentation owners. Forms, hidden revisions, action
+destinations, permission checks, antiforgery, exact-review and unconfirmed-result
+semantics remain in their existing owners. Long policy/service/review details use
+native disclosures; invalid fields reveal collapsed ancestors before native
+validation focuses them. Existing global styles remain owned by their other users.
+
+The single `ReceptionistSetupGuideRevision` aggregate belongs to the existing
+receptionist EF model. Each immutable published row contains both Business and
+Founder documents atomically, a monotonic unique version, revision, server actor
+and UTC publication time. There is no business/connection foreign key, tenant copy,
+local override, website-CMS repurposing or voice-configuration mutation. Publication
+requires the canonical Founder and an exact expected version and revision; a
+concurrent winner or replay conflicts. Business/agent endpoints enforce existing
+owner access and project only Business instructions, even when the reader is the
+Founder. Founder endpoints separately enforce Founder authority and antiforgery.
+
+Migration `20261107153025_AddReceptionistSetupGuide` creates the global table and
+persists immutable initial Business and Founder instructions. Its source, designer
+and snapshot were generated with the repository EF tool against the SQL Server
+design-time model; no database was contacted or migrated for generation. The full
+`scripts/db.sh sync` validation path was not attested: automatic approval review
+reported a cloud metadata request and blocked the broad run. An actual request
+versus a fixture literal was not independently verified.
+The coordinator used the existing design-time factory with explicit synthetic
+connection metadata for bounded artifact generation. The generated artifacts were
+independently inspected, and `scripts/db.sh validate-artifacts` passed with
+`DATABASE MODEL CLEAN`. Protected checks and exact-candidate acceptance remain
+separate gates.
+
+The existing SQLite schema bootstrap now inserts this guide's V1 seed only when it
+creates the missing guide table. Later initializations never replace published
+instructions. Production deployment must apply the generated migration through
+the existing approved database path before using the guide. Failed/missing/corrupt
+guide storage reports unavailable; it never substitutes an older/default guide.
+Working receptionist settings and recovery are not dependent on loading the modal.
+
+The shared Bootstrap modal uses the existing `legend-modal.js` lifecycle, focus and
+scroll owner. Opening it reads the current persisted revision with no-store
+semantics. The Founder can preview either audience, edit plain-text steps, reorder
+them and explicitly publish both views together. Old-version conflicts and
+unverified publication preserve draft text and block blind replay. Mobile step
+selection shares the same document/current-step state as desktop navigation.
+Guide contents render as text, never arbitrary HTML, URLs or executable markup.
+Publishing instructions does not approve calls, change budgets or activate a site.
+
+Focused new regressions cover global shared updates, append-only audit, concurrent
+publishers, stale/replayed edits, caller authorization before storage, business-only
+projection, encoded-size/content validation, corrupt latest revision, committed
+publication with failed readback, no voice/accounting changes, SQLite seeding,
+actual Razor rendering of all four pages, scoped HTTP reads and actual antiforgery
+rejection. Execution receipts are recorded by the coordinator after the exact
+candidate build; source presence alone is not a passing-test claim.
+
+The existing admitted native browser harness now also builds four finite,
+sanitized source-component projections and exercises the actual guide partial,
+component CSS/JS, Bootstrap and shared modal manager. Fixed local GET fixtures are
+the only allowed transport; publication/provider/microphone effects remain blocked.
+Its existing CI-only admission, browser session, timeout, watchdog and cleanup are
+retained. The adjacent existing workflow uploads only bounded receptionist PNGs
+and a source/viewport manifest for seven days. These are component evidence, not
+whole production pages or server-authorization proof; actual Razor/HTTP tests are
+separate. Local fixture assembly and JavaScript syntax passed; visual CI results
+and independent screenshot acceptance remain pending at this checkpoint.
+
+One admitted writer owned backend/guide/tests/registration; a disjoint admitted
+writer owned the four existing views and shared component stylesheet. The
+coordinator owns generated migration artifacts, independent review and protected
+source integration. No remote source publication or deployment was performed by
+either implementation writer. Direct-release request metadata remains the
+coordinator's resource; its final source revision must bind a real immutable
+implementation commit, never a placeholder.
+
+The Founder retains Mac sync, localhost pretest, migration/deployment and exact
+live revision verification. Shayla still requires current reviewed recovery and
+accounting operations as applicable, a fresh restricted test window, human-heard
+two-way voice, release of the completed call slot and a successful second call
+before separately accepted public website activation. This guide/style source
+change does not establish those operational outcomes.

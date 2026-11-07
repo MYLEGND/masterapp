@@ -1,5 +1,16 @@
 namespace Domain.Entities;
 
+/// <summary>One append-only platform guide; both audiences are published atomically, without tenant overrides.</summary>
+public sealed class ReceptionistSetupGuideRevision
+{
+    public long Version { get; set; }
+    public Guid Revision { get; set; }
+    public string BusinessGuideJson { get; set; } = string.Empty;
+    public string FounderGuideJson { get; set; } = string.Empty;
+    public string CreatedByActorId { get; set; } = string.Empty;
+    public DateTime CreatedUtc { get; set; }
+}
+
 /// <summary>Pending operation under the existing connection; presence never grants runtime acceptance.</summary>
 public sealed class ReceptionistOperationPackage
 {

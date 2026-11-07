@@ -8,6 +8,7 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Match = System.Text.RegularExpressions.Match;
 using System.Threading;
@@ -17,6 +18,7 @@ using AgentPortal.Middleware;
 using AgentPortal.Mobile;
 using AgentPortal.Security;
 using AgentPortal.Services;
+using AgentPortal.Services.Engineering;
 using AgentPortal.Services.Analytics;
 using AgentPortal.Services.Tracking;
 using Domain.Accounts;
@@ -205,8 +207,8 @@ public sealed class ReceptionistPrivacyHttpTests
         using var management = await session.GetAsync(Subpage(home, "/connections"));
         Assert.Equal(HttpStatusCode.OK, management.StatusCode);
         var connections = await management.Content.ReadAsStringAsync();
-        AssertCanonicalHumanHtml(connections, "Receptionist connections");
-        Assert.Contains("Back to receptionist home", connections);
+        AssertCanonicalHumanHtml(connections, "Voice connection and testing");
+        Assert.Contains("Back to receptionist settings", connections);
         _ = HtmlForm.Read(connections, Subpage(home, "/connections/credential"));
         _ = HtmlForm.Read(connections, Subpage(home, "/connections/plan"));
         Assert.Contains("type=\"password\"", connections);
@@ -224,6 +226,67 @@ public sealed class ReceptionistPrivacyHttpTests
         AssertCanonicalHumanHtml(html, "Receptionist settings");
         _ = HtmlForm.Read(html, "/WebsiteAnalytics/receptionist");
         Assert.Contains("/WebsiteAnalytics/receptionist/connections#voice-connection", html);
+        await f.AssertHumanNoProtectedEffectsAsync();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CanonicalReceptionistGuideHttpUsesScopedLiveReadsAndSeparatesAudiences(bool business)
+    {
+        using var f = await HttpFixture.CreateAsync(humanJourney: true);
+        var session = f.NewHumanSession();
+        using var page = await session.GetAsync(f.Home(business));
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        var html = await page.Content.ReadAsStringAsync();
+        var match = Regex.Match(html, "data-guide-url=\"([^\"]+)\"");
+        Assert.True(match.Success);
+        var guideUrl = WebUtility.HtmlDecode(match.Groups[1].Value);
+        Assert.Equal(business ? Subpage(f.Home(true), "/guide") : "/founder/engineering/receptionist/guide", guideUrl);
+        using var response = await session.GetAsync(guideUrl);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode); Assert.True(response.Headers.CacheControl?.NoStore);
+        var body = await response.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal("Business synthetic shared setup", json.RootElement.GetProperty("business").GetProperty("title").GetString());
+        if (business)
+        {
+            Assert.DoesNotContain("Founder synthetic private setup", body);
+            Assert.True(!json.RootElement.TryGetProperty("founder", out var founder) || founder.ValueKind == JsonValueKind.Null);
+            Assert.True(!json.RootElement.TryGetProperty("publishUrl", out var publish) || publish.ValueKind == JsonValueKind.Null);
+        }
+        else
+        {
+            Assert.Equal("Founder synthetic private setup", json.RootElement.GetProperty("founder").GetProperty("title").GetString());
+            Assert.Equal("/founder/engineering/receptionist/guide/publish", json.RootElement.GetProperty("publishUrl").GetString());
+        }
+        using var foreign = await session.GetAsync($"/business/{f.ForeignBusinessId}/receptionist/guide");
+        AssertHumanCookieDenied(foreign);
+        await f.AssertHumanNoProtectedEffectsAsync();
+    }
+
+    [Fact]
+    public async Task CanonicalReceptionistGuidePublicationRequiresRealAntiforgeryBeforeValidatingBothDocuments()
+    {
+        using var f = await HttpFixture.CreateAsync(humanJourney: true);
+        var session = f.NewHumanSession();
+        using var page = await session.GetAsync(f.Home(false));
+        var html = await page.Content.ReadAsStringAsync();
+        var token = HtmlForm.Read(html, f.Home(false)).Value("__RequestVerificationToken");
+        const string path = "/founder/engineering/receptionist/guide/publish";
+        var invalid = new ReceptionistSetupGuidePublishInput(1, Guid.NewGuid(), new("", "", []), new("", "", []));
+        foreach (var missingOrWrong in new string?[] { null, "synthetic-wrong-token" })
+        {
+            using var denied = await session.PostJsonAsync(path, invalid, missingOrWrong);
+            Assert.Equal(HttpStatusCode.BadRequest, denied.StatusCode);
+            Assert.DoesNotContain("Complete both guides:", await denied.Content.ReadAsStringAsync());
+        }
+        using var validated = await session.PostJsonAsync(path, invalid, token);
+        Assert.Equal(HttpStatusCode.BadRequest, validated.StatusCode);
+        Assert.Contains("Complete both guides:", await validated.Content.ReadAsStringAsync());
+        // TestServer is not request-size enforcement proof; check the actual MVC limit contract.
+        var limit = typeof(FounderEngineeringController).GetMethod(nameof(FounderEngineeringController.PublishReceptionistGuide))!
+            .GetCustomAttribute<RequestSizeLimitAttribute>();
+        Assert.Equal(262144, ((Microsoft.AspNetCore.Http.Metadata.IRequestSizeLimitMetadata)limit!).MaxRequestBodySize);
         await f.AssertHumanNoProtectedEffectsAsync();
     }
 
@@ -289,7 +352,7 @@ public sealed class ReceptionistPrivacyHttpTests
         using var post = await session.PostAsync(form);
         Assert.Equal(HttpStatusCode.BadRequest, post.StatusCode);
         var html = await post.Content.ReadAsStringAsync();
-        AssertCanonicalHumanHtml(html, "Receptionist connections");
+        AssertCanonicalHumanHtml(html, "Voice connection and testing");
         Assert.Contains("For security, enter the credential again", html);
         Assert.Contains("proj_synthetic_http", html);
         Assert.Equal("", HtmlForm.Read(html, action).Value("Secret"));
@@ -312,7 +375,7 @@ public sealed class ReceptionistPrivacyHttpTests
         using var post = await session.PostAsync(form);
         Assert.Equal(malformed ? HttpStatusCode.BadRequest : HttpStatusCode.Conflict, post.StatusCode);
         var html = await post.Content.ReadAsStringAsync();
-        AssertCanonicalHumanHtml(html, "Receptionist connections");
+        AssertCanonicalHumanHtml(html, "Voice connection and testing");
         Assert.Contains(malformed ? "Choose a valid saved operation" : "This review is expired, unavailable", html);
         Assert.Contains("#operation-reviews", html);
         Assert.DoesNotContain("action=\"" + Subpage(home, "/connections/apply"), html);
@@ -405,7 +468,7 @@ public sealed class ReceptionistPrivacyHttpTests
     {
         using var f = await HttpFixture.CreateAsync(humanJourney: true, businessDenial: denial);
         var session = f.NewHumanSession();
-        foreach (var suffix in new[] { "", "/connections", "/content" })
+        foreach (var suffix in new[] { "", "/connections", "/content", "/guide" })
         {
             using var response = await session.GetAsync(Subpage(f.Home(true), suffix));
             AssertHumanCookieDenied(response);
@@ -434,6 +497,8 @@ public sealed class ReceptionistPrivacyHttpTests
     [Theory]
     [InlineData("/WebsiteAnalytics/receptionist")]
     [InlineData("/WebsiteAnalytics/receptionist/connections")]
+    [InlineData("/WebsiteAnalytics/receptionist/guide")]
+    [InlineData("/founder/engineering/receptionist/guide")]
     public async Task RestrictedIdentityStillCannotEnterRealHumanControllers(string path)
     {
         using var f = await HttpFixture.CreateAsync(humanJourney: true);
@@ -576,6 +641,7 @@ public sealed class ReceptionistPrivacyHttpTests
         protected override bool IsController(TypeInfo type) => type.AsType() == typeof(BoundaryController) ||
             type.AsType() == typeof(ReceptionistOperationsController) ||
             (humanJourney && (type.AsType() == typeof(WebsiteAnalyticsController) ||
+                type.AsType() == typeof(FounderEngineeringController) ||
                 type.AsType() == typeof(AgentPortal.Controllers.BusinessWorkspaceController)));
     }
     private sealed class DataGuard : SaveChangesInterceptor, IMaterializationInterceptor
@@ -681,6 +747,16 @@ public sealed class ReceptionistPrivacyHttpTests
                     db.Add(connection); db.Add(version);
                     if (humanJourney)
                     {
+                        // This in-memory fixture does not run EnsureCreated/HasData.
+                        // Persist the explicit synthetic guide before the protected-write guard.
+                        db.Set<ReceptionistSetupGuideRevision>().Add(new()
+                        {
+                            Version = 1, Revision = Guid.NewGuid(), CreatedUtc = DateTime.UtcNow, CreatedByActorId = "synthetic-seed",
+                            BusinessGuideJson = JsonSerializer.Serialize(new ReceptionistSetupGuideDocument("Business synthetic shared setup",
+                                "Synthetic business instructions.", [new("First step", "Use the existing settings.")]), ReceptionistConfigurationCodec.Json),
+                            FounderGuideJson = JsonSerializer.Serialize(new ReceptionistSetupGuideDocument("Founder synthetic private setup",
+                                "Synthetic platform instructions.", [new("Platform step", "Review the existing deployment.")]), ReceptionistConfigurationCodec.Json)
+                        });
                         db.AgentTrackingProfiles.Add(new AgentTrackingProfile { Id = f.HumanTrackingId,
                             AgentUserId = Human, AgentUpn = HumanUpn, Slug = "human-synthetic", DisplayName = "Synthetic owner" });
                         var clientProfile = new ClientProfile { ClientUserId = Human, Email = HumanUpn,
@@ -841,6 +917,7 @@ public sealed class ReceptionistPrivacyHttpTests
             Unused<IVisitorConcentrationService>(); Unused<IKpiDetailBreakdownService>();
             Unused<IVisitorTrustScoringService>(); Unused<IAnalyticsIncidentQueryService>();
             Unused<IUnifiedMarketingPerformanceService>(); Unused<IPromotionOrchestrationService>();
+            Unused<IFounderEngineeringCommandCenterService>();
 
             // No AddMarketingConnections, HttpClient, hosted worker, provider authority or network transport.
             void Unused<T>() where T : class
@@ -908,8 +985,10 @@ public sealed class ReceptionistPrivacyHttpTests
             internal Task<HttpResponseMessage> PostAsync(HtmlForm form, bool includeAntiforgery = true) =>
                 SendAsync(HttpMethod.Post, form.Action, includeAntiforgery ? form.Values :
                     form.Values.Where(x => x.Key != "__RequestVerificationToken"));
+            internal Task<HttpResponseMessage> PostJsonAsync(string path, object value, string? token) =>
+                SendAsync(HttpMethod.Post, path, json: value, token: token);
             private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path,
-                IEnumerable<KeyValuePair<string, string>>? fields = null)
+                IEnumerable<KeyValuePair<string, string>>? fields = null, object? json = null, string? token = null)
             {
                 var uri = new Uri(fixture.client.BaseAddress!, path);
                 Assert.Equal(fixture.client.BaseAddress!.Authority, uri.Authority);
@@ -918,6 +997,8 @@ public sealed class ReceptionistPrivacyHttpTests
                 request.Headers.Add("Cookie", cookies.GetCookieHeader(uri));
                 request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
                 if (fields is not null) request.Content = new FormUrlEncodedContent(fields);
+                if (json is not null) request.Content = new StringContent(JsonSerializer.Serialize(json), Encoding.UTF8, "application/json");
+                if (token is not null) request.Headers.Add("RequestVerificationToken", token);
                 var response = await fixture.client.SendAsync(request);
                 if (response.Headers.TryGetValues("Set-Cookie", out var values))
                     foreach (var value in values) cookies.SetCookies(uri, value);

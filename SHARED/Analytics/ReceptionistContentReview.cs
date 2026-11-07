@@ -10,7 +10,7 @@ public sealed record ReceptionistContentRollbackInput(Guid ExpectedRevision, Gui
 public sealed record ReceptionistContentReviewPage(ReceptionistContentPreview? Preview, string ApplyUrl,
     string RollbackUrl, string ReturnUrl, ReceptionistContentApplyInput? SubmittedApply = null,
     ReceptionistContentRollbackInput? SubmittedRollback = null, ReceptionistPlanFailure? Failure = null,
-    string? ReviewUrl = null);
+    string? ReviewUrl = null, string? GuideUrl = null);
 
 public sealed record ReceptionistContentApplyResult(ReceptionistConfigurationSnapshot Current,
     Guid AppliedConfigurationId, long AppliedVersion, string ReviewHash, bool Replayed);

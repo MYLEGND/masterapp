@@ -50,7 +50,7 @@ public partial class WebsiteAnalyticsController
             Url.Action(nameof(ReviewReceptionistOperation), new { agentProfileId })!, review, Url.Action(nameof(PrepareReceptionistOperation), new { agentProfileId })!,
             Url.Action(nameof(GrantReceptionistTest), new { agentProfileId })!, Url.Action(nameof(StartReceptionistTest), new { agentProfileId })!,
             SubmittedPreparation: preparation, SubmittedCredential: credential, Reconciliation: reconciliation, SelfUrl: Url.Action(nameof(ReceptionistConnections), new { agentProfileId }),
-            AdvancedUrl: summary.CanReview ? Url.Action("Receptionist", "FounderEngineering") : null));
+            AdvancedUrl: summary.CanReview ? Url.Action("Receptionist", "FounderEngineering") : null, GuideUrl: ReceptionistGuideUrl(owner, agentProfileId)));
     }
 
     private async Task<IActionResult> ReceptionistManagementFailureAsync(MarketingOwnerScope owner, Guid? scope,

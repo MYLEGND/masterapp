@@ -218,9 +218,21 @@ jobs:
           node --test tests/layout/modal-content-region.test.mjs tests/layout/app-navigation-contract.test.mjs
 
       - name: Run native frontend component acceptance
+        id: native_components
         timeout-minutes: 3
         shell: bash
         run: node --test tests/layout/native-component-render.test.mjs
+
+      - name: Preserve sanitized receptionist visual review
+        if: always() && steps.native_components.outputs.receptionist_head != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: receptionist-visual-review-${{ steps.native_components.outputs.receptionist_head }}
+          path: |
+            ${{ runner.temp }}/receptionist-visual-review/*.png
+            ${{ runner.temp }}/receptionist-visual-review/manifest.json
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Restore .NET graph
         id: gate_restore_dotnet

@@ -393,6 +393,9 @@ public static class MasterAppSqliteSchemaBootstrapper
         {
             CreateTableOperation table => missing.Contains(table.Name),
             CreateIndexOperation index => missing.Contains(index.Table),
+            // Persist the guide's immutable V1 only when its table is first created.
+            // Existing published instructions are never reseeded or replaced on startup.
+            InsertDataOperation seed when seed.Table == "ReceptionistSetupGuideRevisions" => missing.Contains(seed.Table),
             _ => false
         }).ToArray();
         var commands = db.GetService<IMigrationsSqlGenerator>().Generate(additions, model);

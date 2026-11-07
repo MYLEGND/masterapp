@@ -1,5 +1,6 @@
 @model Shared.Analytics.ReceptionistContentReviewPage
 @using System.Text.Json
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
 @{
     ViewData["Title"] = "Review receptionist content";
     var preview = Model.Preview;
@@ -13,17 +14,38 @@
         "SourceVersionId" => "saved version", "RestoreOperatingConfiguration" => "recovery choice", _ => null
     }).Where(x => x is not null).Distinct().ToArray();
 }
-<section class="dashboard-page-shell py-4">
-<header class="dashboard-surface-panel p-3 mb-4">
-<a class="btn btn-clear-search dashboard-command-action" href="@Model.ReturnUrl">Back to receptionist home</a>
-<h1 class="dashboard-hero-title mt-3">Review receptionist content</h1>
+@section Styles {
+    <link rel="stylesheet" href="~/_content/Shared/css/receptionist-workspace.css" asp-append-version="true" />
+}
+<section class="dashboard-page-shell">
+<div class="receptionist-workspace">
+<header class="receptionist-hero">
+    <div class="receptionist-hero__top">
+        <a href="@Model.ReturnUrl">Back to receptionist settings</a>
+        <span class="receptionist-eyebrow">Voice receptionist</span>
+    </div>
+    <div class="receptionist-heading">
+        <div>
+            <h1>Review receptionist content</h1>
+            <p class="receptionist-copy">Compare your saved draft with its reference, review the conversation and service destinations, then apply it while calls remain paused.</p>
+        </div>
+        @if (Model.GuideUrl is not null)
+        {
+            <button class="receptionist-button receptionist-button--primary" type="button" data-bs-toggle="modal" data-bs-target="#receptionist-setup-guide" aria-controls="receptionist-setup-guide">Step-by-step setup guide</button>
+        }
+    </div>
+    <nav aria-label="Receptionist tasks" class="receptionist-nav">
+        <a href="@Model.ReturnUrl">Settings and readiness</a>
+        <a href="#content-review" aria-current="page">Content review</a>
+        <a href="#content-recovery">Content recovery</a>
+    </nav>
 @if (Model.Failure is { } failure)
 {
-    <div class="dashboard-data-surface p-3" role="alert">
+    <div class="receptionist-notice" role="alert">
         <p>@failure.Message Your submitted choices remain below. The current comparison is for reference only; reload and review it before making another change.</p>
         @if (invalidFields.Length > 0) { <p>Check these fields: @string.Join(", ", invalidFields).</p> }
         <a href="@Model.ReviewUrl">Reload content review</a>
-        <details><summary>Submitted review and recovery choices</summary><dl>
+        <details class="receptionist-disclosure"><summary>Submitted review and recovery choices</summary><div class="receptionist-disclosure__body"><dl class="receptionist-facts">
             <dt>Original revision</dt><dd>@Attempt("ExpectedRevision", submittedRevision)</dd>
             @if (Model.SubmittedApply is { } applied)
             {
@@ -35,7 +57,7 @@
                 <dt>Selected saved version</dt><dd>@selectedVersion</dd>
                 <dt>Recover calls-only operating settings</dt><dd>@Attempt("RestoreOperatingConfiguration", restored.RestoreOperatingConfiguration)</dd>
             }
-        </dl></details>
+        </dl></div></details>
     </div>
 }
 @if (preview is not null)
@@ -49,26 +71,29 @@
 </header>
 @if (preview is not null)
 {
-<section class="dashboard-surface-panel p-3 mb-4">
+<section id="content-review" class="receptionist-card receptionist-stack">
 @foreach (var item in new[] { (Title: "Saved draft", Content: preview.Draft), (Title: "Reference content", Content: preview.Baseline) })
 {
-    <details class="dashboard-data-surface p-3 mb-3" open="@(item.Title == "Saved draft")">
-        <summary>@item.Title</summary>
+    <details class="receptionist-disclosure" open="@(item.Title == "Saved draft")">
+        <summary>@item.Title</summary><div class="receptionist-disclosure__body">
         <h2>@item.Content.BusinessName</h2>
-        <h3>Greeting and conversation guidance</h3>
-        <p class="dashboard-preserved-copy">@item.Content.ConversationInstructions</p>
-        <h3>Voice policy</h3>
-        <p class="dashboard-preserved-copy">@(item.Content.CompactVoicePolicy ?? item.Content.BusinessPolicy)</p>
+        <details class="receptionist-disclosure"><summary>Greeting and conversation guidance</summary><div class="receptionist-disclosure__body">
+            <p class="receptionist-preserved-copy">@item.Content.ConversationInstructions</p>
+        </div></details>
+        <details class="receptionist-disclosure"><summary>Voice policy and service boundaries</summary><div class="receptionist-disclosure__body">
+        <p class="receptionist-preserved-copy">@(item.Content.CompactVoicePolicy ?? item.Content.BusinessPolicy)</p>
         @if (item.Content.CompactVoicePolicy is not null)
         {
-            <details><summary>Full policy to compare with the concise guidance</summary><p class="dashboard-preserved-copy">@item.Content.BusinessPolicy</p></details>
+            <details class="receptionist-disclosure"><summary>Full policy to compare with the concise guidance</summary><div class="receptionist-disclosure__body"><p class="receptionist-preserved-copy">@item.Content.BusinessPolicy</p></div></details>
         }
-        <h3>Services and qualification</h3>
+        </div></details>
+        <details class="receptionist-disclosure"><summary>Services and qualification</summary><div class="receptionist-disclosure__body">
         @using (var services = JsonDocument.Parse(item.Content.ServiceDefinitionsJson))
         {
             using var intake = JsonDocument.Parse(item.Content.IntakeRulesJson);
             @foreach (var service in services.RootElement.EnumerateArray())
             {
+                <article class="receptionist-inset">
                 <h4>@service.GetProperty("displayName").GetString()</h4>
                 <p>@service.GetProperty("publicSummary").GetString()</p>
                 <p>Qualification: @service.GetProperty("discoveryQuestion").GetString()</p>
@@ -78,68 +103,80 @@
                     @foreach (var route in routes.EnumerateArray().Where(x => x.GetProperty("serviceKey").GetString() == service.GetProperty("serviceKey").GetString()))
                     { <p>Inquiry destination: @route.GetProperty("crmBucket").GetString()</p> }
                 }
+                </article>
             }
         }
-        <h3>Approved questions and answers</h3>
+        </div></details>
+        <details class="receptionist-disclosure"><summary>Approved questions and answers</summary><div class="receptionist-disclosure__body">
         @using (var knowledge = JsonDocument.Parse(item.Content.ApprovedKnowledgeJson))
         {
             @if (knowledge.RootElement.TryGetProperty("answers", out var answers))
             {
                 @foreach (var answer in answers.EnumerateArray())
                 {
+                    <article class="receptionist-inset">
                     <p><strong>@string.Join(" / ", answer.GetProperty("questions").EnumerateArray().Select(x => x.GetString()))</strong></p>
                     <p>@answer.GetProperty("answer").GetString()</p>
                     <p>Service: @(answer.TryGetProperty("serviceKey", out var scope) && scope.ValueKind == JsonValueKind.String ? scope.GetString() : "General information")</p>
                     <p>Status: @answer.GetProperty("status").GetString() @if (answer.TryGetProperty("asOfDate", out var date) && date.ValueKind == JsonValueKind.String) { <span>— information dated @date.GetString()</span> }</p>
+                    </article>
                 }
             }
         }
-    </details>
+        </div></details>
+    </div></details>
 }
 @if (preview.CanApply || Model.SubmittedApply is not null)
 {
-    <form class="d-grid gap-3" method="post" action="@Model.ApplyUrl">
+    <form class="receptionist-form" method="post" action="@Model.ApplyUrl">
         @Html.AntiForgeryToken()
         <input type="hidden" name="ExpectedRevision" value="@(submittedRevision is null ? preview.ExpectedRevision.ToString() : Attempt("ExpectedRevision", submittedRevision))" />
         <input type="hidden" name="ReviewHash" value="@(Model.SubmittedApply is null ? preview.ReviewHash : Attempt("ReviewHash", Model.SubmittedApply.ReviewHash))" />
-        <label><input type="checkbox" name="ConfirmContentReview" value="true" checked="@(Model.SubmittedApply?.ConfirmContentReview == true)" required /> I reviewed the AI disclosure, approved content and service destinations shown above.</label>
-        <button class="btn btn-carrier-settings dashboard-command-action" type="submit" disabled="@(Model.Failure is not null)">Apply reviewed content and keep calls paused</button>
+        <label class="receptionist-check"><input type="checkbox" name="ConfirmContentReview" value="true" checked="@(Model.SubmittedApply?.ConfirmContentReview == true)" required /> I reviewed the AI disclosure, approved content and service destinations shown above.</label>
+        <button class="receptionist-button receptionist-button--primary" type="submit" disabled="@(Model.Failure is not null)">Apply reviewed content and keep calls paused</button>
     </form>
 }
 </section>
-<section class="dashboard-surface-panel p-3 mb-4">
-<h2 class="dashboard-section-title">Restore content as a new draft</h2>
+<section id="content-recovery" class="receptionist-card receptionist-stack">
+<h2>Restore content as a new draft</h2>
 <p>This copies greeting, compatible concise voice guidance, service descriptions and approved answers. Current permissions, budgets, privacy policy, provider settings and service routes remain in force. Review the new draft before applying it.</p>
-<form class="d-grid gap-3" method="post" action="@Model.RollbackUrl">
+<form class="receptionist-form" method="post" action="@Model.RollbackUrl">
     @Html.AntiForgeryToken()
     <input type="hidden" name="ExpectedRevision" value="@(submittedRevision is null ? preview.ExpectedRevision.ToString() : Attempt("ExpectedRevision", submittedRevision))" />
-    <label for="source-version">Saved version</label>
-    <select class="form-select" id="source-version" name="SourceVersionId">
+    <label class="receptionist-field" for="source-version"><span>Saved version</span>
+    <select id="source-version" name="SourceVersionId">
     @if (selectedVersion is not null && !preview.History.Any(x => x.Id.ToString() == selectedVersion))
     { <option value="@selectedVersion" selected>Previously selected version (currently unavailable)</option> }
     @foreach (var item in preview.History)
     {
         <option value="@item.Id" selected="@(selectedVersion == item.Id.ToString())">Version @item.Version — @(item.WasApplied ? "previously applied" : "draft")</option>
     }
-    </select>
-    <button class="btn btn-carrier-settings dashboard-command-action" type="submit" disabled="@(Model.Failure is not null)">Create inactive draft from this content</button>
+    </select></label>
+    <button class="receptionist-button receptionist-button--primary" type="submit" disabled="@(Model.Failure is not null)">Create inactive draft from this content</button>
 </form>
 <p><a href="@Model.ReturnUrl">Return to receptionist settings</a></p>
 
 @if (preview.BaselineId != Guid.Empty)
 {
-    <h2>Recover accepted calls-only settings</h2>
+    <details class="receptionist-disclosure" open="@(Model.SubmittedRollback?.RestoreOperatingConfiguration == true)"><summary>Recover accepted calls-only settings</summary><div class="receptionist-disclosure__body">
     <p>Create a draft of accepted version @preview.BaselineVersion, including its operating settings. This does not restore permission or acceptance. Review the resulting comparison before applying; current calls remain unchanged until application. Recovery is unavailable if that version enabled booking or its provider identity changed.</p>
-    <form class="d-grid gap-3" method="post" action="@Model.RollbackUrl">
+    <form class="receptionist-form" method="post" action="@Model.RollbackUrl">
         @Html.AntiForgeryToken()
         <input type="hidden" name="ExpectedRevision" value="@(submittedRevision is null ? preview.ExpectedRevision.ToString() : Attempt("ExpectedRevision", submittedRevision))" />
         <input type="hidden" name="SourceVersionId" value="@(Model.SubmittedRollback?.RestoreOperatingConfiguration == true ? selectedVersion : preview.BaselineId.ToString())" />
         <input type="hidden" name="RestoreOperatingConfiguration" value="true" />
-        <button class="btn btn-carrier-settings dashboard-command-action" type="submit" disabled="@(Model.Failure is not null)">Prepare accepted calls-only settings for review</button>
+        <button class="receptionist-button receptionist-button--primary" type="submit" disabled="@(Model.Failure is not null)">Prepare accepted calls-only settings for review</button>
     </form>
+    </div></details>
 }
 
 
 </section>
 }
+</div>
 </section>
+
+@if (Model.GuideUrl is { } guideUrl)
+{
+    @await Html.PartialAsync("~/Views/Shared/_ReceptionistSetupGuide.cshtml", new Shared.Analytics.ReceptionistSetupGuideLinks(guideUrl))
+}

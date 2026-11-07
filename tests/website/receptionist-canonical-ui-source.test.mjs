@@ -49,8 +49,14 @@ test('credential input never receives a returned value and guarded operation fie
   assert.match(content, /name="ReviewHash"/); assert.match(content, /name="ExpectedRevision"/);
 });
 
-test('shared views use the canonical shell without replacing privacy-restricted view', () => {
-  for (const view of [setup, management, content]) assert.match(view, /dashboard-page-shell/);
+test('receptionist views share one component owner inside the canonical shell without replacing privacy-restricted view', () => {
+  for (const view of [setup, management, content, read('AgentPortal/Views/FounderEngineering/Receptionist.cshtml')]) {
+    assert.match(view, /dashboard-page-shell/);
+    assert.match(view, /receptionist-workspace/);
+    assert.match(view, /Shared\/css\/receptionist-workspace\.css/);
+    assert.match(view, /_ReceptionistSetupGuide\.cshtml/);
+    assert.doesNotMatch(view, /<style|founder-engineering\.css|\beng-card\b|\bdashboard-form\b/);
+  }
   assert.doesNotMatch(management, /<main class="container/);
   const restricted = read('AgentPortal/Views/FounderEngineering/ReceptionistStatus.cshtml');
   assert.match(restricted, /Layout\s*=\s*null/);
