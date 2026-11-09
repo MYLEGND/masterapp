@@ -9,8 +9,21 @@ const styles = ['AgentPortal/wwwroot/lib/bootstrap/dist/css/bootstrap.min.css',
   'Legend-Design/legend-web-foundation.css', 'Legend-Design/legend-app-shell.css',
   'AgentPortal/wwwroot/css/site.css', 'AgentPortal/wwwroot/css/legend-founder-ai.css',
   'SHARED/wwwroot/css/dashboard-home-shared.css'].map(read).join('\n');
+const { registeredTitle } = JSON.parse(read('SHARED/Branding/legend-brand.json'));
+assert.equal(typeof registeredTitle, 'string', 'Canonical registeredTitle is required');
+assert(registeredTitle.length > 0, 'Canonical registeredTitle is empty');
+const titleHtml = registeredTitle.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
+  .replaceAll("'", '&#39;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+// Project only known Razor expressions; retain the production HTML around them.
 const view = read('AgentPortal/Views/Shared/_LegendFounderAiModal.cshtml')
-  .split('\n').map(line => line.includes('@') ? (line.trim().endsWith('>') ? '>' : '') : line).join('\n');
+  .replace(/^@model Shared\.PortalShell\.PortalShellIdentity\r?\n/, '')
+  .replaceAll(/@Shared\.Branding\.LegendBrand\.RegisteredTitle(?=[\s"<]|$)/g, () => titleHtml)
+  .replaceAll(/@Url\.Action\("Chat", "LegendFounderAi"\)(?=[\s"<]|$)/g, '/LegendFounderAi/Chat')
+  .replaceAll(/@Url\.Action\("Conversations", "LegendFounderAi"\)(?=[\s"<]|$)/g, '/LegendFounderAi/Conversations')
+  .replaceAll(/@Model\.AvatarUrl(?=[\s"<]|$)/g, '')
+  .replaceAll(/@Model\.Initials(?=[\s"<]|$)/g, 'TS')
+  .replaceAll(/@Html\.AntiForgeryToken\(\)(?=[\s"<]|$)/g, '');
+assert(!view.includes('@'), 'Unresolved Razor expression in chat geometry fixture');
 const browser = await chromium.launch({headless:true});
 let cases = 0;
 try {
@@ -57,6 +70,7 @@ try {
       await page.keyboard.press('Enter');await page.waitForTimeout(320);
       // Model Safari keyboard + visual viewport panning through its public events.
       await page.evaluate(()=>{Object.defineProperty(window.visualViewport,'height',{configurable:true,value:420});Object.defineProperty(window.visualViewport,'offsetTop',{configurable:true,value:20});window.visualViewport.dispatchEvent(new Event('resize'));window.visualViewport.dispatchEvent(new Event('scroll'));});
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
       m=await measure();assert(m.input.bottom<=441 && m.send.bottom<=441,`${width}: keyboard clips composer ${JSON.stringify(m)}`);
     }
     await page.locator('.legend-founder-ai-close').click();

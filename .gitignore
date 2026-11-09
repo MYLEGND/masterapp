@@ -114,3 +114,7 @@ backups/
 *.db.backup*
 Legend-ios/*.p8
 Legend-ios/*API*KEY*
+
+# Generated development dependencies and Python cache
+/tests/website/node_modules/
+/scripts/__pycache__/
