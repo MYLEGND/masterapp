@@ -190,19 +190,18 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         ScopeContext scope,
         CancellationToken ct = default)
     {
-        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
-        var events = await _analytics.LoadFilteredEventsAsync(range, scope, scopedAgentIds, ct);
-        return await BuildHealthDashboardAsync(range, scope, scopedAgentIds, events, ct);
+        var snapshot = await _analytics.GetMarketingHealthSnapshotAsync(range, scope, ct: ct);
+        return await GetHealthDashboardAsync(snapshot, ct);
     }
 
     public Task<MetaSignalHealthDashboardDto> GetHealthDashboardAsync(
         MarketingHealthReadSnapshot snapshot,
         CancellationToken ct = default) =>
-        BuildHealthDashboardAsync(snapshot.Range, snapshot.Scope, snapshot.ScopedAgentIds, snapshot.Events, ct);
+        BuildHealthDashboardAsync(snapshot.Range, snapshot.Scope, snapshot.ScopedAgentIds, snapshot.Events, snapshot.CanonicalLeadCount, ct);
 
     private async Task<MetaSignalHealthDashboardDto> BuildHealthDashboardAsync(
         TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds,
-        IReadOnlyList<AnalyticsEvent> events, CancellationToken ct)
+        IReadOnlyList<AnalyticsEvent> events, int leadsCount, CancellationToken ct)
     {
         var analyticsRows = events.Select(x => new HealthAnalyticsEventRow
             {
@@ -238,9 +237,6 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                 MetadataJson = x.MetadataJson
             })
             .ToListAsync(ct);
-
-        var leadsCount = await BuildHealthLeadQuery(range, scope, scopedAgentIds)
-            .CountAsync(ct);
 
         var bridgeEligibleAnalytics = analyticsRows
             .Where(x => x.BridgeEligible)
@@ -789,62 +785,6 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         return query.Where(x =>
             (string.IsNullOrWhiteSpace(x.SessionId) && !string.IsNullOrWhiteSpace(x.VisitorId) && visitorIds.Contains(x.VisitorId!)) ||
             (!string.IsNullOrWhiteSpace(x.SessionId) && sessionIds.Contains(x.SessionId!)));
-    }
-
-    private IQueryable<WebsiteLead> BuildHealthLeadQuery(
-        TimeRangeRequest range,
-        ScopeContext scope,
-        Guid[]? scopedAgentIds)
-    {
-        var query = _db.WebsiteLeads.AsNoTracking()
-            .Where(x => !x.IsDeleted)
-            .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc);
-
-        if (scope.ScopeType == ScopeType.Business)
-            return query.Where(x => scope.CommerceBusinessId != null && scope.CommerceBusinessId != Guid.Empty &&
-                scope.AgentTrackingProfileId == null && x.CommerceBusinessId == scope.CommerceBusinessId && x.AgentTrackingProfileId == null);
-        if (scope.ScopeType == ScopeType.Founder)
-        {
-            if (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty || scope.CommerceBusinessId.HasValue)
-                return query.Where(x => false);
-            var founderIds = scopedAgentIds is { Length: > 0 }
-                ? scopedAgentIds
-                : new[] { scope.AgentTrackingProfileId.Value };
-            query = query.Where(x => x.CommerceBusinessId == null &&
-                ((x.AgentTrackingProfileId.HasValue && founderIds.Contains(x.AgentTrackingProfileId.Value)) ||
-                 (x.AgentTrackingProfileId == null && x.MetadataJson != null &&
-                  x.MetadataJson.Contains("\"SiteKey\":\"legend\""))));
-            return ApplyHealthLeadQualityFilter(query, range.QualityMode);
-        }
-        if (scope.CommerceBusinessId.HasValue || !Enum.IsDefined(scope.ScopeType) ||
-            (scope.ScopeType == ScopeType.Agent && (!scope.AgentTrackingProfileId.HasValue || scope.AgentTrackingProfileId == Guid.Empty)))
-            return query.Where(x => false);
-        if (scope.HasSiteScope)
-            return query.Where(x => false);
-
-        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
-        {
-            if (scopedAgentIds is { Length: > 0 })
-            {
-                query = query.Where(x =>
-                    x.AgentTrackingProfileId.HasValue &&
-                    scopedAgentIds.Contains(x.AgentTrackingProfileId.Value));
-            }
-            else
-            {
-                var agentId = scope.AgentTrackingProfileId.Value;
-                query = query.Where(x => x.AgentTrackingProfileId == agentId);
-            }
-        }
-
-        return ApplyHealthLeadQualityFilter(query, range.QualityMode);
-    }
-
-    private static IQueryable<WebsiteLead> ApplyHealthLeadQualityFilter(
-        IQueryable<WebsiteLead> query,
-        TrafficQualityMode qualityMode)
-    {
-        return query.Where(TrafficQualityBucketFilters.BuildLeadPredicate(qualityMode));
     }
 
     private static IQueryable<MetaSignalEvent> ApplyTrafficFilter(IQueryable<MetaSignalEvent> query, TrafficType trafficType)

@@ -1834,30 +1834,33 @@
     const shortEventId = metaTracking.metaLeadEventId ? escapeHtml(String(metaTracking.metaLeadEventId).slice(0, 8)) : '—';
     const shortPixelId = metaTracking.resolvedMetaPixelId ? escapeHtml(String(metaTracking.resolvedMetaPixelId).slice(-6)) : '—';
     const pixelOwnerType = escapeHtml(metaTracking.pixelOwnerType || 'none');
+    const status = metaTracking.serverCapiStatus || 'unknown';
     let badgeClass = 'bg-secondary';
-    let label = 'Pending';
-
-    if (metaTracking.dedupReady) {
+    let label = 'Unverified';
+    if (status === 'provider_accepted') {
       badgeClass = 'bg-success';
-      label = 'Browser + Server';
-    } else if (metaTracking.browserPixelSent) {
-      badgeClass = 'bg-primary';
-      label = 'Browser Only';
-    } else if (metaTracking.serverCapiSent) {
-      badgeClass = 'bg-info text-dark';
-      label = 'Server Only';
-    } else if (metaTracking.serverCapiStatus === 'skipped_not_configured' || metaTracking.serverCapiStatus === 'skipped_agent_token_missing') {
-      badgeClass = 'bg-secondary';
-      label = 'Server Skipped';
-    } else if (metaTracking.serverCapiStatus === 'failed') {
-      badgeClass = 'bg-danger';
-      label = 'Server Failed';
-    } else if (metaTracking.browserPixelStatus === 'unavailable') {
+      label = 'Meta accepted';
+    } else if (status.startsWith('blocked_')) {
       badgeClass = 'bg-warning text-dark';
-      label = 'Browser Unavailable';
-    } else if (metaTracking.browserPixelStatus === 'error') {
+      label = 'Blocked';
+    } else if (['not_configured', 'skipped_not_configured', 'skipped_agent_token_missing'].includes(status)) {
+      label = 'Not configured';
+    } else if (status.startsWith('skipped_')) {
+      label = 'Not eligible';
+    } else if (status === 'pending' || status === 'retrying') {
+      badgeClass = 'bg-info text-dark';
+      label = status === 'pending' ? 'Pending' : 'Retrying';
+    } else if (status === 'failed' || status === 'permanent_failure') {
       badgeClass = 'bg-danger';
-      label = 'Browser Error';
+      label = 'Failed';
+    } else if (status === 'transport_acknowledged') {
+      label = 'Transport only · unverified';
+    } else if (status === 'partial_delivery' || status === 'mixed') {
+      badgeClass = 'bg-warning text-dark';
+      label = 'Mixed delivery';
+    } else if (status === 'requires_reconciliation') {
+      badgeClass = 'bg-warning text-dark';
+      label = 'Needs reconciliation';
     }
 
     const browserStatus = escapeHtml(metaTracking.browserPixelStatus || 'unknown');

@@ -31,3 +31,22 @@ test('Unavailable evidence is never displayed as zero accepted events', () => {
   const { cells } = display(true);
   for (const cell of Object.values(cells)) assert.equal(cell.textContent, 'Unavailable');
 });
+
+const badgeSource = source.slice(source.indexOf('  function metaTrackingBadge('), source.indexOf('  // Maps each modal id', source.indexOf('  function metaTrackingBadge(')));
+function metaBadge(state) {
+  const context = { state, escapeHtml: value => String(value).replaceAll('<', '&lt;').replaceAll('>', '&gt;') };
+  return vm.runInNewContext(badgeSource + '\nmetaTrackingBadge(state);', context);
+}
+
+test('Lead Snapshot renders authoritative delivery without converting missing evidence to pending', () => {
+  for (const [status, label] of Object.entries({ provider_accepted: 'Meta accepted', blocked_human_evidence: 'Blocked',
+    pending: 'Pending', retrying: 'Retrying', failed: 'Failed', unknown: 'Unverified', sent: 'Unverified',
+    receipt_unverified: 'Unverified', transport_acknowledged: 'Transport only', not_configured: 'Not configured',
+    skipped_not_dispatch_eligible: 'Not eligible', requires_reconciliation: 'Needs reconciliation', mixed: 'Mixed delivery' })) {
+    const html = metaBadge({ serverCapiStatus: status, browserPixelSent: true, serverCapiSent: true, dedupReady: true });
+    assert.ok(html.includes(label), `${status} should render ${label}`);
+    if (status !== 'pending') assert.ok(!html.includes('>Pending<'));
+  }
+  assert.match(metaBadge({}), /Unverified/);
+  assert.ok(!metaBadge({ serverCapiStatus: 'blocked_<script>' }).includes('<script>'));
+});

@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using System.Linq.Expressions;
 using Shared.Analytics;
 using Shared.Meta;
+using Infrastructure.Leads;
 
 namespace Infrastructure.Analytics;
 
@@ -2614,7 +2615,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var dataset = await LoadCanonicalDatasetAsync(range, scope, scopedAgentIds, ct, includeEventSessionView: true);
         return new MarketingHealthReadSnapshot(
             BuildMarketingHealth(range, trafficType, dataset.Events, dataset.Leads),
-            range, scope, scopedAgentIds, dataset.EventSessionEvents);
+            range, scope, scopedAgentIds, dataset.EventSessionEvents, dataset.Leads.Count);
     }
 
     private static MarketingHealthDto BuildMarketingHealth(TimeRangeRequest range, TrafficType trafficType,
@@ -2959,6 +2960,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         var total = filteredLeads.Count;
         var leads = filteredLeads.Take(take).ToList();
+        var trackingByLead = await LoadLeadMetaTrackingAsync(leads, contextEvents);
 
         var dto = new LeadSnapshotDto
         {
@@ -2973,12 +2975,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 var classified = Classify(resolved.Attribution);
                 var metadata = SnapshotFromLeadMetadata(l);
                 var behavior = ResolveLeadBehaviorSnapshot(l, sessionEventMap, visitorEventMap);
-                var metaTracking = metadata.MetaTracking;
+                var metaTracking = trackingByLead[l.LeadId];
                 var isMetaAttributedPaid = IsMetaAttributedPaid(resolved.Attribution);
                 var isPaidLandingExperience = string.Equals(metadata.PageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
-                var browserPixelSent = string.Equals(metaTracking?.BrowserPixelStatus, "sent", StringComparison.OrdinalIgnoreCase);
-                var serverCapiSent = string.Equals(metaTracking?.ServerCapiStatus, "sent", StringComparison.OrdinalIgnoreCase);
-                var sentToMeta = browserPixelSent || serverCapiSent;
+                var sentToMeta = metaTracking.ServerCapiSent && !l.IsInternal &&
+                    classified is not (TrafficType.Internal or TrafficType.Test or TrafficType.BotSuspicious);
                 var metaLearningReason = ResolveMetaLearningReason(sentToMeta, resolved.Attribution, classified);
                 var excludedFromMetaLearning = !sentToMeta;
                 var resolvedUtmId = resolved.Attribution.UtmId;
@@ -3038,23 +3039,70 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                         ExcludedFromMetaLearningReadiness = excludedFromMetaLearning,
                         MetaLearningReason = metaLearningReason
                     },
-                    MetaTracking = metaTracking == null
-                        ? null
-                        : new MetaLeadTrackingDto
-                        {
-                            MetaLeadEventId = metaTracking.EventId,
-                            ResolvedMetaPixelId = metaTracking.ResolvedMetaPixelId,
-                            PixelOwnerType = metaTracking.PixelOwnerType,
-                            BrowserPixelStatus = metaTracking.BrowserPixelStatus,
-                            ServerCapiStatus = metaTracking.ServerCapiStatus,
-                            BrowserPixelSent = browserPixelSent,
-                            ServerCapiSent = serverCapiSent,
-                            DedupReady = browserPixelSent && serverCapiSent && !string.IsNullOrWhiteSpace(metaTracking.EventId)
-                        }
+                    MetaTracking = metaTracking
                 };
             }).ToList()
         };
         return dto;
+    }
+
+    private async Task<Dictionary<Guid, MetaLeadTrackingDto>> LoadLeadMetaTrackingAsync(
+        IReadOnlyList<WebsiteLead> leads, IReadOnlyList<AnalyticsEvent> events)
+    {
+        var result = new Dictionary<Guid, MetaLeadTrackingDto>();
+        if (leads.Count == 0) return result;
+        var eventIds = leads.Select(CanonicalLeadEventIdentity.Resolve).Distinct().ToArray();
+        var sources = events.Where(e => CanonicalAdvertisingEventProjection.ResolveEventName(e) == "Lead" &&
+            eventIds.Contains(CanonicalAdvertisingEventProjection.ResolveEventId(e))).ToArray();
+        var sourceOwners = await CanonicalAdvertisingEventProjection.ResolveOwnersAsync(_db, _configuration, sources);
+        var ownerKeys = sourceOwners.Values.Where(o => o is not null).Select(o => o!.Key).Distinct().ToArray();
+        // Only public destination identity is projected; never materialize credentials for reporting.
+        var pixels = await _db.MarketingConnections.AsNoTracking()
+            .Where(c => ownerKeys.Contains(c.OwnerKey) && c.Provider == MarketingDestinationKeys.Meta)
+            .Select(c => new { c.OwnerKey, c.PixelId, c.DisconnectedUtc }).ToDictionaryAsync(c => c.OwnerKey);
+        // Bounded to the displayed lead identities, not the owner's full delivery history.
+        var receipts = await _db.MetaSignalEvents.AsNoTracking()
+            .Where(m => m.EventName == "Lead" && eventIds.Contains(m.EventId)).ToListAsync();
+        var sourcesByEvent = sources.ToLookup(CanonicalAdvertisingEventProjection.ResolveEventId);
+        var receiptsByEvent = receipts.ToLookup(m => m.EventId);
+        foreach (var lead in leads)
+        {
+            var eventId = CanonicalLeadEventIdentity.Resolve(lead);
+            var legacy = MetaLeadTrackingJson.Read(lead.MetadataJson);
+            var site = CanonicalAdvertisingEventProjection.ReadString(lead.MetadataJson, "SiteKey");
+            var candidates = sourcesByEvent[eventId].Where(e => !string.IsNullOrWhiteSpace(site) &&
+                e.AgentTrackingProfileId == lead.AgentTrackingProfileId && e.CommerceBusinessId == lead.CommerceBusinessId &&
+                string.Equals(CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "siteKey"), site, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            var owners = candidates.Select(e => sourceOwners[e]).Distinct().ToArray();
+            var owner = owners.Length == 1 ? owners[0] : null;
+            var pixel = owner is not null && pixels.TryGetValue(owner.Key, out var connection) && connection.DisconnectedUtc is null
+                ? connection.PixelId : null;
+            var linked = receiptsByEvent[eventId].Where(m => candidates.Any(e => MarketingDeliveryEvidencePolicy.MetaMatchesSource(m, e))).ToArray();
+            var current = owner is null ? [] : linked.Where(m => MarketingDeliveryEvidencePolicy.MetaMatchesDestination(m, pixel)).ToArray();
+            var status = current.Length > 0 ? MarketingDeliveryEvidencePolicy.MetaDeliveryStatus(current) : "unknown";
+            if (candidates.Any(e => CanonicalAdvertisingEventProjection.ReadString(e.MetadataJson, "providerCorrectionStatus") is not null))
+                status = "requires_reconciliation";
+            else if (owner is not null && string.IsNullOrWhiteSpace(pixel)) status = "not_configured";
+            else if (linked.Length > 0 && current.Length == 0) status = "destination_unverified";
+            else if (candidates.Length == 0 && string.Equals(legacy?.ServerCapiStatus, "sent", StringComparison.OrdinalIgnoreCase)) status = "receipt_unverified";
+            // Historical browser claims remain useful only for the same event AND destination.
+            var legacyMatches = owner is not null && !string.IsNullOrWhiteSpace(pixel) &&
+                legacy?.EventId == eventId && legacy.ResolvedMetaPixelId == pixel;
+            var browserSent = current.Any(m => m.MetaBrowserSent &&
+                CanonicalAdvertisingEventProjection.ReadString(m.MetadataJson, "metaServerPixelId") == pixel) ||
+                (legacyMatches && string.Equals(legacy!.BrowserPixelStatus, "sent", StringComparison.OrdinalIgnoreCase));
+            var accepted = status == "provider_accepted";
+            result[lead.LeadId] = new MetaLeadTrackingDto
+            {
+                MetaLeadEventId = eventId, ResolvedMetaPixelId = pixel, PixelOwnerType = owner?.OwnerType,
+                BrowserPixelStatus = browserSent ? "sent" : legacyMatches ? legacy!.BrowserPixelStatus ?? "unknown" : "unknown",
+                ServerCapiStatus = status, BrowserPixelSent = browserSent, ServerCapiSent = accepted,
+                DedupReady = browserSent && accepted,
+                EvidenceSource = current.Length > 0 ? "canonical" : legacy is not null ? "legacy_unverified" : "not_observed"
+            };
+        }
+        return result;
     }
 
     public async Task<AgentPerformanceDto> GetAgentPerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, AnalyticsQueryOptions? options = null)

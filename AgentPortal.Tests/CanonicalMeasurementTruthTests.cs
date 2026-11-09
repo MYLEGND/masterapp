@@ -68,8 +68,10 @@ public sealed class CanonicalMeasurementTruthTests
         await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         var analytics = new Mock<IAnalyticsQueryService>();
-        analytics.Setup(x => x.LoadFilteredEventsAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(),
-            It.IsAny<Guid[]>(), It.IsAny<CancellationToken>())).ReturnsAsync(new List<AnalyticsEvent>());
+        analytics.Setup(x => x.GetMarketingHealthSnapshotAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(),
+            It.IsAny<TrafficType>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TimeRangeRequest range, ScopeContext scope, TrafficType traffic, CancellationToken ct) =>
+                new MarketingHealthReadSnapshot(new MarketingHealthDto(), range, scope, null, new(), canonicalLeadCount: 0));
         var health = await new MetaSignalAnalyticsService(db, analytics.Object)
             .GetHealthDashboardAsync(TimeRangeRequest.FromPreset("7d"), ScopeContext.Global);
         Assert.Equal(0, health.PipelineHealth.BridgeEligibleAnalyticsEventsLast24Hours);

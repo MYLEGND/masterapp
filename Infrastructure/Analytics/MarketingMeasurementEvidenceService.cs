@@ -38,6 +38,51 @@ public static class MarketingDeliveryEvidencePolicy
         row.MetaServerSent &&
         CanonicalAdvertisingEventProjection.ReadInt64(row.MetadataJson, "metaServerEventsReceived") > 0;
 
+    public static bool MetaMatchesSource(MetaSignalEvent row, AnalyticsEvent source) =>
+        CanonicalAdvertisingEventProjection.ReadInt64(row.MetadataJson, "sourceAnalyticsEventId") == source.Id &&
+        (row.EventId == CanonicalAdvertisingEventProjection.ResolveEventId(source) ||
+         (source.ClientEventId == source.EventId && CanonicalAdvertisingEventProjection.ReadBoolean(source.MetadataJson, "isBrowserSignal") == true &&
+          row.EventId == source.EventId.ToString("D"))) &&
+        row.AgentTrackingProfileId == source.AgentTrackingProfileId && row.CommerceBusinessId == source.CommerceBusinessId &&
+        row.WebsiteContentVersionId == source.WebsiteContentVersionId &&
+        string.Equals(CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "siteKey"),
+            CanonicalAdvertisingEventProjection.ReadString(source.MetadataJson, "siteKey"), StringComparison.OrdinalIgnoreCase);
+
+    public static bool MetaMatchesDestination(MetaSignalEvent row, string? pixelId)
+    {
+        if (string.IsNullOrWhiteSpace(pixelId)) return false;
+        var stampedPixel = CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "metaServerPixelId");
+        // A pre-dispatch block can precede pixel resolution. Any attempted/sent claim
+        // must bind the exact destination; an explicit foreign stamp never qualifies.
+        return stampedPixel == pixelId ||
+            (string.IsNullOrWhiteSpace(stampedPixel) && !row.MetaServerSent && !MetaAttempted(row));
+    }
+
+    public static string MetaDeliveryStatus(MetaSignalEvent row)
+    {
+        if (MetaProviderAccepted(row)) return "provider_accepted";
+        var status = CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "metaServerStatus");
+        if (status?.StartsWith("blocked_", StringComparison.Ordinal) == true ||
+            status?.StartsWith("skipped_", StringComparison.Ordinal) == true) return status;
+        if (row.MetaServerSent || status == "sent") return "receipt_unverified";
+        if (CanonicalAdvertisingEventProjection.ReadInt64(row.MetadataJson, "metaServerHttpStatusCode") is >= 200 and < 300)
+            return "transport_acknowledged";
+        if (MetaRetryable(row) && MetaAttempted(row)) return "retrying";
+        if (MetaAttempted(row) || status is "failed" or "permanent_failure" or "retryable_failure") return "failed";
+        return MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(row.EventName, row.MetadataJson) ? "pending" : "unknown";
+    }
+
+    public static string MetaDeliveryStatus(IEnumerable<MetaSignalEvent> rows)
+    {
+        var statuses = rows.Select(MetaDeliveryStatus).Distinct(StringComparer.Ordinal).ToArray();
+        return statuses.Length switch
+        {
+            0 => "unknown",
+            1 => statuses[0],
+            _ => statuses.Contains("provider_accepted") ? "partial_delivery" : "mixed"
+        };
+    }
+
     public static bool MetaRetryable(MetaSignalEvent row) =>
         CanonicalAdvertisingEventProjection.ReadBoolean(row.MetadataJson, "metaServerRetryable") == true;
 
@@ -111,11 +156,7 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
             CanonicalAdvertisingEventProjection.ReadInt64(m.MetadataJson, "sourceAnalyticsEventId") is { } id &&
             sourceById.TryGetValue(id, out var source) && source.AgentTrackingProfileId == m.AgentTrackingProfileId &&
             source.CommerceBusinessId == m.CommerceBusinessId && currentMeta is { DisconnectedUtc: null } &&
-            !string.IsNullOrWhiteSpace(currentMeta.PixelId) &&
-            // Unattempted pending rows need no destination stamp yet. A sent
-            // claim must match the current pixel even when its attempted flag is missing.
-            ((!m.MetaServerSent && !MarketingDeliveryEvidencePolicy.MetaAttempted(m)) ||
-             CanonicalAdvertisingEventProjection.ReadString(m.MetadataJson, "metaServerPixelId") == currentMeta.PixelId)).ToArray();
+            MarketingDeliveryEvidencePolicy.MetaMatchesDestination(m, currentMeta.PixelId)).ToArray();
         var deliveries = await db.Set<MarketingDestinationDelivery>().AsNoTracking()
             .Where(r => r.OwnerKey == owner.Key &&
                 (r.Provider == MarketingDestinationKeys.OpenAi ||

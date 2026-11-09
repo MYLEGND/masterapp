@@ -4087,3 +4087,88 @@ accounting operations as applicable, a fresh restricted test window, human-heard
 two-way voice, release of the completed call slot and a successful second call
 before separately accepted public website activation. This guide/style source
 change does not establish those operational outcomes.
+
+
+## 2026-11-09 — Canonical advertising measurement repair / Mac handoff
+
+Scope: Zac explicitly selected `isolation/ad-measurement-canonical-20261109` in MYLEGND/masterapp. Sole implementer Codex; read-only Astra low review. Initial HEAD and comparison base: `6eed2f4ab7adad92a07f999295582dcb00355181`; upstream origin/isolation/ad-measurement-canonical-20261109; initially clean, zero local-only commits. Checkout `/workspace/scratch/98ab3c19ee81/masterapp`. No Legend Workspace/Codespace, deployment, migration, campaign, credential, budget, or production submission actions.
+
+### Evidence and disposition
+
+Read the current canonical router libfile_4488349df2bc8191b625c453afaae1b6, COO libfile_88fc238945a8819181401a4a07860dff, Engineering role baseline libfile_f1a9688195148191817bc0204a3f1ce7, repository AGENTS.md and prior checkpoint. Read both full receipts libfile_c4f2eea74f388191b3c5acecabf18c8f and libfile_90744a5b1320819189728050d3f8fa07. Personal Context returned Ad Test Results conversation summaries, not the complete original transcript; original conversation/readiness wording remains unavailable. Receipt dates are November 5; source comparison November 9, not deployed-version proof.
+
+- FIXED: Snapshot previously trusted legacy MetaTracking and defaulted unknown to Pending. It now joins displayed canonical lead/source identities to Meta evidence with owner, site, version and destination isolation. Shared MarketingDeliveryEvidencePolicy owns matching and status interpretation, also used by Event Map. Positive provider receipt is required for accepted; blocked reasons, transport-only, missing, failure, retry, mixed, reconciliation and configuration states remain distinct. Legacy browser evidence is retained only for matching event/destination. QA exclusion remains intact.
+- FIXED: diagnostics now consumes CanonicalLeadCount from the existing canonical health snapshot. Removed the duplicate diagnostic lead predicate. Founder selected-site/all-sites, alias owner, environment, quality and store exclusion use the same canonical population. Count is independent of event traffic filtering, as before.
+- ALREADY CORRECT / preserved: OpenAI transport acknowledgement is distinct from acceptance; source is AnalyticsEvent. Verified the linked account adacct_6ab78a328a20819d92c88b989404c4fb and source cds_6ab8e68ce8c0819d9ac236a8f4553592 still exist. Exact historical pending/failed event IDs, response error, destination and retry state could not be read through available production access; unresolved live-evidence dependency, no sender change justified.
+- ALREADY CORRECT / preserved: Google stage qualification and exact action/click-ID/time response matching. Authorized Google account listing returned no accessible accounts. Serving-account/conversion-customer association for 5707145952 and intended campaign goal remain unverified. Zero attempts/browser tag absence do not prove uploader failure. No campaign edits.
+- PRESERVED: inquiry authority, atomic lead/CRM/event persistence, consent/human gate, deduplication/retry identity and provider dispatchers. Protect's blocked test is not eligible acceptance. No live replay performed.
+
+### Changed owners
+
+- Infrastructure/Analytics/AnalyticsQueryService.cs: canonical Snapshot join and canonical health lead count.
+- Infrastructure/Analytics/MarketingHealthProjection.cs: internal shared count, no public health contract expansion.
+- Infrastructure/Analytics/MetaSignalAnalyticsService.cs: remove duplicate population query.
+- Infrastructure/Analytics/MarketingMeasurementEvidenceService.cs: shared Meta matching/status policy and strict explicit-destination isolation.
+- Infrastructure/WebsiteEditing/WebsiteEventMapQuery.cs: reuse matching/status policy.
+- SHARED/Analytics/DrilldownDtos.cs: evidence provenance.
+- AgentPortal/wwwroot/js/website-analytics.js: honest rendering of authoritative states.
+- AgentPortal.Tests/LeadSnapshotAttributionTests.cs: accepted without legacy metadata, blocked, missing, transport, mismatches, mixed providers, reconciliation, QA and browser dedup regression cases.
+- AgentPortal.Tests/AnalyticsCanonicalReconciliationTests.cs: scoped population/quality reconciliation and reduced-query expectations.
+- AgentPortal.Tests/CanonicalMeasurementTruthTests.cs: mock canonical health snapshot contract.
+- AgentPortal.Tests/AnalyticsPageRoutingTruthTests.cs: shared policy source assertion.
+- tests/analytics/openai-transport-evidence.test.mjs: Meta badge state/escaping regressions in existing harness.
+- This existing checkpoint: continuity and Mac handoff only.
+
+### Executed validation
+
+SDK 10.0.403 installed only in scratch. Restore initially failed in default artifact path; unique MasterAppArtifactsRoot plus serialized restore succeeded. Existing obsolete TestServer/WebHostBuilder and nullable warnings remain.
+
+```bash
+DOTNET_CLI_TELEMETRY_OPTOUT=1 /workspace/scratch/98ab3c19ee81/dotnet/dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj --disable-parallel -m:1 -p:MasterAppArtifactsRoot=/workspace/scratch/98ab3c19ee81/build-artifacts
+GITHUB_WORKSPACE=/workspace/scratch/98ab3c19ee81/masterapp DOTNET_CLI_TELEMETRY_OPTOUT=1 /workspace/scratch/98ab3c19ee81/dotnet/dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-restore -m:1 -p:MasterAppArtifactsRoot=/workspace/scratch/98ab3c19ee81/build-artifacts --filter 'FullyQualifiedName~LeadSnapshotAttributionTests|FullyQualifiedName~AnalyticsCanonicalReconciliationTests|FullyQualifiedName~WebsiteEventMapTests|FullyQualifiedName~CanonicalHumanEligibilityTests|FullyQualifiedName~ScopedMarketingMeasurementTests|FullyQualifiedName~OpenAiMeasurementEvidenceTests|FullyQualifiedName~OpenAiMeasurementHealthTests|FullyQualifiedName~ExternalAdsCanonicalIntegrationTests|FullyQualifiedName~WebsiteLifeLeadCaptureServiceTests|FullyQualifiedName~CanonicalMeasurementTruthTests|FullyQualifiedName~LaunchAuditProjectionTests|FullyQualifiedName~AnalyticsPageRoutingTruthTests|FullyQualifiedName~AdversarialReportingTruthTests' --logger 'trx;LogFileName=ad-measurement-final.trx' --results-directory /workspace/scratch/98ab3c19ee81/test-results
+node --check AgentPortal/wwwroot/js/website-analytics.js
+node --test tests/analytics/*.test.*
+(cd tests/website && npm ci --ignore-scripts --no-audit --no-fund)
+node --test tests/website/website-analytics-runtime.test.mjs
+git diff --check
+```
+
+Final: 205 backend passed, 0 failed, 0 skipped; 31 analytics JS passed; 68 runtime tests passed. Backend per suite: LeadSnapshotAttribution28, AnalyticsCanonicalReconciliation39, WebsiteEventMap11, CanonicalHumanEligibility17, ScopedMarketingMeasurement16, OpenAiMeasurementEvidence5, OpenAiMeasurementHealth18, ExternalAdsCanonicalIntegration30, WebsiteLifeLeadCaptureService8, CanonicalMeasurementTruth11, LaunchAuditProjection6, AnalyticsPageRoutingTruth13, AdversarialReportingTruth3. Existing capture/identity suites cover repeated submissions and retries. The first backend run was 185 passed/2 failed: stale mock and browser-evidence regression; both fixed before final rebuild. First runtime attempt lacked jsdom; installed existing locked dependencies, then 68 passed. Dependencies were moved out of checkout after testing. No test failure concealed as a pass.
+
+Astra independently accepted source diff SHA-256 cc7183519773143dbc0d78f109b6ce8a80159b3d7261a4ee50edf313971cb729 (12 source/test files; documentation excluded), including the unstamped-browser fix. No production acceptance implied. Full GitHub required gates architecture-validation, approved-release-security and build-and-focused-tests were not dispatched or claimed green by this task; preserve them for future protected release integration. Localhost browser journey on the Mac and production acceptance are still required.
+
+### Preservation and Mac procedure
+
+Native session preflight ran against this branch/base and confirmed clean matching ancestry, then stopped because native git push credentials were unavailable. Native push dry-run also failed with `could not read Username`. Use the authorized GitHub connector to preserve this exact candidate with expected-head fast-forward; do not call native session finish successful without its actual receipt. Final commit/publication verification belongs in the return receipt. No direct-release-request or release base changes.
+
+On the Mac, begin in the existing masterapp repository. Do not reset, stash, discard or overwrite local changes. Confirm origin is MYLEGND/masterapp. Fetch is read-only with respect to the working tree:
+
+```bash
+git status --short --branch
+git remote -v
+git fetch --no-tags origin refs/heads/isolation/ad-measurement-canonical-20261109:refs/remotes/origin/isolation/ad-measurement-canonical-20261109
+git rev-parse origin/isolation/ad-measurement-canonical-20261109
+git log --left-right --oneline HEAD...origin/isolation/ad-measurement-canonical-20261109
+```
+
+Compare fetched SHA with the final handoff. If Mac HEAD contains changes absent from this candidate, reconcile them deliberately before selecting deployment source. Never replace newer Mac work with this older baseline. If already on this branch with a clean tree, `git merge --ff-only origin/isolation/ad-measurement-canonical-20261109` is the safe update. If on another branch, inspect `git worktree list` and `git branch --list isolation/ad-measurement-canonical-20261109` first. When that branch/path does not already exist locally, a separate worktree preserves the current checkout:
+
+```bash
+git worktree add --track -b isolation/ad-measurement-canonical-20261109 ../masterapp-ad-measurement origin/isolation/ad-measurement-canonical-20261109
+```
+
+Do not run this creation command if the branch/worktree already exists; use its existing location. This is a manual successor handoff, not a second simultaneous writer. Verify HEAD and a clean working tree there. Read AGENTS.md and run its session preflight with the verified published SHA as base. On Mac use the installed .NET 10 SDK and an isolated artifact directory (for example /tmp/masterapp-ad-measurement-20261109) in place of the scratch paths in the exact restore/test commands above; set GITHUB_WORKSPACE="$PWD". Reinstall the existing tests/website locked dependencies for the JS runtime tests. Review the diff from 6eed2f4ab7adad92a07f999295582dcb00355181.
+
+Run ProtectWebsite and AgentPortal with their existing approved local launch/configuration through `dotnet run --project ProtectWebsite/ProtectWebsite.csproj` and `dotnet run --project AgentPortal/AgentPortal.csproj` (separate terminals, same isolated artifact property when used). Do not substitute production credentials/data or apply migrations to bypass a startup error. Existing pending migrations/configuration must be reconciled through the existing local procedure; this task adds no migration. Check startup logs and the actual printed localhost URLs. Exercise the selected Protect landing and full quote path on mobile and desktop, then scoped Portal CRM/Snapshot/diagnostics/Event Map. Only after localhost acceptance should Zac use the existing verified Mac direct-deployment procedure; that external runner/configuration was not inspected here, so no deployment command is invented.
+
+### Post-deployment acceptance checklist (not executed)
+
+1. Verify deployed commit and application/static asset provenance match the selected Mac candidate.
+2. Selected Protect landing: mobile and desktop navigation, CTA, quote steps, validation, consent, back/exit behavior, recommendation and follow-up handoff all work; no overflow or obscured controls.
+3. Use one authorized human test journey with recorded time/session/site; verify one correctly scoped CRM record, complete intake/history and actual follow-up receipt. Repeated submission/retry must not duplicate the lead/business outcome.
+4. Correlate canonical AnalyticsEvent and provider-specific destination delivery. Meta accepted requires positive provider receipt; a human-evidence block stays blocked with reason. Browser/server use stable dedup identity. OpenAI transport-only stays unverified until a correlated provider acceptance exists.
+5. Reconcile Protect-only, LEGEND-only and Founder all-sites Snapshot/diagnostic counts under identical dates, environment and quality settings. Event Map and Snapshot agree; QA/internal traffic stays excluded from learning.
+6. Google import verification requires the intended qualified stage plus real consented attribution, intended action/customer and matching receipt; do not fabricate click IDs or policy outcomes. Confirm serving/conversion account association and campaign goal through authorized access.
+7. Confirm one business count and one deduplicated conversion outcome, no cross-owner/site/destination leakage. Retain unresolved provider evidence explicitly. Keep branch and recovery until merge, deployment and live acceptance are confirmed.
+
+No live/ad-ready/profitability claim. Return through existing Layla/Handoffs route; receiving ACK and any external operation state not directly observed remain UNKNOWN / RETURN PENDING.

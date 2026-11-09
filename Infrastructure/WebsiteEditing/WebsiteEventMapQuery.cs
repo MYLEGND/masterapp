@@ -88,6 +88,10 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                 r.AnalyticsEventId.HasValue && sourceIds.Contains(r.AnalyticsEventId.Value)).ToListAsync(ct);
         var meta = await db.MetaSignalEvents.AsNoTracking().Where(m => m.WebsiteContentVersionId.HasValue && versionIds.Contains(m.WebsiteContentVersionId.Value)).ToListAsync(ct);
         var sourceOwners = await CanonicalAdvertisingEventProjection.ResolveOwnersAsync(db, configuration, events, ct);
+        var ownerKeys = sourceOwners.Values.Where(o => o is not null).Select(o => o!.Key).Distinct().ToArray();
+        var metaPixels = await db.MarketingConnections.AsNoTracking()
+            .Where(c => ownerKeys.Contains(c.OwnerKey) && c.Provider == MarketingDestinationKeys.Meta && c.DisconnectedUtc == null)
+            .Select(c => new { c.OwnerKey, c.PixelId }).ToDictionaryAsync(c => c.OwnerKey, c => c.PixelId, ct);
         var historicalReceipts = new Dictionary<long, MarketingDestinationDelivery>();
         var legacyEventIds = meta.Select(m => m.EventId).ToArray();
         var legacyReceipts = await db.MarketingDestinationDeliveries.AsNoTracking()
@@ -145,9 +149,9 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                     if (rows.Any(r => r.Status == "sent")) return "partial_delivery";
                     return rows.OrderByDescending(r => r.UpdatedUtc).First().Status;
                 }
-                var metaRows = meta.Where(m => m.WebsiteContentVersionId == version?.Id &&
-                    (CanonicalAdvertisingEventProjection.ReadInt64(m.MetadataJson, "sourceAnalyticsEventId") is { } id &&
-                     sources.Any(source => source.Id == id && source.AgentTrackingProfileId == m.AgentTrackingProfileId && source.CommerceBusinessId == m.CommerceBusinessId))).ToArray();
+                var metaPixel = stateOwner is not null && metaPixels.TryGetValue(stateOwner.Key, out var pixel) ? pixel : null;
+                var metaRows = meta.Where(m => sources.Any(source => MarketingDeliveryEvidencePolicy.MetaMatchesSource(m, source)) &&
+                    MarketingDeliveryEvidencePolicy.MetaMatchesDestination(m, metaPixel)).ToArray();
                 var conversion = behavior?.ConversionEventName;
                 var signal = MetaSignalAnalyticsAliasCatalog.ResolveSignalName(eventName);
                 result.Add(new(stateOwner?.Key ?? "unresolved", state.SiteKey, page, element, binding?.Id, label, action,
@@ -156,7 +160,8 @@ public sealed class WebsiteEventMapQuery(MasterAppDbContext db, IConfiguration c
                     MarketingConversionDestinationCatalog.ResolveMeta(conversion)?.EventName ?? signal,
                     MarketingConversionDestinationCatalog.ResolveOpenAi(conversion)?.EventName ?? (behavior?.Key == "page_view" ? OpenAiMeasurementEventNames.PageViewed : null),
                     version?.Id, version is null ? "not_published" : sources.Length > 0 ? "observed" : "not_observed",
-                    requiresReconciliation ? "requires_reconciliation" : metaRows.Length > 0 && metaRows.All(Infrastructure.Analytics.MarketingDeliveryEvidencePolicy.MetaProviderAccepted) ? "provider_accepted" : metaRows.Any(m => m.MetaServerSent) ? "partial_delivery" : metaRows.Any(m => CanonicalAdvertisingEventProjection.ReadString(m.MetadataJson, "metaServerStatus")?.StartsWith("blocked_") == true) ? "blocked" : metaRows.Length > 0 ? "projected" : Status("meta"), Status("openai"),
+                    requiresReconciliation ? "requires_reconciliation" : metaRows.Length > 0
+                        ? MarketingDeliveryEvidencePolicy.MetaDeliveryStatus(metaRows) : Status("meta"), Status("openai"),
                     binding?.Trigger ?? (automatic ? behavior?.AutomaticTrigger : "click") ?? "", version?.Revision ?? 0));
             }
             void Element(string page, string key, string? label, string? action, List<WebsiteSignalBinding> bindings)
