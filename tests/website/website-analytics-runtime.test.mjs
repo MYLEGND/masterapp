@@ -31,7 +31,7 @@ async function fixture({ device = true, founder = false, siteKey = 'legend', sel
     <div id="growthEconomicsModal"><div class="modal-body"><div id="growth-economics-grid"></div><div id="growth-economics-spend"></div></div></div>
     <div id="behaviorModal"><div class="modal-body"><span id="bhvr-total-sessions"></span></div></div>
     <div id="convModal"><div class="modal-body"><button class="traffic-type-btn" data-type="paid">Ads</button><span id="conv-total"></span><span id="conv-intent"></span><span id="conv-session"></span><span id="conv-intent-sub"></span></div></div>
-    ${store ? '<div id="quoteModal"><div class="modal-body"><div id="quoteModal-commerce"></div></div></div><div id="leadsModal"><div class="modal-body"><div id="leadsModal-commerce"></div></div></div><div id="convModal-commerce"></div>' : ''}
+    ${store ? '<span id="store-paid-orders"></span><span id="store-purchase-events"></span><span id="store-net-revenue"></span><span id="store-summary-status"></span><span id="store-paid-without-event"></span><span id="store-event-without-paid"></span><div id="quoteModal"><div class="modal-body"><div id="quoteModal-commerce"></div></div></div><div id="leadsModal"><div class="modal-body"><div id="leadsModal-commerce"></div></div></div><div id="convModal-commerce"></div>' : ''}
     <div id="advertisingCommandModal"><button id="advertising-command-refresh">Refresh</button><button id="advertising-command-promote">Promote</button><span id="advertising-command-status"></span><span id="advertising-command-connection"></span><span id="advertising-command-campaign-count"></span><span id="advertising-command-approval-count"></span><span id="advertising-command-audit-count"></span><div id="advertising-command-campaigns"></div><div id="advertising-command-proposals"></div></div>
     <textarea id="marketing-manager-goal">Find the next qualified lead</textarea><button id="marketing-manager-build"></button>
     <input type="hidden" name="__RequestVerificationToken" value="test-request-token" />
@@ -135,7 +135,7 @@ async function providerFixture({ url = 'https://portal.example.test/WebsiteAnaly
               <button type="button" id="marketing-setup-${provider}-select-account">Select account</button>
             </div>
             <div id="marketing-setup-${provider}-measurement">
-              <input data-external-mapping-provider="${provider}" data-canonical-event="LeadSubmitted">
+              ${['Lead', 'QualifiedLead', 'AppointmentBooked', 'AppointmentCompleted', 'ApplicationSubmitted', 'PolicyIssued', 'PolicyPaid', 'AddToCart', 'InitiateCheckout', 'Purchase'].map(event => `<input data-external-mapping-provider="${provider}" data-canonical-event="${event}">`).join('')}
               <button type="button" id="marketing-setup-${provider}-save-measurement">Save mapping</button>
             </div>
           </section>`).join('')}
@@ -1208,7 +1208,7 @@ for (const [modalId, expected] of [['quoteModal', 'Add to cart'], ['leadsModal',
       rangeLabel: 'Synthetic range', actions: [{ label: 'Add to cart', count: 2, uniqueSessions: 1, uniqueVisitors: 1, conversionRate: 50 }],
       topProducts: [{ productName: '<script>synthetic</script>', productViews: 3, unitsSold: 1, revenueCents: 1234 }],
       orders: [{ orderNumber: 'SYNTHETIC-ORDER', totalCents: 1234, netRevenueCents: 1234 }], events: [],
-      revenueCents: 1234, paidOrders: 1, averageOrderValueCents: 1234
+      revenueCents: 1234, paidOrders: 1, purchases: 1, averageOrderValueCents: 1234
     }), { headers: { 'content-type': 'application/json' } }) });
     try {
       f.window.document.getElementById(modalId).dispatchEvent(new f.window.Event('show.bs.modal'));
@@ -1217,9 +1217,70 @@ for (const [modalId, expected] of [['quoteModal', 'Add to cart'], ['leadsModal',
       assert.ok(content.textContent.includes(expected), content.textContent);
       assert.equal(content.querySelector('script'), null);
       const requests = f.calls.filter(x => new URL(x, f.window.location.href).pathname.endsWith('/commerce'));
-      assert.equal(requests.length, 1);
+      assert.equal(requests.length, 2);
       assert.equal(new URL(requests[0], f.window.location.href).searchParams.get('businessKey'), 'synthetic-store');
       assert.equal(f.calls.some(x => /\/(quote|conversions|leads)(\?|$)/.test(x)), false);
     } finally { await f.dispose(); }
   });
 }
+
+
+test('Store summary uses scoped orders and purchase evidence, never relabels leads as purchases', async () => {
+  let fail = false;
+  const f = await fixture({ store: true,
+    summaryHandler: async () => new Response(JSON.stringify({ isAvailable: true, verifiedLeads: 999, sessions: 20 })),
+    commerceHandler: async () => { if (fail) throw new Error('unavailable'); return new Response(JSON.stringify({ paidOrders: 3, purchases: 2, revenueCents: 4567, paidOrdersWithoutPurchaseEvent: 1, purchaseEventsWithoutPaidOrder: 0 })); }
+  });
+  try {
+    const doc = f.window.document;
+    assert.equal(doc.getElementById('store-paid-orders').textContent, '3');
+    assert.equal(doc.getElementById('store-purchase-events').textContent, '2');
+    assert.equal(doc.getElementById('store-paid-without-event').textContent, '1');
+    assert.equal(doc.getElementById('store-event-without-paid').textContent, '0');
+    assert.match(doc.getElementById('store-net-revenue').textContent, /45.67/);
+    fail = true;
+    doc.getElementById('analytics-refresh').click();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(doc.getElementById('store-paid-orders').textContent, '—');
+    assert.match(doc.getElementById('store-summary-status').textContent, /unavailable/);
+    assert.match(doc.getElementById('analytics-refresh-status').textContent, /Store order evidence unavailable/);
+    assert.doesNotMatch(doc.getElementById('analytics-refresh-status').textContent, /Refreshing/);
+  } finally { await f.dispose(); }
+});
+
+for (const failure of [false, true]) {
+  test(`Store ignores late prior-range commerce ${failure ? 'failure' : 'success'}`, async () => {
+    const pending = [];
+    const f = await fixture({ store: true, commerceHandler: () => new Promise((resolve, reject) => pending.push({ resolve, reject })) });
+    try {
+      f.window.document.querySelector('[data-range="7d"]').click();
+      await settle();
+      assert.equal(pending.length, 2);
+      if (failure) pending[0].reject(new Error('prior range failure'));
+      else pending[0].resolve(new Response(JSON.stringify({ paidOrders: 99, purchases: 99, revenueCents: 99 })));
+      await settle();
+      assert.notEqual(f.window.document.getElementById('store-paid-orders').textContent, '99');
+      pending[1].resolve(new Response(JSON.stringify({ paidOrders: 3, purchases: 2, revenueCents: 4567 })));
+      await settle();
+      assert.equal(f.window.document.getElementById('store-paid-orders').textContent, '3');
+    } finally { f.window.close(); }
+  });
+}
+
+
+test('mapping form reload and save preserves canonical inquiry and commerce destinations together', async () => {
+  const mappings = ['Lead', 'AddToCart', 'InitiateCheckout', 'Purchase', 'PolicyPaid'].map((canonicalEventName, i) => ({ canonicalEventName, providerEventName: canonicalEventName, destinationId: `customers/1111111111/conversionActions/${i + 1}` }));
+  const f = await providerFixture({ connected: true, setupHandler: (request, { snapshot, json }) => {
+    const data = snapshot(); data.google.measurementMappings = mappings; return json(data);
+  }, postHandler: (request, { snapshot, json }) => json(snapshot()) });
+  try {
+    f.open(); await f.flush();
+    f.window.document.getElementById('marketing-setup-google-save-measurement').click();
+    await f.flush();
+    const request = f.requests.find(x => x.method === 'POST' && x.url.includes('external-ads/measurement'));
+    assert.ok(request, f.requests.map(x => x.url).join('\n'));
+    const body = JSON.parse(request.body);
+    assert.equal(body.expectedRevision, 'google-revision');
+    assert.deepEqual(body.mappings.sort((a, b) => a.canonicalEventName.localeCompare(b.canonicalEventName)), mappings.sort((a, b) => a.canonicalEventName.localeCompare(b.canonicalEventName)));
+  } finally { f.dispose(); }
+});

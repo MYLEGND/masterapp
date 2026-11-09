@@ -750,6 +750,7 @@
   }
 
   function renderSummaryUnavailable(data, message = null, pending = false) {
+    if (isStoreAnalytics) renderStoreSummary(null, 'Order evidence unavailable');
     state.cache.summary = null;
     state.scope.scopeLabel = data?.scopeLabel || state.scope.scopeLabel || 'Global';
     [
@@ -785,6 +786,17 @@
     updateFounderScopeUi();
   }
 
+  function renderStoreSummary(data, message) {
+    const count = value => Number.isInteger(value) && value >= 0 ? value.toLocaleString() : '—';
+    setText('store-paid-orders', count(data?.paidOrders));
+    setText('store-purchase-events', count(data?.purchases));
+    setText('store-paid-without-event', count(data?.paidOrdersWithoutPurchaseEvent));
+    setText('store-event-without-paid', count(data?.purchaseEventsWithoutPaidOrder));
+    setText('store-net-revenue', Number.isFinite(data?.revenueCents)
+      ? (data.revenueCents / 100).toLocaleString(undefined, { style: 'currency', currency: 'USD' }) : '—');
+    setText('store-summary-status', message || 'Selected date range and quality filter; not merchant settlement');
+  }
+
   function renderSummary(data) {
     if (data?.isAvailable === false) {
       renderSummaryUnavailable(data);
@@ -792,6 +804,7 @@
     }
 
     state.cache.summary = data;
+    if (isStoreAnalytics) renderStoreSummary(null, 'Loading scoped order evidence…');
     state.scope.scopeLabel = data.scopeLabel || state.scope.scopeLabel || 'Global';
     setText('kpi-pageviews', data.pageViews);
     setText('kpi-visitors', data.uniqueVisitors);
@@ -3133,6 +3146,21 @@ function escapeHtml(value) {
         const data = await fetchJson('summary', endpoints.summary, params);
         if (!data || requestId !== summaryRequestId || scopeVersion !== analyticsScopeVersion) return false;
         renderSummary(data);
+        if (isStoreAnalytics && data.isAvailable !== false) {
+          try {
+            const commerce = await fetchJson('store-summary', analyticsEndpoint('/commerce'), params);
+            if (requestId !== summaryRequestId || scopeVersion !== analyticsScopeVersion) return false;
+            if (!Number.isInteger(commerce?.paidOrders) || !Number.isInteger(commerce?.purchases) || !Number.isFinite(commerce?.revenueCents)) {
+              renderStoreSummary(null, 'Order evidence unavailable. Refresh to retry.');
+              return false;
+            }
+            renderStoreSummary(commerce);
+          } catch (error) {
+            if (requestId !== summaryRequestId || scopeVersion !== analyticsScopeVersion) return false;
+            renderStoreSummary(null, 'Order evidence unavailable. Refresh to retry.');
+            return false;
+          }
+        }
         return data.isAvailable !== false;
       } catch (err) {
         if (requestId !== summaryRequestId || scopeVersion !== analyticsScopeVersion) return false;
@@ -3252,7 +3280,7 @@ function escapeHtml(value) {
       } else if (modalId === 'leadsModal') {
         html += table('Products', data.topProducts, [['Product', 'productName'], ['Views', 'productViews'], ['Units sold', 'unitsSold'], ['Recorded revenue', 'revenueCents', money]]);
       } else {
-        html += `<div class="row row-cols-1 row-cols-md-3 g-3"><div class="col"><h6>Recorded net order revenue</h6><strong>${money(data.revenueCents)}</strong></div><div class="col"><h6>Paid orders</h6><strong>${text(data.paidOrders)}</strong></div><div class="col"><h6>Average order value</h6><strong>${money(data.averageOrderValueCents)}</strong></div></div><p class="mt-3">Paid orders without purchase events: ${text(data.paidOrdersWithoutPurchaseEvent)} · Purchase events without paid orders: ${text(data.purchaseEventsWithoutPaidOrder)}. Order records and analytics events are separate evidence; these totals do not establish merchant settlement.</p>`;
+        html += `<div class="row row-cols-1 row-cols-md-3 g-3"><div class="col"><h6>Recorded net order revenue</h6><strong>${money(data.revenueCents)}</strong></div><div class="col"><h6>Paid orders (including refunded)</h6><strong>${text(data.paidOrders)}</strong></div><div class="col"><h6>Average order value</h6><strong>${money(data.averageOrderValueCents)}</strong></div></div><p class="mt-3">Paid orders without purchase events: ${text(data.paidOrdersWithoutPurchaseEvent)} · Purchase events without paid orders: ${text(data.purchaseEventsWithoutPaidOrder)}. Orders are selected by creation date; paid counts include subsequently refunded orders. Order records and analytics events are separate evidence; these totals do not establish merchant settlement.</p>`;
         html += table('Recent orders', data.orders, [['Order', 'orderNumber'], ['Created', 'createdUtc', value => text(new Date(value).toLocaleString())], ['Payment', 'paymentStatus'], ['Fulfillment', 'fulfillmentStatus'], ['Return', 'returnStatus'], ['Total', 'totalCents', money], ['Net revenue', 'netRevenueCents', money], ['Items', 'itemSummary']]);
         html += table('Recent Store events', data.events, [['When', 'eventUtc', value => text(new Date(value).toLocaleString())], ['Event', 'eventType'], ['Product', 'productName'], ['Quantity', 'quantity'], ['Order', 'orderNumber'], ['Source', 'source']]);
       }
@@ -4538,6 +4566,8 @@ function escapeHtml(value) {
       if (results[0].status === 'fulfilled' && results[0].value) {
         const time = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         setSummaryRefreshStatus(complete ? `Reports updated ${time}` : `Reports updated ${time} · Some reports are unavailable.`, !complete);
+      } else if (isStoreAnalytics && state.cache.summary?.isAvailable !== false && state.cache.summary) {
+        setSummaryRefreshStatus('Traffic updated · Store order evidence unavailable. Refresh to retry.', true);
       }
       return complete;
     })().finally(() => {
@@ -6073,7 +6103,7 @@ function escapeHtml(value) {
               ? { canonicalEventName, providerEventName: canonicalEventName, destinationId: value }
               : { canonicalEventName, providerEventName: value, destinationId: null };
           }).filter(Boolean);
-        if (!mappings.length) throw new Error('Map at least one canonical revenue outcome before saving.');
+        if (!mappings.length) throw new Error('Map at least one canonical event before saving.');
         const body = {
           provider,
           eventSourceId: provider === 'tiktok'

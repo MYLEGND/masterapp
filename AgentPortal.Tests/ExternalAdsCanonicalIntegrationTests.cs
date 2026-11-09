@@ -23,6 +23,45 @@ namespace AgentPortal.Tests;
 
 public sealed class ExternalAdsCanonicalIntegrationTests
 {
+    [Theory]
+    [InlineData("google", "founder")]
+    [InlineData("google", "agent")]
+    [InlineData("google", "business")]
+    [InlineData("tiktok", "founder")]
+    [InlineData("tiktok", "agent")]
+    [InlineData("tiktok", "business")]
+    public async Task CatalogMappingsRoundTripCommerceAndInquiryWithoutChangingCanonicalMeaning(string provider, string kind)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
+        var store = new MarketingConnectionStore(db, protector);
+        var owner = kind == "founder" ? MarketingOwnerScope.Founder : kind == "agent"
+            ? MarketingOwnerScope.Agent(Guid.NewGuid()) : MarketingOwnerScope.Business(Guid.NewGuid());
+        await store.SaveProviderCredentialAsync(owner, provider, "synthetic-token",
+            provider == "google" ? MarketingProviderAuthorizationMethods.GoogleOAuthRefreshToken : MarketingProviderAuthorizationMethods.TikTokOAuthAccessToken,
+            "{}", null, "1111111111", "Synthetic account");
+        var connection = await store.GetProviderConnectionAsync(owner, provider);
+        var mappings = MarketingConversionDestinationCatalog.Definitions
+            .Where(x => AnalyticsEventCatalog.RequiresServerAuthority(x.CanonicalEventName))
+            .Select((x, i) => new MarketingProviderEventMapping(x.CanonicalEventName,
+                provider == "google" ? x.CanonicalEventName : "provider_" + x.CanonicalEventName,
+                provider == "google" ? "customers/1111111111/conversionActions/" + (i + 1) : null)).ToArray();
+        var saved = await store.SaveProviderMeasurementConfigurationAsync(owner, new(provider,
+            provider == "google" ? null : "synthetic-source", provider == "google" ? "click" : "web",
+            mappings, connection.Revision, provider == "google" ? null : "synthetic-measurement-token"));
+        var reloaded = await store.GetProviderMeasurementConfigurationAsync(owner, provider);
+        Assert.True(reloaded.MappingReady);
+        Assert.Equal(mappings.OrderBy(x => x.CanonicalEventName), reloaded.Mappings.OrderBy(x => x.CanonicalEventName));
+        foreach (var canonical in new[] { "Lead", "AddToCart", "InitiateCheckout", "Purchase", "PolicyPaid" })
+            Assert.Single(reloaded.Mappings.Where(x => x.CanonicalEventName == canonical));
+        Assert.NotEqual(reloaded.Mappings.Single(x => x.CanonicalEventName == "Purchase").DestinationId ?? "Purchase",
+            reloaded.Mappings.Single(x => x.CanonicalEventName == "PolicyPaid").DestinationId ?? "PolicyPaid");
+        Assert.False((await store.GetProviderMeasurementConfigurationAsync(MarketingOwnerScope.Business(Guid.NewGuid()), provider)).MappingReady);
+        var resaved = await store.SaveProviderMeasurementConfigurationAsync(owner, new(provider,
+            reloaded.EventSourceId, reloaded.EventSourceType, reloaded.Mappings, saved.Revision));
+        Assert.Equal(mappings.OrderBy(x => x.CanonicalEventName), resaved.Mappings.OrderBy(x => x.CanonicalEventName));
+    }
+
     [Fact]
     public void ExternalAdsReportingUsesProviderAccountCalendarInsteadOfUtcCalendar()
     {
