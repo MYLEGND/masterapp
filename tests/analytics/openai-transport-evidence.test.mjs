@@ -50,3 +50,22 @@ test('Lead Snapshot renders authoritative delivery without converting missing ev
   assert.match(metaBadge({}), /Unverified/);
   assert.ok(!metaBadge({ serverCapiStatus: 'blocked_<script>' }).includes('<script>'));
 });
+
+const detailsStart = source.indexOf('  function openAiDeliveryDetails(');
+const detailsSource = source.slice(detailsStart, source.indexOf('  function metaTrackingBadge(', detailsStart));
+test('delivery details retain exact reason and retry identity without manufacturing scheduled retries', () => {
+  const context = {};
+  vm.runInNewContext(detailsSource, context);
+  const row = { canonicalEventId: 'lead-synthetic', status: 'blocked_human_evidence', errorCode: 'human_evidence_reviewed_needed',
+    analyticsEventId: 42, deliveryId: 'receipt', canonicalSource: 'AnalyticsEvent', attemptCount: 0, destinationBinding: 'current',
+    advertiserAccountId: 'account', conversionDataSourceId: 'source', pixelId: 'pixel' };
+  const text = context.openAiDeliveryDetails([row]);
+  assert.match(text, /blocked_human_evidence/);
+  assert.match(text, /human_evidence_reviewed_needed/);
+  assert.match(text, /Next retry not scheduled/);
+  assert.match(text, /Source AnalyticsEvent \/ 42/);
+  assert.match(context.openAiDeliveryDetails([{ ...row, nextAttemptUtc: '2026-11-09T23:00:00Z' }]), /2026-11-09T23:00:00Z/);
+  assert.equal(context.openAiDeliveryDetails(null), 'Delivery details unavailable');
+  assert.match(context.openAiDeliveryDetails([]), /No delivery receipts/);
+  assert.equal(context.openAiDeliveryDetails(Array.from({ length: 25 }, () => row)).split('Event lead-synthetic').length - 1, 20);
+});

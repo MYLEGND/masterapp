@@ -76,4 +76,12 @@ public sealed record OpenAiMeasurementHealthSnapshot(
     int RecentProviderEvents,
     string Status,
     int OtherDestinationReceipts = 0,
-    int OtherDestinationUnresolved = 0);
+    int OtherDestinationUnresolved = 0,
+    int BlockedDeliveries = 0,
+    IReadOnlyList<OpenAiDeliveryDiagnostic>? RecentDeliveries = null);
+
+public sealed record OpenAiDeliveryDiagnostic(
+    Guid DeliveryId, long? AnalyticsEventId, string CanonicalEventId, string CanonicalSource,
+    string Status, string? ErrorCode, int? HttpStatusCode, int AttemptCount,
+    DateTime? LastAttemptUtc, DateTime? NextAttemptUtc, DateTime? ClaimExpiresUtc,
+    string DestinationBinding, string? AdvertiserAccountId, string? ConversionDataSourceId, string? PixelId);

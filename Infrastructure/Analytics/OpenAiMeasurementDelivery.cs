@@ -600,7 +600,9 @@ public sealed class OpenAiMeasurementHealthService(
         var connection = await connections.GetAsync(owner, cancellationToken);
         var from = DateTime.UtcNow.AddDays(-30);
         var receipts = await db.Set<MarketingDestinationDelivery>().AsNoTracking()
-            .Where(row => row.OwnerKey == owner.Key && row.Provider == MarketingDestinationKeys.OpenAi && row.CreatedUtc >= from)
+            .Where(row => row.OwnerKey == owner.Key && row.Provider == MarketingDestinationKeys.OpenAi &&
+                row.Channel == "server" && row.AgentTrackingProfileId == owner.AgentTrackingProfileId &&
+                row.CommerceBusinessId == owner.CommerceBusinessId && row.CreatedUtc >= from)
             .ToListAsync(cancellationToken);
         var currentRows = receipts.Where(row => OpenAiConversionDispatcherHostedService.MatchesCurrentDestination(row, connection)).ToArray();
         var unbound = receipts.Where(row => row.AttemptCount == 0 && string.IsNullOrWhiteSpace(row.PixelId) &&
@@ -644,10 +646,10 @@ public sealed class OpenAiMeasurementHealthService(
             : !connection.PixelConfigured ? "pixel_not_configured"
             : string.IsNullOrWhiteSpace(connection.ConversionDataSourceId) ? "data_source_not_configured"
             : !connection.ConversionsApiConfigured ? "conversions_api_not_configured"
-            : rows.Any(x => x.Status.StartsWith("blocked_", StringComparison.Ordinal)) ? "delivery_blocked"
+            : rows.Any(MarketingDeliveryEvidencePolicy.IsBlocked) ? "delivery_blocked"
             : rows.Any(x => x.Status == "permanent_failure") ? "delivery_failures"
             : rows.Any(x => x.Status == "retryable") ? "retrying"
-            : currentRows.Any(x => x.Status == "sent" && x.LastHttpStatusCode >= 200 && x.LastHttpStatusCode < 300) ? "transport_acknowledged"
+            : currentRows.Any(MarketingDeliveryEvidencePolicy.HttpTransportAccepted) ? "transport_acknowledged"
             : "configured_no_delivery_evidence";
 
         return new(
@@ -656,15 +658,40 @@ public sealed class OpenAiMeasurementHealthService(
             connection.PixelConfigured,
             connection.ConversionsApiConfigured,
             connection.PixelId,
-            rows.Count(x => x.Status == "pending" || x.Status.StartsWith("blocked_", StringComparison.Ordinal)),
+            rows.Count(MarketingDeliveryEvidencePolicy.IsPending),
             rows.Count(x => x.Status == "retryable"),
             rows.Count(x => x.Status == "permanent_failure"),
-            rows.Count(x => x.Status == "sent"),
-            rows.Where(x => x.SentUtc.HasValue).Max(x => x.SentUtc),
+            rows.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted),
+            rows.Where(MarketingDeliveryEvidencePolicy.HttpTransportAccepted).Max(x => x.SentUtc),
             providerAvailable,
             recentProviderEvents,
             status,
             otherDestinations.Length,
-            otherDestinations.Count(row => row.Status != "sent" && row.Status != "permanent_failure"));
+            otherDestinations.Count(row => row.Status != "sent" && row.Status != "permanent_failure"),
+            rows.Count(MarketingDeliveryEvidencePolicy.IsBlocked),
+            receipts.OrderBy(row => row.Status == "sent" ? 1 : 0).ThenByDescending(row => row.UpdatedUtc)
+                .ThenBy(row => row.Id).Take(20).Select(row => new OpenAiDeliveryDiagnostic(
+                    row.Id, row.AnalyticsEventId, row.CanonicalEventId, row.CanonicalSource,
+                    row.Status == "sent" ? MarketingDeliveryEvidencePolicy.HttpTransportAccepted(row) ? "transport_acknowledged" : "receipt_unverified" : row.Status,
+                    DiagnosticErrorCode(row.ErrorCode), row.LastHttpStatusCode, row.AttemptCount,
+                    row.LastAttemptUtc, row.NextAttemptUtc, row.ClaimExpiresUtc,
+                    currentRows.Contains(row) ? "current" : unbound.Contains(row) ? "unbound" : "previous_or_unverified",
+                    row.AdvertiserAccountId, row.ConversionDataSourceId, row.PixelId)).ToArray());
     }
+
+    internal static string? DiagnosticErrorCode(string? code)
+    {
+        if (code is null) return null;
+        if (code is "pixel_id_required" or "conversions_api_key_required" or "conversion_event_invalid" or
+            "custom_event_name_required" or "openai_timeout" or "openai_network_error" or "provider_exception" or
+            "event_delivery_window_expired" or "destination_not_ready" or "historical_destination_binding_unverified" or
+            "destination_binding_changed" or "canonical_source_missing" or "production_outcome_requires_reconciliation" or
+            "session_evidence_limit_exceeded" or "measurement_consent_denied" or "measurement_consent_unavailable") return code;
+        if (code.StartsWith("openai_http_", StringComparison.Ordinal) &&
+            int.TryParse(code[12..], out var http) && http is >= 100 and <= 599) return "openai_http_" + http;
+        if (Enum.GetValues<TrafficQualityMode>().Any(mode =>
+            code == "human_evidence_" + TrafficQualityBucketFilters.ToClientValue(mode))) return code;
+        return "unrecognized_error_code";
+    }
+
 }

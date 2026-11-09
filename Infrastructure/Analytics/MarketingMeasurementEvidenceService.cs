@@ -9,7 +9,7 @@ using Shared.Analytics;
 namespace Infrastructure.Analytics;
 
 public sealed record ProviderMeasurementEvidence(int Attempted, int Accepted, int Pending, int Retrying,
-    int Failed, bool AttributionObserved, DateTime? LastSentUtc, string AcceptanceEvidence, int TransportAcknowledged = 0);
+    int Failed, bool AttributionObserved, DateTime? LastSentUtc, string AcceptanceEvidence, int TransportAcknowledged = 0, int Blocked = 0);
 public sealed record MarketingMeasurementEvidenceSnapshot(
     string OwnerKey,
     DateTime WindowFromUtc,
@@ -133,6 +133,11 @@ public static class MarketingDeliveryEvidencePolicy
             !(error.ValueKind == JsonValueKind.Object && !error.EnumerateObject().Any());
     }
 
+    public static bool IsBlocked(MarketingDestinationDelivery row) =>
+        row.Status.StartsWith("blocked_", StringComparison.Ordinal);
+
+    public static bool IsPending(MarketingDestinationDelivery row) => row.Status == "pending";
+
     public static bool HttpTransportAccepted(MarketingDestinationDelivery row) =>
         row.Status == "sent" && row.LastHttpStatusCode is >= 200 and < 300;
 }
@@ -182,23 +187,23 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
         var tiktokAccepted = tiktok.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted);
         return new(owner.Key, from, sources.Count > 0, sources.Select(e => (DateTime?)e.ReceivedUtc).Max(),
             new(meta.Count(MarketingDeliveryEvidencePolicy.MetaAttempted), metaAccepted,
-                meta.Count(m => !MarketingDeliveryEvidencePolicy.MetaAttempted(m) &&
-                    MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(m.EventName, m.MetadataJson)),
+                meta.Count(m => MarketingDeliveryEvidencePolicy.MetaDeliveryStatus(m) == "pending"),
                 meta.Count(MarketingDeliveryEvidencePolicy.MetaRetryable),
                 meta.Count(m => MarketingDeliveryEvidencePolicy.MetaAttempted(m) &&
                     !m.MetaServerSent && !MarketingDeliveryEvidencePolicy.MetaRetryable(m)),
                 sources.Any(e => !string.IsNullOrWhiteSpace(e.Fbclid) || !string.IsNullOrWhiteSpace(e.MetaCampaignId)),
                 meta.Where(MarketingDeliveryEvidencePolicy.MetaProviderAccepted)
                     .Select(MarketingDeliveryEvidencePolicy.MetaDispatchedUtc).Max(),
-                metaAccepted > 0 ? MarketingDeliveryEvidencePolicy.MetaAcceptanceEvidence : "not_observed"),
+                metaAccepted > 0 ? MarketingDeliveryEvidencePolicy.MetaAcceptanceEvidence : "not_observed",
+                Blocked: meta.Count(m => MarketingDeliveryEvidencePolicy.MetaDeliveryStatus(m).StartsWith("blocked_", StringComparison.Ordinal))),
             // No verified provider-acceptance contract is available; HTTP evidence remains transport-only.
             new(openAi.Count(r => r.AttemptCount > 0), 0,
-                openAi.Count(r => r.Status == "pending" || r.Status.StartsWith("blocked_", StringComparison.Ordinal)),
+                openAi.Count(MarketingDeliveryEvidencePolicy.IsPending),
                 openAi.Count(r => r.Status == "retryable"), openAi.Count(r => r.Status == "permanent_failure"),
                 sources.Any(e => OpenAiClickReference.Normalize(e.Oppref) is not null),
                 openAi.Where(MarketingDeliveryEvidencePolicy.HttpTransportAccepted).Select(r => r.SentUtc).Max(),
                 openAiTransportAcknowledged > 0 ? MarketingDeliveryEvidencePolicy.OpenAiAcceptanceEvidence : "not_observed",
-                TransportAcknowledged: openAiTransportAcknowledged),
+                TransportAcknowledged: openAiTransportAcknowledged, Blocked: openAi.Count(MarketingDeliveryEvidencePolicy.IsBlocked)),
             EvidenceForExternal(
                 google,
                 googleAccepted,
@@ -254,8 +259,7 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
         new(
             receipts.Count(row => row.AttemptCount > 0),
             accepted,
-            receipts.Count(row => row.Status == "pending" ||
-                row.Status.StartsWith("blocked_", StringComparison.Ordinal)),
+            receipts.Count(MarketingDeliveryEvidencePolicy.IsPending),
             receipts.Count(row => row.Status == "retryable"),
             receipts.Count(row => row.Status == "permanent_failure"),
             attributionObserved,
@@ -263,6 +267,7 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
                 .Select(row => row.SentUtc).Max(),
             accepted > 0 ? acceptanceEvidence :
                 mappingReady ? "not_observed" : "conversion_mapping_not_ready",
-            TransportAcknowledged: receipts.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted));
+            TransportAcknowledged: receipts.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted),
+            Blocked: receipts.Count(MarketingDeliveryEvidencePolicy.IsBlocked));
 
 }

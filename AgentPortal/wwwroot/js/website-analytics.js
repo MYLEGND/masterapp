@@ -1826,6 +1826,18 @@
     `;
   }
 
+  function openAiDeliveryDetails(rows) {
+    if (!Array.isArray(rows)) return 'Delivery details unavailable';
+    if (!rows.length) return 'No delivery receipts in this owner window';
+    return rows.slice(0, 20).map(row => [
+      `Event ${row.canonicalEventId || 'unverified'} · ${row.status || 'unknown'}`,
+      `Source ${row.canonicalSource || 'unverified'} / ${row.analyticsEventId ?? 'unlinked'} · Receipt ${row.deliveryId || 'unknown'}`,
+      `Reason ${row.errorCode || 'not recorded'} · HTTP ${row.httpStatusCode ?? 'not attempted'} · Attempts ${row.attemptCount ?? 0}`,
+      `Last attempt ${row.lastAttemptUtc || 'none'} · Next retry ${row.nextAttemptUtc || 'not scheduled'} · Claim expires ${row.claimExpiresUtc || 'none'}`,
+      `Destination ${row.destinationBinding || 'unverified'} · Account ${row.advertiserAccountId || 'unbound'} · Source ${row.conversionDataSourceId || 'unbound'} · Pixel ${row.pixelId || 'unbound'}`
+    ].join('\n')).join('\n\n');
+  }
+
   function metaTrackingBadge(metaTracking) {
     if (!metaTracking) {
       return '<span class="text-muted">—</span>';
@@ -5814,7 +5826,7 @@ function escapeHtml(value) {
         attribution: item.attributionObserved ? 'Reference observed' : 'Not observed' };
       Object.entries(values).forEach(([key, value]) => { const cell = row?.querySelector(`[data-evidence="${key}"]`); if (cell) cell.textContent = value; });
       const detail = document.getElementById(`marketing-setup-${provider}-receipt-evidence`);
-      if (detail) detail.textContent = (provider === 'openai' ? `Transport acknowledged: ${Number(item.transportAcknowledged || 0).toLocaleString()} · Provider acceptance unverified · ` : '') + `Receipt evidence: ${item.acceptanceEvidence || 'unavailable'} · Pending ${item.pending || 0} · Retrying ${item.retrying || 0} · Failed ${item.failed || 0}`;
+      if (detail) detail.textContent = (provider === 'openai' ? `Transport acknowledged: ${Number(item.transportAcknowledged || 0).toLocaleString()} · Provider acceptance unverified · ` : '') + `Receipt evidence: ${item.acceptanceEvidence || 'unavailable'} · Pending ${item.pending || 0} · Blocked ${item.blocked || 0} · Retrying ${item.retrying || 0} · Failed ${item.failed || 0}`;
     }
     renderEvidence('meta', marketing.metaAdsConnected, !!marketing.metaPixelId && marketing.metaCapiConfiguredSecurely);
     renderEvidence('openai', openAi.connected, openAi.pixelConfigured && openAi.conversionsApiConfigured && !!openAi.conversionDataSourceId);
@@ -5840,7 +5852,7 @@ function escapeHtml(value) {
           openAi.reviewStatus === 'rejected' || Number(openAiHealth.failed || 0) > 0) return 'critical';
       if (openAi.reviewStatus === 'in_review' || openAi.accountStatus !== 'active' ||
           openAiHealth.status === 'retrying' || !openAi.pixelConfigured || !openAi.conversionsApiConfigured ||
-          Number(openAiHealth.retrying || 0) > 0 || Number(openAiHealth.pending || 0) > 0) return 'warn';
+          Number(openAiHealth.retrying || 0) > 0 || Number(openAiHealth.pending || 0) > 0 || Number(openAiHealth.blocked || 0) > 0) return 'warn';
       return Number(payload.evidence?.openAi?.transportAcknowledged || 0) > 0 ? 'good' : 'neutral';
     };
     const openAiStatus = document.getElementById('marketing-setup-openai-account');
@@ -5876,8 +5888,10 @@ function escapeHtml(value) {
       : 'Not configured');
     setOpenAiText('marketing-setup-openai-health', (openAiHealth.status || 'unknown').replaceAll('_', ' ') +
       (openAiHealth.otherDestinationReceipts > 0 ? `; ${openAiHealth.otherDestinationReceipts} receipts for previous destinations (${openAiHealth.otherDestinationUnresolved || 0} unresolved)` : ''));
-    setOpenAiText('marketing-setup-openai-last-send', openAiHealth.lastSentUtc ? `Last sent ${new Date(openAiHealth.lastSentUtc).toLocaleString()}` : 'No successful delivery yet');
+    setOpenAiText('marketing-setup-openai-last-send', openAiHealth.lastSentUtc ? `Last transport acknowledgment ${new Date(openAiHealth.lastSentUtc).toLocaleString()}` : 'No transport acknowledgment verified');
     setOpenAiText('marketing-setup-openai-pending', Number(openAiHealth.pending || 0).toLocaleString());
+    setOpenAiText('marketing-setup-openai-blocked', Number(openAiHealth.blocked || 0).toLocaleString());
+    setOpenAiText('marketing-setup-openai-delivery-details', openAiDeliveryDetails(openAiHealth.recentDeliveries));
     setOpenAiText('marketing-setup-openai-retrying', Number(openAiHealth.retrying || 0).toLocaleString());
     setOpenAiText('marketing-setup-openai-failed', Number(openAiHealth.failed || 0).toLocaleString());
     setOpenAiText('marketing-setup-openai-sent', Number(openAiHealth.sent || 0).toLocaleString());
@@ -5894,6 +5908,7 @@ function escapeHtml(value) {
       openAi.conversionsApiConfigured ? 'good' : openAi.connected ? 'warn' : 'neutral');
     applySeverity(document.getElementById('marketing-setup-openai-health')?.closest('.marketing-setup-detail'), severityForOpenAi());
     applySeverity(document.getElementById('marketing-setup-openai-pending')?.parentElement, Number(openAiHealth.pending || 0) > 0 ? 'warn' : 'neutral');
+    applySeverity(document.getElementById('marketing-setup-openai-blocked')?.parentElement, Number(openAiHealth.blocked || 0) > 0 ? 'warn' : 'neutral');
     applySeverity(document.getElementById('marketing-setup-openai-retrying')?.parentElement, Number(openAiHealth.retrying || 0) > 0 ? 'warn' : 'neutral');
     applySeverity(document.getElementById('marketing-setup-openai-failed')?.parentElement, Number(openAiHealth.failed || 0) > 0 ? 'critical' : 'neutral');
     applySeverity(document.getElementById('marketing-setup-openai-sent')?.parentElement, Number(openAiHealth.sent || 0) > 0 ? 'good' : 'neutral');
@@ -5913,6 +5928,7 @@ function escapeHtml(value) {
         : openAi.measurementCapabilityStatus === 'provider_unavailable' ? 'Moderate · OpenAI measurement provisioning temporarily unavailable'
         : !openAi.pixelConfigured || !openAi.conversionsApiConfigured ? 'Moderate · measurement setup incomplete'
         : Number(openAiHealth.failed || 0) > 0 ? 'Critical · delivery failures'
+        : Number(openAiHealth.blocked || 0) > 0 ? 'Delivery blocked · inspect recorded reason'
         : Number(openAiHealth.retrying || 0) > 0 ? 'Moderate · retrying delivery'
         : Number(evidence.openAi?.transportAcknowledged || 0) > 0 ? 'Transport acknowledged · provider acceptance and downstream attribution unverified'
         : 'Configured connection · awaiting delivery evidence';
