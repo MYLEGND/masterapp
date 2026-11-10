@@ -17,6 +17,7 @@ using System.IO;
 using System.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
+Infrastructure.Diagnostics.LocalTestingHost.Configure(builder);
 Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
 
 // Enable app-level logs in Azure log stream so Meta CAPI send/skip/fail results are visible.
@@ -31,7 +32,7 @@ if (localWebsiteRequested && !builder.Environment.IsDevelopment())
     throw new InvalidOperationException("Local website bootstrap requires Development.");
 var keyVaultUri = builder.Configuration["KeyVault:Uri"]
     ?? "https://masterapp-kv-1221.vault.azure.net/";
-if (!localWebsiteRequested) builder.Configuration.AddAzureKeyVault(new Uri(keyVaultUri), new DefaultAzureCredential(),
+if (!localWebsiteRequested && !builder.Configuration.GetValue<bool>("LocalTesting:Enabled")) builder.Configuration.AddAzureKeyVault(new Uri(keyVaultUri), new DefaultAzureCredential(),
     new ProtectWebsite.Services.Configuration.ProtectKeyVaultSecretManager(builder.Environment.IsDevelopment()));
 
 // 🔹 MVC
@@ -141,12 +142,7 @@ if (string.IsNullOrWhiteSpace(connString))
 }
 
 
-if (builder.Environment.IsDevelopment() &&
-    IsSqlServerConn(connString))
-{
-    throw new InvalidOperationException(
-        "Refusing to run Protect-Website in Development against SQL Server. Configure ConnectionStrings:MasterAppDb to use local SQLite.");
-}
+Infrastructure.Data.LocalDevelopmentDatabase.ValidateTarget(builder.Environment, connString, builder.Configuration.GetValue<bool>("LocalWebsite:Capture"));
 
 if (IsSqlServerConn(connString))
 {
@@ -156,7 +152,8 @@ if (IsSqlServerConn(connString))
 else
 {
     builder.Services.AddDbContext<Infrastructure.Data.MasterAppDbContext>(opts =>
-        opts.UseSqlite(connString));
+        opts.UseSqlite(builder.Configuration.GetValue<bool>("LocalWebsite:Capture") ? connString :
+            Infrastructure.Data.LocalDevelopmentDatabase.ExistingSqliteConnection(connString)));
 }
 
 Infrastructure.Leads.WebsiteLeadServiceRegistration.AddWebsiteLeadNotificationTransport(builder.Services);
@@ -216,7 +213,15 @@ if (localWebsiteCapture || !string.IsNullOrWhiteSpace(localWebsiteDocument))
     builder.WebHost.UseUrls("https://localhost:1113");
 }
 
+Infrastructure.Diagnostics.LocalTestingHost.Prepare(builder);
 var app = builder.Build();
+if (app.Environment.IsDevelopment() && IsSqlServerConn(connString))
+{
+    using var localScope = app.Services.CreateScope();
+    await Infrastructure.Data.LocalDevelopmentDatabase.RequireReadyAsync(
+        localScope.ServiceProvider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(), app.Lifetime.ApplicationStopping);
+}
+
 if (localWebsiteCapture)
     app.Use(async (context, next) =>
     {
@@ -227,7 +232,7 @@ if (localWebsiteCapture)
         await next();
     });
 
-if (!IsSqlServerConn(connString))
+if (!IsSqlServerConn(connString) && localWebsiteCapture)
 {
     using var scope = app.Services.CreateScope();
     var startupLogger = scope.ServiceProvider

@@ -4834,3 +4834,53 @@ Successful Azure deployment IDs: `portal: a42aa3253ec7400781de7cc6a5942a60`, `cl
 Reconciliation supersedes the earlier no-upload statement: before this final release, Portal already had successful upload `a84b1cdfd2714214a38e0ad8b77a0b8c` of `9436e3782daa702e51369fe5fd17d5e8505f6f3a`, but startup was blocked by the two missing migrations. Exact installed identity was independently reviewed as degraded, never falsely marked healthy. The final release restored healthy Portal startup. Read-only Azure query failures interrupted stop/start tails; reviewed recovery continued only unattempted targets. Client and Protect remote uploads succeeded while their local CLI waits hung; exact deployed assembly hashes and terminal journals were reconciled, actual interrupted CLI exit 143 preserved, and neither upload replayed. Remaining uploads used async submission with mandatory terminal-success checks.
 
 Detailed local receipts remain under `AgentPortal/App_Data/release-resume-20261109/`. No application configuration, DNS or existing notification cutoff was changed. Rendered visual acceptance was explicitly deferred by Founder until after deployment; browser host remains unavailable, so visual acceptance and authenticated customer journeys are not claimed. Source synchronization into `Legend/fast-track-release` must use the existing source-integration-only request and preserve this deployed revision, without a second production publish.
+
+### Single Mac checkout and persistent synthetic testing — 2026-11-10
+
+Founder authorized retiring competing checkout paths and keeping one source intake
+flow. Founder clarified that fixes must be tested against a persistent local test
+database, never production/customer data. Baseline and verified GitHub heads:
+`8a024d55d6c3eaa7836b17732b78da06e3250225` (fast-track and current isolation branch).
+The previous release synchronized through PR769; its source-only workflow
+42793182482 succeeded with publishing skipped. This cleanup does not redeploy it.
+
+Implemented the host-local canonical checkout pin and explicit source intake in the
+existing sync owner; all four launchers now use `scripts/db.sh local run <app>`.
+Normal startup cannot create/migrate a replacement database or choose remote SQL.
+The former automatic source-sync and production SQL firewall jobs are unloaded,
+with verified private backups. Eleven remaining alternate worktrees were archived
+including dirty/ignored files, byte-verified, then removed; all registered heads
+were retained in recovery refs and a verified Git bundle. Only
+`/Users/zacowen/MASTERAPP` remains registered. Recovery archives are private under
+`~/.codex/legend-mac/recovery/retired-checkouts-20261110/`; no customer records were
+deleted. Historical release receipts remain recovery evidence, not active source.
+
+Persistent test SQL is `MasterAppLocalTest`, named Docker volume/container
+`legend-masterapp-local-test`, loopback127.0.0.1:14339. Private identity/config lives
+outside Git under `~/.local/share/legend/masterapp-local-test/`. A real stop/start
+preserved its identity and synthetic row. No production data was imported. Source
+EF model bootstrap and migration metadata initialization are explicitly NOT proof
+of production migration rehearsal. Production schema extraction was denied by
+Azure's firewall; that restriction was not changed or bypassed. Current initialization
+uses repository model metadata only and never obtains production credentials.
+
+Validation: nine LocalDevelopmentDatabase/LocalTestingHost tests passed; three
+local database Python tests passed. The79 continuity tests passed in two execution
+slices:70 under the normal sandbox and the remaining9 recovery tests with permission
+to create their required home-directory temporary fixture. Mac /var host symlink
+resolution and mixed-case synthetic Git ref portability were corrected. Earlier
+focused Parfait tests passed after supplying the real repository fixture root.
+
+Local startup proof: Portal health and Parfait root returned200 using persistent
+synthetic SQL. Protect starts against that SQL but its root returns503 because no
+synthetic published website is configured. ClientApp correctly blocks without a
+Microsoft sign-in secret; production user secrets are excluded. Dedicated test app
+identity/configuration was requested from Founder. No authenticated end-to-end or
+rendered visual acceptance is claimed. Test data scenarios and test identity setup
+remain required before those journeys can be accepted for future releases. Three
+launched app processes were stopped after initial checks; the owned Protect recheck
+will be stopped before final preservation. Database remains persistent.
+
+Updated existing sync documentation, root operating contract and host workspace map.
+Independent final acceptance, exact cleanup commit preservation and protected
+source-only fast-track incorporation remain pending at this checkpoint.

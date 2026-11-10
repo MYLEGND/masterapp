@@ -44,6 +44,7 @@ using Shared.Diagnostics;
 using Shared.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
+Infrastructure.Diagnostics.LocalTestingHost.Configure(builder);
 Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
 Infrastructure.Reception.ReceptionistServiceRegistration.AddReceptionistRuntime(builder.Services);
 Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingBackgroundWorkers(builder.Services, builder.Configuration);
@@ -417,6 +418,7 @@ static string? ResolveMasterDb(IConfiguration config)
 }
 
 var configuredDb = ResolveMasterDb(builder.Configuration);
+Infrastructure.Data.LocalDevelopmentDatabase.ValidateTarget(builder.Environment, configuredDb);
 
 if (!IsSqlServerConn(configuredDb))
 {
@@ -743,6 +745,7 @@ builder.Services.TryAddScoped<Infrastructure.Businesses.CommerceBusinessScopeRes
 builder.Services.TryAddScoped<ParfaitApp.Services.ParfaitBusinessScopeService>();
 builder.Services.TryAddScoped<Infrastructure.WebsiteEditing.WebsiteDomainService>();
 
+Infrastructure.Diagnostics.LocalTestingHost.Prepare(builder);
 var app = builder.Build();
 await app.Services
     .GetRequiredService<MigrationHealthHostedService>()
@@ -752,23 +755,7 @@ var oidcCallbackPathForDiagnostics = builder.Configuration["AzureAd:CallbackPath
 if (string.IsNullOrWhiteSpace(oidcCallbackPathForDiagnostics))
     oidcCallbackPathForDiagnostics = "/signin-oidc";
 
-if (builder.Configuration.GetValue<bool>("Database:RunMigrationsOnStartup"))
-{
-    using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
-
-    try
-    {
-        db.Database.Migrate();
-        Console.WriteLine("SUCCESS: Production migrations applied.");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"FAILED applying migrations: {ex}");
-        throw;
-    }
-}
-
+// Database preparation belongs to the explicit database workflow, never application startup.
 
 // Hard-stop on unapplied migrations in strict environments to prevent schema drift reaching prod.
 if (strictMigrations && !builder.Environment.IsDevelopment())

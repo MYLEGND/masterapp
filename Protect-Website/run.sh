@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-cd "$(dirname "$0")"
-dotnet run --project ProtectWebsite.csproj -c Debug
+cd "$(dirname "$0")/.."
+exec bash scripts/db.sh local run protect

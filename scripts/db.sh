@@ -10,6 +10,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
+# Persistent app testing is an explicit mode of this existing database owner.
+if [[ "${1:-}" == "local" ]]; then
+    shift
+    exec python3 "$SCRIPT_DIR/local-test-database.py" "$@"
+fi
+
 readonly EF_PROJECT="Infrastructure/Infrastructure.csproj"
 readonly STARTUP_PROJECT="AgentPortal/AgentPortal.csproj"
 readonly DB_CONTEXT="MasterAppDbContext"
