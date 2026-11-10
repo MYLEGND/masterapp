@@ -4948,3 +4948,10 @@ ordinary editing at desktop/mobile sizes, using synthetic local data. No prior v
 waiver applies. No production app was stopped, migrated or deployed for this repair.
 Independent exact-source acceptance, protected source integration, release admission
 and eventual stop/deploy/restart/live verification remain to be completed or recorded.
+
+Independent review accepted the exact eleven-path repair for source preservation.
+Implementation and evidence are preserved on the remote task branch at
+`723e27e7bb25fda2bee5e64fe0d81c34a4498143`; remote readback verified.
+The current source-only request binds that implementation to baseline29181 above,
+with validate-only mode and no publication targets. This is not production admission.
+Protected fast-track integration and rendered acceptance remain pending.
