@@ -737,8 +737,15 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
     /// foundation to articulate it. This capability assertion intentionally
     /// fails when remote compute is unconfigured; it has no scripted answer.
     /// </summary>
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
+    public Task ReplyAsync_NativeOnly_AdmittedRequest_ServesSymbolicAnswerWithDormantModelAndNoExternalClient() => VerifyAdmittedNativeIsolationAsync(includeServing: true);
+
     [Fact]
-    public async Task ReplyAsync_NativeOnly_AdmittedRequest_ServesSymbolicAnswerWithDormantModelAndNoExternalClient()
+    public Task AdmittedNativeInference_KeepsPromotedModelDormantAndReachesNoExternalProvider()
+        => VerifyAdmittedNativeIsolationAsync(includeServing: false);
+
+    private async Task VerifyAdmittedNativeIsolationAsync(bool includeServing)
     {
         using var founderEnvironment = new FounderEnvironmentScope(FounderId);
         await using var scope = BuildProductionEquivalentScope();
@@ -764,6 +771,8 @@ public sealed class LegendFounderAiNativeOnlyProviderIsolationTests
             "native_only_external_model_inference_forbidden",
             inference.ModelAssistance?.ReasonCode);
         Assert.Null(inference.ModelAssistance?.ModelVersion);
+        AssertNoExternalProviderWasReached(scope.External, "Native-only admitted inference prohibits external providers.");
+        if (!includeServing) return;
 
         var response = await scope.Resolve<LegendFounderAiConversationService>()
             .ReplyAsync(

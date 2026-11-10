@@ -30,6 +30,7 @@ using Xunit;
 
 namespace AgentPortal.Tests;
 
+[Collection("LegendConnectFounderEnvironment")]
 public sealed partial class ReceptionistOperatorTests
 {
     [Fact]

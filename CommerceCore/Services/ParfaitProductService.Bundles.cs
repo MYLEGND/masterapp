@@ -156,6 +156,18 @@ public sealed partial class ParfaitProductService
         IReadOnlyList<ParfaitValidatedCartItem> items)
     {
         var demand = SumRequirements(items);
+        // Pre-snapshot orders retain their saved loose-product/size identity.
+        // Resolve that original demand before reacquiring a released legacy hold.
+        foreach (var item in items.Where(item => item.InventoryRequirementsJson is null))
+        {
+            var variant = db.CommerceProductInventoryItems.AsNoTracking()
+                .Where(row => row.CommerceProduct!.CommerceBusinessId == businessId
+                    && row.CommerceProduct.ExternalProductKey == item.Id && row.Size == item.Size)
+                .Select(row => (Guid?)row.Id).SingleOrDefault();
+            if (variant is null)
+                throw new StoreInventoryException("The saved item is no longer available. Review your cart before paying.");
+            demand[variant.Value] = checked(demand.GetValueOrDefault(variant.Value) + item.Quantity);
+        }
         var reserved = ReadReservedInventory(db, businessId, orderId);
         var ids = demand.Keys.ToArray();
         var stock = db.CommerceProductInventoryItems.AsNoTracking()

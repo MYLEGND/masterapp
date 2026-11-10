@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
@@ -108,7 +109,7 @@ public sealed class SquareEmbeddedCheckoutTests
     [Fact]
     public async Task AttemptOnlyRecoveryUsesPreparedSnapshotAndNeverPreparesAnotherOrder()
     {
-        using var f = new ServiceFixture();
+        using var f = new ServiceFixture(new RejectFirstClaimSave());
         f.Db.CommerceBusinesses.Add(new() { Id = f.Business, Key = "parfait", DisplayName = "Parfait", IsActive = true, Status = "Active" });
         var order = await f.Db.CommerceOrders.SingleAsync(); order.CheckoutAttemptId = "opaque-recovery";
         (await f.Db.CommerceMerchantConnections.SingleAsync()).ReadinessJson = JsonSerializer.Serialize(new MerchantReadiness(true, true, new[] { "USD" }, new[] { "card" }, new[] { "location" }));
@@ -142,6 +143,21 @@ public sealed class SquareEmbeddedCheckoutTests
         Assert.Equal(0, f.Handler.Orders); Assert.Equal(0, f.Handler.Payments);
         var request = new ParfaitApp.Models.ParfaitCheckoutPayRequest { CheckoutAttemptId = "opaque-recovery", SourceId = "card-token", MerchantConnectionRevision = f.Revision,
             Customer = new() { Email = "changed@example.test" }, Items = [new() { Id = "different-current-cart", Quantity = 100 }] };
+        request.SourceId = null;
+        Assert.IsType<Microsoft.AspNetCore.Mvc.ConflictObjectResult>(await controller.Pay(request, default));
+        Assert.False((await f.Db.CommerceOrders.AsNoTracking().SingleAsync()).IsPaymentProcessing);
+        Assert.Empty(f.Db.CommercePaymentAttempts);
+        request.SourceId = "card-token";
+        f.Handler.Loss = "readiness";
+        Assert.Equal(503, Assert.IsType<Microsoft.AspNetCore.Mvc.ObjectResult>(await controller.Pay(request, default)).StatusCode);
+        Assert.False((await f.Db.CommerceOrders.AsNoTracking().SingleAsync()).IsPaymentProcessing);
+        Assert.Empty(f.Db.CommercePaymentAttempts);
+        Assert.Equal(0, f.Handler.Payments);
+        f.Handler.Loss = null;
+        await Assert.ThrowsAsync<DbUpdateException>(() => controller.Pay(request, default));
+        Assert.False((await f.Db.CommerceOrders.AsNoTracking().SingleAsync()).IsPaymentProcessing);
+        Assert.Empty(f.Db.CommercePaymentAttempts);
+        Assert.Equal(0, f.Handler.Payments);
         Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.Pay(request, default));
         Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.MerchantReturn(null, null, "opaque-recovery", default));
         Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await controller.Pay(request, default));
@@ -151,17 +167,35 @@ public sealed class SquareEmbeddedCheckoutTests
         Assert.Equal("buyer@example.test", (await f.Db.CommerceOrders.SingleAsync()).Email);
     }
 
+    private sealed class RejectFirstClaimSave : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        private bool _failed;
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (!_failed && eventData.Context!.ChangeTracker.Entries<Domain.Entities.CommercePaymentAttempt>()
+                .Any(entry => entry.State == EntityState.Added))
+            {
+                _failed = true;
+                throw new DbUpdateException("Synthetic failure before the payment claim is committed.");
+            }
+            return ValueTask.FromResult(result);
+        }
+    }
+
     private sealed class ServiceFixture : IDisposable
     {
         public readonly Guid Business = Guid.NewGuid(), Order = Guid.NewGuid(), Revision = Guid.NewGuid();
         public readonly Handler Handler = new();
         public readonly Infrastructure.Data.MasterAppDbContext Db;
         public readonly MerchantCheckoutService Checkout;
-        public ServiceFixture()
+        public ServiceFixture(Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor? interceptor = null)
         {
             var options = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<Infrastructure.Data.MasterAppDbContext>()
-                .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-            Db = new(options); var id = Guid.NewGuid();
+                .UseInMemoryDatabase(Guid.NewGuid().ToString());
+            if (interceptor is not null) options.EnableServiceProviderCaching(false).AddInterceptors(interceptor);
+            Db = new(options.Options); var id = Guid.NewGuid();
             var protection = new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider();
             var encrypted = protection.CreateProtector("Legend.Merchant.Credential.v1", id.ToString("N"), Business.ToString("N"), "Square", "Sandbox")
                 .Protect(JsonSerializer.Serialize(Account.Credential));
@@ -192,6 +226,7 @@ public sealed class SquareEmbeddedCheckoutTests
             Calls++; Assert.Equal("connect.squareupsandbox.com", request.RequestUri!.Host);
             Assert.Equal("private-test-token", request.Headers.Authorization?.Parameter);
             var path = request.RequestUri.AbsolutePath;
+            if (path == "/v2/merchants/merchant" && Loss == "readiness") throw new HttpRequestException("synthetic readiness failure");
             if (path == "/v2/merchants/merchant") return Reply(new { merchant = new { id = "merchant", status = "ACTIVE" } });
             if (path == "/v2/locations") return Reply(new { locations = new[] { new { id = "location", merchant_id = "merchant", status = "ACTIVE", currency = "USD", capabilities = new[] { "CREDIT_CARD_PROCESSING", "AUTOMATIC_TRANSFERS" } } } });
             if (path == "/v2/orders/search") return Reply(new { orders = new[] { new { id = "order", reference_id = "PF-TEST", metadata = OrderBody.GetProperty("order").GetProperty("metadata") } } });

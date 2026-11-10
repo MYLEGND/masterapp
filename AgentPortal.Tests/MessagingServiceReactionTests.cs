@@ -8,6 +8,7 @@ using Infrastructure.Messaging;
 using Infrastructure.Moderation;
 using Infrastructure.Notifications;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Microsoft.Data.Sqlite;
@@ -155,9 +156,12 @@ public sealed partial class MessagingServiceTests
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
         var fault = new ReactionCommitFault { FailAfterCommit = failAfterCommit };
+        // This fixture owns its specialized retry services and disposes them;
+        // it must not depend on the process-wide EF provider-cache population.
+        await using var provider = new ServiceCollection().AddEntityFrameworkSqlite()
+            .AddScoped<IExecutionStrategyFactory, ReactionRetryStrategyFactory>().BuildServiceProvider();
         await using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>()
-            .UseSqlite(connection).ReplaceService<IExecutionStrategyFactory, ReactionRetryStrategyFactory>()
-            .AddInterceptors(fault).Options);
+            .UseSqlite(connection).UseInternalServiceProvider(provider).AddInterceptors(fault).Options);
         await db.Database.EnsureCreatedAsync();
         await SeedAgentAndClientAsync(db, linkClientToAgent: true, grantClientToAgent: false);
         var service = CreateService(db);

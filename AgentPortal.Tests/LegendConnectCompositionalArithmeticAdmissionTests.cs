@@ -20,7 +20,8 @@ namespace AgentPortal.Tests;
 [Collection("LegendConnectFounderEnvironment")]
 public sealed class LegendConnectCompositionalArithmeticAdmissionTests
 {
-    [Fact]
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     public async Task AdmittedMeasurements_BindThreeInputsAndExecuteTwoArithmeticStepsNatively()
     {
         var priorFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");

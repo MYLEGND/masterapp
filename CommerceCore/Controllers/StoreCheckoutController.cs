@@ -219,8 +219,19 @@ public sealed class StoreCheckoutController : Controller
             }
             if (merchantAttempt is null && _orders.HasProcessorPayment(store.CommerceBusinessId, prepared.CommerceOrderId))
                 return PaymentPending(prepared.OrderNumber); // Legacy receipts never become merchant charges.
-            if (merchantAttempt is not null || prepared.IsPaymentProcessing)
-                return await BeginMerchantAsync(store, prepared, request.SourceId, request.MerchantConnectionRevision, ct);
+            if (merchantAttempt is null)
+            {
+                try { prepared = _orders.ResumeCheckoutPayment(store.CommerceBusinessId, prepared.CommerceOrderId); }
+                catch (StoreInventoryException ex)
+                {
+                    return Conflict(new ParfaitCheckoutPayResponse { Success = false, Error = ex.Message });
+                }
+                catch (MerchantPaymentException)
+                {
+                    return Conflict(new ParfaitCheckoutPayResponse { Success = false, Error = "This order is no longer payable." });
+                }
+            }
+            return await BeginMerchantAsync(store, prepared, request.SourceId, request.MerchantConnectionRevision, ct);
         }
 
         var validationError = ValidateCustomer(request.Customer);
@@ -411,7 +422,11 @@ public sealed class StoreCheckoutController : Controller
 
     private async Task<IActionResult> BeginMerchantAsync(CommerceStoreContext store, ParfaitOrderRecord order, string? sourceToken, Guid? connectionRevision, CancellationToken ct)
     {
-        if (_merchantCheckout is null) return StatusCode(503, new { success = false, error = "Merchant payments are unavailable." });
+        if (_merchantCheckout is null)
+        {
+            _orders.ReleaseUnclaimedCheckoutPayment(store.CommerceBusinessId, order.CommerceOrderId);
+            return StatusCode(503, new { success = false, error = "Merchant payments are unavailable." });
+        }
         try
         {
             var returnPath = $"{store.CheckoutPath}/return?orderNumber={Uri.EscapeDataString(order.OrderNumber)}&attempt={Uri.EscapeDataString(order.CheckoutAttemptId!)}";
@@ -446,11 +461,18 @@ public sealed class StoreCheckoutController : Controller
         }
         catch (MerchantPaymentException ex) when (ex.Message == "PAYMENT_FORM_CHANGED")
         {
+            _orders.ReleaseUnclaimedCheckoutPayment(store.CommerceBusinessId, order.CommerceOrderId);
             return Conflict(new { success = false, error = "Payment setup changed. Refresh this page before trying again." });
         }
         catch (MerchantPaymentException)
         {
+            _orders.ReleaseUnclaimedCheckoutPayment(store.CommerceBusinessId, order.CommerceOrderId);
             return StatusCode(503, new { success = false, error = "Payments are unavailable or verification is pending. Please retry this checkout later." });
+        }
+        catch
+        {
+            _orders.ReleaseUnclaimedCheckoutPayment(store.CommerceBusinessId, order.CommerceOrderId);
+            throw;
         }
     }
 

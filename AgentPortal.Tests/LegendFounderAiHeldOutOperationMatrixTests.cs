@@ -43,7 +43,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     /// bird; no Wren mortality conclusion, request/answer pair, or expected
     /// reply is admitted. The Robin/Lark/Swift facts supply the reusable rule.
     /// </summary>
-    [Theory]
+    [LegacyControlledFoundationTheory]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     [InlineData("Wren bird.")]
     [InlineData("Bird Wren.")]
     public async Task AdmittedDeduction_RecombinesAHeldOutSubjectAndProducesAnOriginalNativeAnswer(
@@ -214,8 +215,15 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     /// provider-enabled control must preserve it, while genuinely unknown
     /// source meaning remains eligible for the configured teacher boundary.
     /// </summary>
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
+    public Task AdmittedConflictingTransitions_DoNotEscalateWhileUnknownSourceRemainsEligible() => VerifyConflictEscalationAsync(includeServing: true);
+
     [Fact]
-    public async Task AdmittedConflictingTransitions_DoNotEscalateWhileUnknownSourceRemainsEligible()
+    public Task NativeConflictRefusesEscalationAndUnknownSourceRemainsEligible()
+        => VerifyConflictEscalationAsync(includeServing: false);
+
+    private async Task VerifyConflictEscalationAsync(bool includeServing)
     {
         using var environment = new FounderEnvironmentScope();
         await LegendFounderAiNativeOnlyProviderIsolationTests.WithProductionAuthorityAsync(
@@ -240,6 +248,14 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 Assert.Equal("ambiguous_semantic_transition", conflict.ReasonCode);
                 Assert.False(conflict.RequiresEscalation);
                 Assert.Null(conflict.Answer);
+                var unknown = await operations.TryInferConversationWithDiscourseAsync(
+                    "Describe the ultraviolet topography of an uncharted moon.", [],
+                    new LegendConnectDiscourseStateSnapshot([]), CancellationToken.None,
+                    "en", LegendConnectExternalProviderPolicy.ProviderEnabled);
+                Assert.False(unknown.Supported);
+                Assert.True(unknown.RequiresEscalation, unknown.ReasonCode);
+                Assert.Equal((0, 0), externalCounts());
+                if (!includeServing) return;
                 var response = await services.GetRequiredService<LegendFounderAiConversationService>().ReplyAsync(
                     founder, new LegendFounderAiChatRequest
                     {
@@ -278,13 +294,6 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
                 Assert.DoesNotMatch(@"(?i)(?:^|[.!?]\s+)(?:the\s+)?(?:gate|it)\s+(?:is|must\s+be|has\s+to\s+be)\s+(?:open|closed)\b", response.Message!);
                 Assert.Equal((0, 0), responseExternalCounts);
 
-                var unknown = await operations.TryInferConversationWithDiscourseAsync(
-                    "Describe the ultraviolet topography of an uncharted moon.", [],
-                    new LegendConnectDiscourseStateSnapshot([]), CancellationToken.None,
-                    "en", LegendConnectExternalProviderPolicy.ProviderEnabled);
-                Assert.False(unknown.Supported);
-                Assert.True(unknown.RequiresEscalation, unknown.ReasonCode);
-                Assert.Equal((0, 0), externalCounts());
             });
     }
 
@@ -613,7 +622,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     /// authority, carry every required semantic element of the correct answer,
     /// carry non-provider provenance, and prove the absolute native boundary.
     /// </summary>
-    [Theory]
+    [LegacyControlledFoundationTheory]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     [MemberData(nameof(NativeCapabilityCases))]
     public async Task NativeOnlyCapability_ProducesTheCorrectAnswerUnderLegendAuthority(
         string category,
@@ -635,7 +645,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             Assert.Contains("legend_client_lead_portfolio", row.ToolCalls);
     }
 
-    [Fact]
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     public async Task NativeCalculator_UsesExactExecutorWithoutOrganizationalReads()
     {
         var row = await RunAsync("native_calculator:fraction_comparison",
@@ -656,6 +667,19 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         var normalized = answer.ToLowerInvariant().Replace('’', '\'').Replace("*", "");
         switch (category)
         {
+            case "arithmetic":
+                // Flagging changes a subset, not the number of open tickets.
+                // Intermediate 29 and 30 unflagged are valid; 30 open is not.
+                Assert.Matches(@"\b34\s+(?:(?:tickets?\s+)?(?:are\s+)?(?:still\s+)?open|open\s+tickets?)\b|\b(?:open tickets|tickets still open)\s*[:=]\s*34\b", normalized);
+                Assert.DoesNotMatch(@"\b30\s+(?:(?:tickets?\s+)?(?:are\s+)?(?:still\s+)?open|open\s+tickets?)\b|\b(?:open tickets|tickets still open)\s*[:=]\s*30\b", normalized);
+                var finalMarker = normalized.LastIndexOf("final answer", StringComparison.Ordinal);
+                if (finalMarker >= 0)
+                {
+                    foreach (Match claim in Regex.Matches(normalized[finalMarker..],
+                        @"\b(?<count>\d+)\s+(?:(?:tickets?\s+)?(?:are\s+)?(?:still\s+)?open|open\s+tickets?)\b|\b(?:open tickets|tickets still open)\s*[:=]\s*(?<count>\d+)\b"))
+                        Assert.Equal(34, int.Parse(claim.Groups["count"].Value));
+                }
+                break;
             case "rewriting":
                 Assert.Contains("proof of payment", normalized);
                 Assert.Matches(@"(?:not|none|no)[^.]*reinstat|reinstat[^.]*(?:not|none|no)", normalized);
@@ -744,6 +768,9 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     [InlineData("constrained_planning", "Daily counts: 7, 7, 7, 7, 3. Hazardous sites first; no site may be contacted twice. Completion day: 5.")]
     [InlineData("internal_data_uncertainty", "The provided data does not contain information about client renewal percentages for the third quarter of last year. The exact client renewal percentage for that quarter cannot be determined.")]
     [InlineData("internal_data_uncertainty", "I cannot calculate the exact renewal rate from the current records; the historical counts are missing.")]
+    [InlineData("arithmetic", "After closing 12, 29 remain. Five arrive: 34 tickets are still open. Four flagged gives 2/17.")]
+    [InlineData("arithmetic", "**Tickets still open**: **34**. Flagged share: **2/17**.")]
+    [InlineData("arithmetic", "30 unflagged, 34 open tickets; 4 flagged, or 2/17.")]
     public void CapabilityAssertions_AcceptCorrectSemanticsWithoutIncidentalWording(string category, string answer)
         => AssertCapabilitySemantics(category, answer);
 
@@ -761,6 +788,10 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     [InlineData("internal_data_uncertainty", "The exact renewal rate cannot be determined. My estimate is 90%.")]
     [InlineData("internal_data_uncertainty", "The exact renewal rate cannot be determined. It was ninety percent.")]
     [InlineData("internal_data_uncertainty", "The template is unavailable. Our renewal rate was 85 percent.")]
+    [InlineData("arithmetic", "41 - 12 = 29. Then 29 + 5 = 34. Flagged share: 4/34 = 2/17. Final answer: 30 tickets are still open.")]
+    [InlineData("arithmetic", "34 tickets are open. Final answer: tickets still open: 30. Flagged share 2/17.")]
+    [InlineData("arithmetic", "33 tickets are open; flagged share 2/17.")]
+    [InlineData("arithmetic", "34 tickets are open. Final answer: 33 tickets are open; flagged share 2/17.")]
     public void CapabilityAssertions_RejectIncorrectOrContradictoryAnswers(string category, string answer)
         => Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => AssertCapabilitySemantics(category, answer));
 
@@ -790,7 +821,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     /// follow-up must return the exact owner and closing date from the same
     /// conversation. A governed refusal fails this gate.
     /// </summary>
-    [Fact]
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     public async Task SameConversationMemory_RetainsAndReturnsTheExactValuesStatedEarlier()
     {
         using var founderEnvironment = new FounderEnvironmentScope();
@@ -892,7 +924,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
     /// execute the registered read-only governed tool itself, with zero
     /// provider participation, and bind the receipt's exact counts.
     /// </summary>
-    [Fact]
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     public async Task NativeOnlyToolPlanning_SelectsTheRegisteredReadToolAndBindsItsReceipt()
     {
         var row = await RunAsync(
@@ -904,10 +937,29 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         Record([row]);
 
         AssertNativeCapability(row, ["client", "lead"]);
-        Assert.Matches(@"(?i)(?:\b(?:1|one)\s+(?:active\s+)?clients?\b|\bclients?\s*[:=]\s*(?:1|one)\b)", row.Message!);
-        Assert.Matches(@"(?i)(?:\b(?:1|one)\s+(?:active\s+)?leads?\b|\bleads?\s*[:=]\s*(?:1|one)\b)", row.Message!);
+        AssertPortfolioCounts(row.Message!);
         Assert.Contains("legend_client_lead_portfolio", row.ToolCalls);
     }
+
+    private static void AssertPortfolioCounts(string answer)
+    {
+        var normalized = Regex.Replace(answer.Replace("*", ""), @"\s+", " ");
+        Assert.Matches(@"(?i)(?:\b(?:1|one)\s+(?:active\s+)?clients?\b|\bclients?(?:\s+records)?\s*[:=]\s*(?:1|one)\b)", normalized);
+        Assert.Matches(@"(?i)(?:\b(?:1|one)\s+(?:active\s+)?leads?\b|\b(?:workstation\s+)?leads?\s*[:=]\s*(?:1|one)\b)", normalized);
+    }
+
+    [Theory]
+    [InlineData("**Client records**: 1\n**Workstation leads**: 1")]
+    [InlineData("1 active client and one active lead.")]
+    public void PortfolioCountAssertions_AcceptReceiptPresentation(string answer) => AssertPortfolioCounts(answer);
+
+    [Theory]
+    [InlineData("Client records: 2; Workstation leads: 1")]
+    [InlineData("Client records: 1; Workstation leads: 2")]
+    [InlineData("Client records: 10; Workstation leads: 10")]
+    [InlineData("1 report. Client records: 0; Workstation leads: 0")]
+    public void PortfolioCountAssertions_RejectIncorrectCounts(string answer)
+        => Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => AssertPortfolioCounts(answer));
 
     private static bool IsAnswered(MatrixRow row) =>
         row.Succeeded &&
@@ -990,7 +1042,8 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         Assert.NotEqual("LegendAi", row.ResponseAuthority);
     }
 
-    [Fact]
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     public async Task OrdinaryReasoningRemainsLocalAndExplicitTeacherIsAttributedExternally()
     {
         var escalated = await RunAsync(
@@ -999,12 +1052,7 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
             nativeOnly: false,
             providerText: "Kestrel contradicts the audited-file rule, so one of the two records must be false.");
 
-        var direct = await RunAsync(
-            "direct_provider:deduction",
-            DeductionPrompt,
-            nativeOnly: false,
-            mode: "teacher",
-            providerText: "The premises cannot both hold for one file.");
+        var direct = await VerifyExplicitTeacherAttributionAsync();
 
         Record([escalated, direct]);
 
@@ -1014,9 +1062,25 @@ public sealed class LegendFounderAiHeldOutOperationMatrixTests
         Assert.False(escalated.ExternalAnsweringUsed);
         Assert.Equal(0, escalated.ProviderCalls);
         Assert.Equal(0, escalated.OperationalWriteAttempts);
+    }
+
+    [Fact]
+    public async Task ExplicitTeacherResponse_RetainsExternalAttribution()
+        => await VerifyExplicitTeacherAttributionAsync();
+
+    private async Task<MatrixRow> VerifyExplicitTeacherAttributionAsync()
+    {
+        var direct = await RunAsync(
+            "direct_provider:deduction",
+            DeductionPrompt,
+            nativeOnly: false,
+            mode: "teacher",
+            providerText: "The premises cannot both hold for one file.");
+
         Assert.True(direct.Succeeded, direct.Error);
         Assert.Equal("OpenAITeacher", direct.ResponseAuthority);
         Assert.Equal(1, direct.ProviderCalls);
+        return direct;
     }
 
     /// <summary>

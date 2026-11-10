@@ -24,11 +24,13 @@ namespace AgentPortal.Tests;
 [Collection("LegendConnectFounderEnvironment")]
 public sealed class LegendConnectBatchLanguageEndToEndContractTests
 {
-    [Fact]
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     public Task UnseenWorkload_ProducesTheExactAllocationCertificateThroughReplyAsync() =>
         VerifyAllocationCertificateAsync(combinedFoundation: false);
 
-    [Fact]
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     public Task CombinedFoundation_PreservesOriginalAllocationCertificateControl() =>
         VerifyAllocationCertificateAsync(combinedFoundation: true);
 
@@ -122,8 +124,15 @@ public sealed class LegendConnectBatchLanguageEndToEndContractTests
         }, combinedFoundation);
     }
 
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
+    public Task UnadmittedPriorityAndUniqueContactConstraints_CannotInheritHomogeneousFeasibility() => VerifyUnadmittedConstraintsAsync(includeServing: true);
+
     [Fact]
-    public async Task UnadmittedPriorityAndUniqueContactConstraints_CannotInheritHomogeneousFeasibility()
+    public Task NativeUnadmittedConstraints_DoNotReceiveHomogeneousCertificates()
+        => VerifyUnadmittedConstraintsAsync(includeServing: false);
+
+    private async Task VerifyUnadmittedConstraintsAsync(bool includeServing)
     {
         await WithTeachingAsync(async (services, _) =>
         {
@@ -137,6 +146,7 @@ public sealed class LegendConnectBatchLanguageEndToEndContractTests
             Assert.Null(native.Answer);
             Assert.Empty(native.ScheduleCertificates ?? []);
             Assert.Empty(native.ReasoningTransitionPath ?? []);
+            if (!includeServing) return;
             // Explicit user formatting makes this bounded epistemic rubric
             // independently checkable without a second model grading itself.
             // The request supplies no actual sites, hazard ranking or contact log.

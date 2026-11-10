@@ -153,6 +153,9 @@ public sealed class MerchantPaymentsTests
             }
             await f.Db.SaveChangesAsync();
             var context=new CommerceSignalContext(f.Business,null,null,"business","independent","Independent","https://example.test/store",OrderId:f.Order);
+            // Exercise completion from a genuinely reserved saved order, including
+            // legacy lines; the merchant claim must never charge released stock.
+            new ParfaitOrderService(f.Db).ResumeCheckoutPayment(f.Business, f.Order);
             Guid paymentId;
             if (legacy)
             {
@@ -707,6 +710,20 @@ public sealed class MerchantPaymentsTests
         { Fail(false); return ValueTask.FromResult(result); }
         public override Task TransactionCommittedAsync(System.Data.Common.DbTransaction transaction, TransactionEndEventData eventData, CancellationToken cancellationToken = default)
         { Fail(true); return Task.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task ReleasedInventoryOrderCannotAcquireProcessorClaimOrCharge()
+    {
+        using var f = new Fixture(true);
+        f.Db.CommerceOrderLines.Add(new() { CommerceOrderId = f.Order,
+            ProductExternalKey = "product", Size = "M", Quantity = 1, UnitPriceCents = 1000 });
+        await f.Db.SaveChangesAsync();
+        var error = await Assert.ThrowsAsync<MerchantPaymentException>(() =>
+            f.Checkout.BeginAsync(f.Business, f.Order, "https://example.test/return"));
+        Assert.Equal("ORDER_NOT_PAYABLE", error.Message);
+        Assert.Empty(f.Db.CommercePaymentAttempts);
+        Assert.Equal(0, f.Gateway.Creates);
     }
 
     private sealed class Fixture:IDisposable

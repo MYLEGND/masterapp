@@ -296,6 +296,57 @@ public sealed class ParfaitOrderService
         }
     }
 
+    public ParfaitOrderRecord ResumeCheckoutPayment(Guid businessId, Guid orderId)
+    {
+        lock (Lock)
+        {
+            using var transaction = _db.Database.IsRelational()
+                ? _db.Database.BeginTransaction(IsolationLevel.Serializable) : null;
+            var order = _db.CommerceOrders
+                .Single(x => x.Id == orderId && x.CommerceBusinessId == businessId);
+            _db.Entry(order).Reload();
+            var snapshot = _db.CommerceOrders.AsNoTracking().Include(x => x.Lines)
+                .Single(x => x.Id == orderId && x.CommerceBusinessId == businessId);
+            var record = NormalizeOrder(MapOrder(snapshot));
+            if (!record.IsPaid && !_db.CommercePaymentAttempts.Any(x => x.CommerceOrderId == orderId)
+                && !_db.SubscriptionPayments.Any(x => x.CommerceOrderId == orderId))
+            {
+                if (!Infrastructure.Commerce.Payments.MerchantCheckoutService.PayableForNewAttempt(order))
+                    throw new Infrastructure.Commerce.Payments.MerchantPaymentException("ORDER_NOT_PAYABLE");
+                // Recovery owns the saved quote; browser cart/customer changes cannot replace it.
+                ParfaitProductService.ValidateInventoryReservation(_db, businessId, orderId, record.Items);
+                order.IsPaymentProcessing = true;
+                order.PaymentProcessingStartedUtc = DateTime.UtcNow;
+                _db.SaveChanges();
+                record.IsPaymentProcessing = true;
+                record.PaymentProcessingStartedUtc = order.PaymentProcessingStartedUtc;
+            }
+            transaction?.Commit();
+            return NormalizeOrder(record);
+        }
+    }
+
+    public void ReleaseUnclaimedCheckoutPayment(Guid businessId, Guid orderId)
+    {
+        lock (Lock)
+        {
+            using var transaction = _db.Database.IsRelational()
+                ? _db.Database.BeginTransaction(IsolationLevel.Serializable) : null;
+            var order = _db.CommerceOrders.Single(x => x.Id == orderId && x.CommerceBusinessId == businessId);
+            _db.Entry(order).Reload();
+            // A durable processor claim, including unknown/pending evidence, retains its hold.
+            if (order.PaymentStatus == "Pending" && order.PaidUtc is null
+                && !_db.CommercePaymentAttempts.Any(x => x.CommerceOrderId == orderId)
+                && !_db.SubscriptionPayments.Any(x => x.CommerceOrderId == orderId))
+            {
+                order.IsPaymentProcessing = false;
+                order.PaymentProcessingStartedUtc = null;
+                _db.SaveChanges();
+            }
+            transaction?.Commit();
+        }
+    }
+
     public void MarkPaymentCaptured(string orderNumber, string? paymentReferenceId) =>
         MarkPaymentCaptured(GetBusinessId(), orderNumber, paymentReferenceId);
 

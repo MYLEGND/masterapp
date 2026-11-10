@@ -17,7 +17,8 @@ namespace AgentPortal.Tests;
 [Collection("LegendConnectFounderEnvironment")]
 public sealed class LegendFounderAiAutomaticLanguageComputationTests
 {
-    [Theory]
+    [LegacyControlledFoundationTheory]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     [InlineData("147", "26", "121")]
     [InlineData("-19", "26", "-45")]
     public async Task UndeclaredLanguage_UnseenOperandsReachNativeComputationWithoutExternalClients(

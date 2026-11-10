@@ -4343,3 +4343,187 @@ can leave inventory holds active without a payment attempt; full-candidate accep
 remains withheld until a race-safe canonical correction and regression evidence.
 No localhost journey, live provider acceptance, production migration, source merge,
 deployment, Studio publication or campaign change is claimed.
+
+## Mac full-suite repair in progress — November 9, 2026
+
+Founder explicitly rejected a local-migration exception and required the full test
+suite to be repaired first. Continuing remotely preserved `3e8257d0cba364827405d8648f11d24b7e57061b`
+on the same worktree/branch. No database creation, migration, merge or deployment.
+
+Current source corrections preserve prepared checkout snapshots, reacquire saved
+variant reservations (including legacy loose-item lines), and release only holds
+without durable processor claims. Serializability, fresh tracked state, canonical
+payable eligibility and claim-insertion cleanup prevent stale receipts and abandoned
+tracked inserts. Pending/unknown durable claims retain their holds. Independent
+Astra low review found no remaining source issue after these corrections; acceptance
+is still pending full validation. Synthetic SQLite contention and injected failures
+are not production SQL Server concurrency or live payment evidence.
+
+Test repairs isolate fixture-specific EF singleton interceptors and Founder process
+environment, align archive/translation assertions with existing retained-history
+and original-message-with-notice behavior, regenerate the canonical copy manifest
+(1,066 additions; no existing entries removed/changed), and permit the existing CRM
+synthetic browser harness on a verified local Mac while retaining authentic CI gates.
+The larger manifest also requires a catalog-size-derived continuation bound in its
+existing batching test; completion and exact batching assertions remain.
+
+Completed intermediate evidence (not final-HEAD release acceptance): analyzer-enabled
+Debug build and focused checkout/messaging suite 262 passed, zero failed/skipped;
+affected website runtime suite 550 passed, zero failed/skipped; actual Mac synthetic
+CRM browser plus translation regression 2 passed; two model regressions passed using
+the existing pinned local MLX model and verified FounderMac identity. No external
+model provider was used. The model was stopped during large compilation and restarted
+for the full suite. NuGet audit metadata refreshed successfully with `--force
+--no-http-cache`, resolving cached lookup warnings.
+
+Static security no-skips, secret-scan, composition and keyring checks passed.
+Continuity regression: 75 passed using `TMPDIR=/private/tmp
+GIT_DEFAULT_REF_FORMAT=reftable python3 scripts/test-sync-published-checkout.py`
+with authorized temporary home recovery fixtures. Earlier runs exposed macOS
+symlink/case-folded ref fixture limitations and sandbox denial, not source acceptance.
+Deployment-policy regression: 316 passed with installed Python 3.13; default Apple
+Python 3.9 lacks required hashlib/date behavior. Release-policy tests additionally
+need the existing test environment's PyYAML dependency.
+
+Unfiltered .NET validation is running against the reviewed compiled source with
+actual local inference and Chrome. It has exposed the stale 60-request catalog test
+limit above; final source must be rebuilt and the complete suite rerun. Database
+initialization and app startup remain BLOCKED on this gate. Evidence currently lives
+in `/private/tmp/legend-full-suite-repair`; final evidence must be retained with this
+checkpoint before source preservation. These temporary logs are not durable recovery.
+
+### Follow-up validation and remaining model gate
+
+The latest analyzer-enabled test assembly build passed. Repaired localization,
+merchant-payment, actual-startup composition and receptionist fixtures passed
+351/351 (zero skipped) in 2m23s; the first sandboxed attempt aborted before execution
+because VSTest could not bind its localhost socket. Authorized execution passed.
+Semantic-oracle regressions passed 31/31 (zero skipped): Markdown portfolio count
+labels are accepted, while the observed incorrect 30-open-ticket arithmetic answer
+and conflicting final totals are rejected. These assertions do not substitute
+answers or relax the model capability gates.
+
+The separate actual-model evidence run completed 11 tests: 4 passed, 7 failed,
+zero skipped. Independent Astra review of captured requests confirmed the failing
+Wren response received the admitted mortality answer and nine evidence records;
+the calculator was exposed but not called, and the model answered the comparison
+incorrectly. Portfolio execution and receipt propagation worked; its incidental
+Markdown assertion was corrected above. Other actual reasoning/language failures
+remain. No missing tool or evidence wiring was established. The only installed
+pinned Qwen3 4B local model has not met the existing capability gate. A request to
+evaluate another local model is pending Founder decision; no model switch is made.
+The unfiltered run is still executing and is not reported as passed.
+
+Release-policy regression completed 212/212 using installed Python 3.13 in the
+existing local test environment (PyYAML available). Affected .NET test dependency
+graph vulnerability inventory reported no vulnerable packages; this is not complete
+release security admission. Database initialization, localhost app acceptance,
+release artifacts and deployment remain unexecuted. Current source edits remain
+uncommitted pending complete validation and exact-scope acceptance.
+
+The older-assembly unfiltered run completed: 6,494 passed, 155 failed, 5 skipped,
+6,654 total, 31m13s (`full-repair.trx`). Failure groups: 131 receptionist operator,
+3 receptionist inquiry, 9 merchant, 1 localization, 2 reaction fixtures, 7 held-out
+model and 2 computed-language model cases. The 351 focused passing results above
+cover the first four repaired groups. The two late reaction failures established
+that disabling EF provider caching still observes its global cache-size warning;
+the fixture now owns/disposes its SQLite provider and retry strategy, with no
+warning suppression. Its 22 reaction regressions passed, zero failed/skipped.
+Astra reviewed that correction without findings. A new complete run remains required.
+The owned model worker was stopped after completed evaluation. Evidence logs/TRX
+and synthetic captures are retained locally under ignored
+`AgentPortal/App_Data/full-suite-repair-20261109` (not remote preservation).
+Remote readback remains exactly `3e8257d0cba364827405d8648f11d24b7e57061b`.
+No final reviewed deployment candidate or deployment artifacts exist for these edits.
+
+### Founder correction: retired Mac inference is not the target runtime
+
+Founder confirmed all inference moved to the canonical five-model Cloudflare
+runtime and the Mac model was intended for deletion. The prior decision to start
+Qwen from stale local session configuration was incorrect. Its capability failures
+are retained as historical observations, not a requirement to install or qualify
+another Mac model. No new local model is authorized or downloaded. The owned
+worker is stopped. Source commits eb851cd269f33693d24b12cd9e647d2d3064f6c8,
+36b71c212c075af618143f90781f50b8a9d3bff5 and
+ed0f722f87f44be7f59e85a01bdfe4047c9cab8b establish the five-model baseline and
+read-only cloud contracts. Older September runtime documents do not supersede
+those changes or Founder's correction. Current Cloudflare Worker runtime/security
+contracts passed151/151, zero skipped; this is synthetic contract evidence, not
+new paid inference or live model qualification. No cloud configuration changed.
+
+The immediate startup target remains the new empty local SQL database; initial
+migrations were not applied after the failed gate. Full repaired backend tests are
+now running without the retired model. Independent review is reconciling obsolete
+resource-dependent assertions with the canonical Cloudflare runtime. The migration
+guard remains enabled, and no full-suite-first exception has been inferred.
+
+The corrected no-model full run completed: 6,628 passed, 35 failed, 5 existing
+resource skips, 6,668 total in11m40s. Every remaining failure was a real retired
+controlled-serving case (22methods/35data rows), not an ordinary backend failure.
+Independent Astra approved explicitly opt-in retired-resource applicability, with
+model-free security/semantic assertions retained as ordinary tests. Five mixed
+concerns were extracted through shared helpers: native conflict/unknown escalation,
+homogeneous-certificate refusal, grounded ordinal correction, promoted-model
+Dormant isolation, and explicit-teacher attribution. Together with applicability
+regressions,11/11focused checks passed, zero skipped. Original legacy serving
+assertions remain unchanged under `LEGEND_LEGACY_CONTROLLED_FOUNDATION_ACCEPTANCE=true`;
+stale endpoint variables alone cannot activate that test runtime. No host starts
+automatically. Legacy unexecuted cases do not count as passing Cloudflare quality.
+
+The unchanged `scripts/db.sh apply` is now executing its full build/test/model/
+integrity/manual-review sequence using only the verified new loopback development
+database. No filter, skipped-security assertion, db.sh bypass or migration waiver
+was introduced. Result pending. Native source/migration diff confirms the candidate
+adds only AddCommerceBundleInventory beyond the original checkout's migration set.
+
+### Local migration blocker resolved — 2026-11-09 Mac
+
+The unchanged canonical `bash scripts/db.sh apply` completed its build and full
+backend gate: **6,639 passed, 0 failed, 27 skipped, 6,666 total**, duration11m52s.
+The 27 skips comprise22explicitly retired controlled-serving methods and5existing
+resource cases; none establishes live Cloudflare qualification. EF reported no
+model changes and migration artifacts valid. Procedure exited21 at its historical
+manual-operation review, explicitly directing reviewed application to a disposable
+local database. No required test gate was bypassed.
+
+Independent Astra accepted the full30-file source diff bound to parent
+3e8257d0cba364827405d8648f11d24b7e57061b and binary-diff SHA256
+c6fa1f42d790353164215e9a65fa5d3abfb0531dcea7c507827c3d184370fdf5
+after inspecting the passing canonical log. Reviewed SQL fingerprint remains
+02324ffc4dba1d58b7720380f532b097d8598d068c8ad40c156bc4667186532b.
+
+Immediately before application, Docker mapping was reverified as127.0.0.1:60058
+and SQL inventory confirmed LegendLocal_AdMeasurement_20261109 did not exist.
+The canonical manual command was `dotnet tool run dotnet-ef database update
+--project Infrastructure/Infrastructure.csproj --startup-project
+AgentPortal/AgentPortal.csproj --context MasterAppDbContext --no-build`, with
+Development and private local-only connection environment, isolated build root,
+and production-priority environment variables removed. Exit0: all235migrations
+applied, including AddReceptionistSetupGuide and AddCommerceBundleInventory.
+A fresh equivalent `migrations list` returned235entries, **zero pending**.
+No production database was accessed for mutation and no customer data was copied.
+
+Candidate startup command: `env
+MasterAppArtifactsRoot=/private/tmp/legend-ad-measurement-20261109-build
+DOTNET_PROCESSOR_COUNT=2 DOTNET_gcServer=0 dotnet run
+--project AgentPortal/AgentPortal.csproj --no-build`. Startup schema guard logged
+zero pending; app listened on https://localhost:6205 and http://localhost:6206.
+`/healthz` and `/readyz` each returned200 Healthy; home returned302(authentication).
+After stopping that owned process, the original checkout was started with
+`env DOTNET_PROCESSOR_COUNT=2 DOTNET_gcServer=0 dotnet run --no-build` from
+/Users/zacowen/MASTERAPP/AgentPortal. It also logged zero pending and returned200
+Healthy on both endpoints. Its branch and16unique commits remain untouched.
+
+Local profiles retain disabled delivery credentials/settings. Background Graph
+workers report intentionally absent local Graph credentials; these providers were
+not exercised. First candidate startup logged a concurrent Global-policy unique
+key collision; the process remained healthy. Rendered browser inspection could
+not start because the computer-use browser host was unavailable. These endpoint
+checks do not establish authenticated journeys, provider acceptance or UI quality.
+
+Sanitized operational evidence is retained in private local logs under
+/private/tmp/legend-local-startup-20261109 and
+/private/tmp/legend-full-suite-repair/db-current-apply.log. Migration completion
+is local only. Full requested Protect/Studio/Store viewport and journey acceptance,
+final committed revision artifact packaging, and deployment admission remain
+outstanding. No deployment, merge, Studio publication or campaign change occurred.

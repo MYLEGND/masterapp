@@ -21,6 +21,69 @@ namespace AgentPortal.Tests;
 
 public sealed class CommerceBundleInventoryTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UnclaimedHoldCanBeReleasedButRecoveryMustReserveTheSavedVariantsAgain(bool legacy)
+    {
+        using var sqlite = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        sqlite.Open();
+        using var db = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(sqlite).Options);
+        db.Database.EnsureCreated();
+        var store = new CommerceBusiness { Key = "recovery-store", DisplayName = "Recovery Store" };
+        var product = Product(store.Id, "Top", "M", 1);
+        db.AddRange(store, product);
+        db.SaveChanges();
+        var products = Service(db);
+        var quote = products.QuoteCart(store.Id, [Item("Top", "M", 1)], null);
+        var orders = new ParfaitOrderService(db);
+        var first = Prepare(db, store.Id, "first", quote).Order;
+        if (legacy)
+        {
+            db.CommerceOrderLines.Single(line => line.CommerceOrderId == first.CommerceOrderId).InventoryRequirementsJson = null;
+            db.SaveChanges();
+            first = orders.GetOrder(store.Id, first.OrderNumber)!;
+        }
+        using var competingDb = new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(sqlite).Options);
+        var competingOrders = new ParfaitOrderService(competingDb);
+        competingOrders.ReleaseUnclaimedCheckoutPayment(store.Id, first.CommerceOrderId);
+        // Each owner must refresh its tracked flags after the other context writes.
+        Assert.True(orders.ResumeCheckoutPayment(store.Id, first.CommerceOrderId).IsPaymentProcessing);
+        Assert.True(competingDb.CommerceOrders.AsNoTracking().Single(x => x.Id == first.CommerceOrderId).IsPaymentProcessing);
+        competingOrders.ReleaseUnclaimedCheckoutPayment(store.Id, first.CommerceOrderId);
+        Assert.False(db.CommerceOrders.AsNoTracking().Single(x => x.Id == first.CommerceOrderId).IsPaymentProcessing);
+        Assert.True(products.QuoteCart(store.Id, [Item("Top", "M", 1)], null).IsValid);
+        var second = Prepare(db, store.Id, "second", quote).Order;
+        Assert.Throws<StoreInventoryException>(() => orders.ResumeCheckoutPayment(store.Id, first.CommerceOrderId));
+        orders.ReleaseUnclaimedCheckoutPayment(store.Id, second.CommerceOrderId);
+        var resumed = orders.ResumeCheckoutPayment(store.Id, first.CommerceOrderId);
+        Assert.True(resumed.IsPaymentProcessing);
+        Assert.Equal(first.TotalCents, resumed.TotalCents);
+        Assert.Equal(first.Items.Single().InventoryRequirementsJson, resumed.Items.Single().InventoryRequirementsJson);
+        db.CommercePaymentAttempts.Add(new() { CommerceBusinessId = store.Id, CommerceOrderId = first.CommerceOrderId,
+            State = "Unknown", IdempotencyKey = "synthetic-unknown" });
+        db.SaveChanges();
+        orders.ReleaseUnclaimedCheckoutPayment(store.Id, first.CommerceOrderId);
+        Assert.True(orders.GetOrder(store.Id, first.OrderNumber)!.IsPaymentProcessing);
+        Assert.False(products.QuoteCart(store.Id, [Item("Top", "M", 1)], null).IsValid);
+        Assert.Equal(1, db.CommerceProductInventoryItems.Single().StockQuantity);
+    }
+
+    [Theory]
+    [InlineData("Failed", "Unfulfilled")]
+    [InlineData("Pending", "Cancelled")]
+    public void RecoveryRejectsNonpayableOrderWithoutAcquiringAHold(string paymentStatus, string fulfillmentStatus)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var order = new CommerceOrder { CommerceBusinessId = Guid.NewGuid(), TotalCents = 1000,
+            PaymentStatus = paymentStatus, FulfillmentStatus = fulfillmentStatus };
+        db.Add(order);
+        db.SaveChanges();
+        Assert.Throws<Infrastructure.Commerce.Payments.MerchantPaymentException>(() =>
+            new ParfaitOrderService(db).ResumeCheckoutPayment(order.CommerceBusinessId, order.Id));
+        Assert.False(db.CommerceOrders.AsNoTracking().Single().IsPaymentProcessing);
+    }
+
     [Fact]
     public void MixedCartAndPendingCheckoutShareComponentsAndKeepOriginalRecipe()
     {

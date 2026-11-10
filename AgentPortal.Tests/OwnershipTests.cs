@@ -126,8 +126,10 @@ public class OwnershipTests
         var result = await controller.Delete(leadId);
 
         Assert.IsType<RedirectToActionResult>(result);
-        var leadExists = await db.WorkstationLeadProfiles.AnyAsync(l => l.LeadId == leadId);
-        Assert.False(leadExists, "Owner should be able to delete their own lead");
+        var retainedLead = await db.WorkstationLeadProfiles.SingleAsync(l => l.LeadId == leadId);
+        Assert.Equal(AgentPortal.Services.WorkstationLeadConversionLifecycle.ArchivedCrmStatus, retainedLead.CrmStatus);
+        Assert.False(await db.WorkstationLeadProfiles.ActiveLeadQueue().AnyAsync(l => l.LeadId == leadId),
+            "Owner should be able to remove their own lead from the active queue while retaining history");
     }
 
     // -----------------------------------------------------------------------

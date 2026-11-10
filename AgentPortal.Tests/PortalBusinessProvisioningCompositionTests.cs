@@ -13,16 +13,31 @@ using Xunit;
 
 namespace AgentPortal.Tests;
 
+[Collection("LegendConnectFounderEnvironment")]
 public sealed class PortalBusinessProvisioningCompositionTests
 {
     [Fact]
     public void RealPortalStartupRegistersScopedBusinessProvisioning()
     {
-        using var factory = new CompositionFactory();
-        var error = Record.Exception(() => factory.CreateClient());
-        Assert.True(factory.Inspected, error?.ToString());
-        Assert.NotNull(error);
-        Assert.Contains(nameof(CompositionInspectedException), error.ToString());
+        var priorFounder = Environment.GetEnvironmentVariable("FOUNDER_OID");
+        var priorOwner = Environment.GetEnvironmentVariable("OWNER_EMAIL");
+        try
+        {
+            // Actual Program startup resolves these process-wide identities. Keep
+            // synthetic startup from importing local user secrets into later tests.
+            Environment.SetEnvironmentVariable("FOUNDER_OID", "11111111-2222-4333-8444-555555555555");
+            Environment.SetEnvironmentVariable("OWNER_EMAIL", "synthetic@example.test");
+            using var factory = new CompositionFactory();
+            var error = Record.Exception(() => factory.CreateClient());
+            Assert.True(factory.Inspected, error?.ToString());
+            Assert.NotNull(error);
+            Assert.Contains(nameof(CompositionInspectedException), error.ToString());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("FOUNDER_OID", priorFounder);
+            Environment.SetEnvironmentVariable("OWNER_EMAIL", priorOwner);
+        }
     }
 
     private sealed class CompositionInspectedException : Exception { }

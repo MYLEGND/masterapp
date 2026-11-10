@@ -292,7 +292,9 @@ public sealed class WebsitePublishingAuthorityTests
         {
             var options = new DbContextOptionsBuilder<MasterAppDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString());
-            if (auditMaterialization) options.AddInterceptors(Audit);
+            // The audit is fixture-owned; do not retain its singleton interceptor
+            // in EF's process-wide service-provider cache across independent tests.
+            if (auditMaterialization) options.EnableServiceProviderCaching(false).AddInterceptors(Audit);
             Db = new(options.Options);
         }
         public WebsiteEditorTicketProtector Tickets { get; } = new(new EphemeralDataProtectionProvider());

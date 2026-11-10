@@ -16,8 +16,15 @@ function startupDiagnostics(log,driver,elapsedMs){
   };
 }
 (async()=>{
-  assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.GITHUB_REPOSITORY,'MYLEGND/masterapp');assert.equal(process.env.RUNNER_OS,'Linux');
-  assert.equal(JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH,'utf8')).repository.private,false);
+  const localMac=process.argv[3]==='local-macos';
+  if(localMac){
+    assert.equal(process.platform,'darwin');assert.ok(!process.env.GITHUB_ACTIONS);
+  }else{
+    assert.equal(process.argv[3],'github-actions');
+    assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.GITHUB_REPOSITORY,'MYLEGND/masterapp');assert.equal(process.env.RUNNER_OS,'Linux');
+    assert.equal(JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH,'utf8')).repository.private,false);
+  }
+  console.log('CRM_HOSTED_BROWSER:ENVIRONMENT:'+(localMac?'local-macos':'github-actions'));
   const origin=new URL(process.argv[2]);assert.equal(origin.protocol,'http:');assert.equal(origin.hostname,'127.0.0.1');assert.ok(origin.port);
   const started=Date.now(),deadline=started+150000;let driver,session,driverOrigin,log='',stage='startup';
   const pause=ms=>new Promise(r=>setTimeout(r,ms));
@@ -37,7 +44,7 @@ function startupDiagnostics(log,driver,elapsedMs){
     driver.on('error',e=>{log+=e.message;});for(const stream of [driver.stdout,driver.stderr])stream.on('data',data=>{log=(log+data.toString()).slice(-12000);});
     const startup=Date.now()+8000;while(!/started successfully on port (\d+)/i.test(log)&&Date.now()<startup&&driver.exitCode===null)await pause(40);
     const port=log.match(/started successfully on port (\d+)/i)?.[1];assert.ok(port,'ChromeDriver failed to start');driverOrigin='http://127.0.0.1:'+port;
-    session=(await command('POST','/session',{capabilities:{alwaysMatch:{browserName:'chrome','goog:chromeOptions':{binary:'/usr/bin/google-chrome',args:['--headless=new','--disable-background-networking','--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1']}}}})).sessionId;assert.ok(session);
+    session=(await command('POST','/session',{capabilities:{alwaysMatch:{browserName:'chrome','goog:chromeOptions':{binary:localMac?'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome':'/usr/bin/google-chrome',args:['--headless=new','--disable-background-networking','--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1']}}}})).sessionId;assert.ok(session);
     for(const width of [1180,393]){
       console.log('CRM_HOSTED_BROWSER:VIEWPORT:'+width);
       await command('POST','/session/'+session+'/window/rect',{width,height:800});

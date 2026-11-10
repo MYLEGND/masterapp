@@ -37,14 +37,19 @@ public sealed partial class CrmHistoryTests
     [Fact]
     public async Task HostedSyntheticHistorySupportsDesktopMobileKeyboardAndProtectedEndpoints()
     {
-        Assert.Equal("true",Environment.GetEnvironmentVariable("GITHUB_ACTIONS"));
-        Assert.Equal("MYLEGND/masterapp",Environment.GetEnvironmentVariable("GITHUB_REPOSITORY"));
-        Assert.Equal("Linux",Environment.GetEnvironmentVariable("RUNNER_OS"));
+        var githubActions = Environment.GetEnvironmentVariable("GITHUB_ACTIONS");
+        var localMac = string.IsNullOrEmpty(githubActions) && OperatingSystem.IsMacOS();
+        if (!localMac)
+        {
+            Assert.Equal("true", githubActions);
+            Assert.Equal("MYLEGND/masterapp", Environment.GetEnvironmentVariable("GITHUB_REPOSITORY"));
+            Assert.Equal("Linux", Environment.GetEnvironmentVariable("RUNNER_OS"));
+        }
         DirectoryInfo? repo=new DirectoryInfo(AppContext.BaseDirectory);
         while(repo is not null && !File.Exists(Path.Combine(repo.FullName,"MASTERAPP.sln")))repo=repo.Parent;
         if(repo is null)repo=new DirectoryInfo(Environment.GetEnvironmentVariable("GITHUB_WORKSPACE")!);
         Assert.True(File.Exists(Path.Combine(repo.FullName,"MASTERAPP.sln")));
-        var directory=Path.Combine(Environment.GetEnvironmentVariable("RUNNER_TEMP")!,"crm-browser-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);
+        var directory=Path.Combine(localMac ? Path.GetTempPath() : Environment.GetEnvironmentVariable("RUNNER_TEMP")!,"crm-browser-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(directory);
         var connection="Data Source="+Path.Combine(directory,"synthetic.db");
         Guid tileId;
         await using(var seed=new MasterAppDbContext(new DbContextOptionsBuilder<MasterAppDbContext>().UseSqlite(connection).Options))
@@ -113,7 +118,7 @@ public sealed partial class CrmHistoryTests
                 }
             }
             var start=new ProcessStartInfo("node") { WorkingDirectory=repo.FullName,RedirectStandardOutput=true,RedirectStandardError=true,UseShellExecute=false };
-            start.ArgumentList.Add("tests/analytics/crm-history-browser.cjs");start.ArgumentList.Add(origin);
+            start.ArgumentList.Add("tests/analytics/crm-history-browser.cjs");start.ArgumentList.Add(origin);start.ArgumentList.Add(localMac ? "local-macos" : "github-actions");
             using var process=Process.Start(start)!;var stdout=process.StandardOutput.ReadToEndAsync();var stderr=process.StandardError.ReadToEndAsync();
             using var timeout=new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(180));
             try{await process.WaitForExitAsync(timeout.Token);}

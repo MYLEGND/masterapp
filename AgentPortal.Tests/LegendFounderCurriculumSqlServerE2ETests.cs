@@ -54,7 +54,8 @@ public sealed class LegendFounderCurriculumSqlServerE2ETests
     public LegendFounderCurriculumSqlServerE2ETests(ITestOutputHelper output) =>
         _output = output;
 
-    [Fact]
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     public async Task LegendDirectGreetingEndpointRegression()
     {
         await using var db = ControllerTestHelpers.BuildDb();
