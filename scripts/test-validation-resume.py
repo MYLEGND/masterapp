@@ -2247,6 +2247,26 @@ class FastTrackImpactTests(unittest.TestCase):
                      'Domain/Entities/WebsiteContentState.cs'):
             self.assertEqual(self.targets(path), {'AgentPortal', 'ClientApp', 'Protect', 'Parfait'})
 
+    def test_consolidated_measurement_contracts_select_all_managed_consumers(self):
+        for path in ('SHARED/Analytics/DrilldownDtos.cs',
+                     'SHARED/Analytics/OpenAiMeasurementContracts.cs'):
+            with self.subTest(path=path):
+                result = self.scope(path)
+                self.assertEqual({'AgentPortal', 'ClientApp', 'Protect', 'Parfait'},
+                                 {row['target'] for row in result['matrix']['include']})
+                self.assertFalse(result['schema'])
+                self.assertFalse(result['routing'])
+                self.assertNotIn('releaseAdmission', result)
+
+    def test_ios_project_is_native_only_without_admitting_unknown_native_files(self):
+        result = self.scope('Legend-ios/Legend.xcodeproj/project.pbxproj')
+        self.assertEqual({'include': []}, result['matrix'])
+        self.assertFalse(result['selected'])
+        self.assertFalse(result['schema'])
+        self.assertNotIn('releaseAdmission', result)
+        with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+            self.scope('Legend-ios/Unreviewed.swift')
+
     def test_routing_is_explicit_without_application_upload(self):
         result = self.scope('Legend-Cloudflare/src/website-routing/bridge.mjs')
         self.assertTrue(result['routing'])

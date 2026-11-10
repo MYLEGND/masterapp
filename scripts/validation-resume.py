@@ -4994,6 +4994,8 @@ def fast_track_scope(paths):
         'Infrastructure/Reception/ReceptionistSidebandProtocol.cs',
         'Infrastructure/Reception/ReceptionistSql.cs',
         'SHARED/Analytics/AiSafeAnalyticsPayload.cs',
+        'SHARED/Analytics/DrilldownDtos.cs',
+        'SHARED/Analytics/OpenAiMeasurementContracts.cs',
         'SHARED/Analytics/GrowthEconomicsAndOpenAiFeedContracts.cs',
         'SHARED/Analytics/MarketingManagerContracts.cs',
         'SHARED/Analytics/ReceptionistConfiguration.cs',
@@ -5025,6 +5027,7 @@ def fast_track_scope(paths):
     # Reviewed native application sources are not inputs to server packages.
     # Keep this exact: new native files still require ownership review.
     native_only = {
+        'Legend-ios/Legend.xcodeproj/project.pbxproj',
         'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/LegendActivityProjection.kt',
         'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/MobileContracts.kt',
         'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/navigation/LegendNotificationNavigation.kt',

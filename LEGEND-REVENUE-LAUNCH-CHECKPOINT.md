@@ -4710,3 +4710,51 @@ not current provider evidence. Existing native runners bind earlier candidates,
 checkouts and schema counts; do not execute them unchanged or fabricate PASS
 receipts. Preserve completed prior effects and recovery history. Stop production
 only after upload-ready packages and all required admission evidence exist.
+
+
+### Release classification correction and package preparation — 2026-11-10
+
+PR769 is the existing draft for this release. Candidate
+0f39f4369c6b79cd3150b73526dc65826006a5a3 is preserved remotely. Its approved-release-security
+run42769836356 passed, and validated-migration-probe in run42769836060 passed.
+Both Parfait build checks (runs42769736933 and42769836092) failed before application
+tests because the complete carry-diff contained unmapped paths. The canonical
+fast_track_scope now maps the exact iOS project file to native-only and the two
+shared analytics contracts (DrilldownDtos.cs, OpenAiMeasurementContracts.cs) to
+all four managed consumers. Unknown native/shared siblings still fail closed.
+Independent reviewer /root/release_review accepted the exact two-file correction.
+
+Validation: 17 impact tests and117 release-child tests passed. Full validation
+under repository-pinned Python3.12 ran765 tests:764 passed, one errored because
+Node was absent from the test container. That exact transport test then passed
+with the repository-pinned Node runtime mounted. Earlier Python3.13 historical
+fingerprint failures were runtime-version incompatibility, not waived tests.
+Logs remain /private/tmp/legend-ad-release-validation-python312.log,
+legend-ad-release-validation-transport.log and legend-ad-release-children-focused.log.
+New current-head CI is required after preservation of this correction.
+
+Canonical isolated packaging completed Website and Parfait for0f39f4369, under
+/private/tmp/legend-ad-release-packages-0f39-python313. Preserve their receipts;
+they are not relabeled as artifacts of the subsequent classification correction.
+Portal, Client and Protect packages remain unbuilt. Python3.13 is needed by the
+host packager; its isolated runtime remains the pinned toolchain.
+
+The loopback Parfait compiled-view fixture at http://127.0.0.1:15439 passed three
+HTTP privacy/retry checks. Native Chrome displayed the reference and retry link.
+Full viewport/journey acceptance is not complete: Browser host unavailable and
+native screenshot capture returned ScreenCaptureKit -3811. The fixture loads no
+production configuration, SQL or external identity provider. Source/test receipts
+are local in AgentPortal/App_Data/release-resume-20261109.
+
+Read-only independent migration review found both pending Up paths additive and
+consistent with model/snapshot: guide table/seed/index/check, plus two nullable
+commerce JSON columns. No production migration or rehearsal is claimed. Extend
+the existing five-target owner deploy-reviewed-parfait-native.py and existing
+apply-reviewed-parfait-migrations.py for exact new identities, current history
+(expected237 to239, subject to live verification), physical postconditions and
+preserved Work push cutoff. Retain transaction/no-replay, recovery, journal and
+publisher controls. Stop/start all five targets per Founder request; four remain
+SQL writers. Rehearse the exact wrapper and SQL before production mutation.
+Older commerce code is not automatically safe after new bundle orders exist;
+prefer forward repair and retain explicit recovery evidence. No shutdown, upload,
+restart or production database mutation has occurred in this resume.
