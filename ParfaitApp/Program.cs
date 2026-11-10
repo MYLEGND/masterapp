@@ -266,8 +266,12 @@ builder.Services
 
         options.Events.OnRemoteFailure = context =>
         {
-            var error = Uri.EscapeDataString(context.Failure?.Message ?? "Authentication failed.");
-            context.Response.Redirect($"/internal/denied?message={error}");
+            var reference = Guid.NewGuid().ToString("N");
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("ParfaitInternalSignIn");
+            logger.LogWarning("Microsoft sign-in failed. Reference: {Reference}; failure type: {FailureType}.",
+                reference, context.Failure?.GetType().Name ?? "Unknown");
+            context.Response.Redirect($"/internal/denied?reference={reference}");
             context.HandleResponse();
             return Task.CompletedTask;
         };

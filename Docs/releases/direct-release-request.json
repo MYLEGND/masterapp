@@ -1,10 +1,16 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder requested a coherent receptionist workspace and one live-editable canonical setup guide with Business and Founder views on the existing release branch. The Founder will sync and perform direct deployment from the existing Mac workflow. This request authorizes source integration only.",
-  "purpose": "Unify receptionist settings, connections, content review and Founder recovery presentation; publish one audited global setup guide with strict Founder editing and scoped business reads. Preserve the integrated stale-call retirement and accounting repair. Schema application, deployment and real voice acceptance remain with the existing Mac workflow.",
-  "requestId": "shayla-receptionist-ui-guide-source-integration-20261107-v1",
-  "releaseMode": "validate-only",
-  "targets": [],
+  "authorization": "Founder explicitly authorized direct deployment from the consolidated Mac checkout to Azure for all affected applications using stop, verified upload, and restart. Include the Parfait sign-in privacy correction after independent review and tests. Preserve existing release admission, schema compatibility, publisher exclusion and recovery controls; no campaign or Studio publication is authorized.",
+  "purpose": "Release the consolidated ad-measurement, Protect quote and Studio, shared commerce bundle inventory, receptionist setup guide, and reviewed ClientApp and Parfait authentication corrections from one exact Mac candidate.",
+  "requestId": "consolidated-mac-azure-release-20261109-v1",
+  "releaseMode": "approved-only",
+  "targets": [
+    "portal",
+    "client",
+    "protect",
+    "parfait",
+    "website"
+  ],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "perResourceBaselines": {
@@ -75,10 +81,5 @@
     "rollbackArtifactId": 13016709993,
     "rollbackArtifactDigest": "sha256:171f0b608107fb23f33ce5cb572ded74303018e120ca088e93341dad18aeb3d0",
     "rollbackPackageDigest": "3e8ba8b6073bec9e3a64204c0e0b745e8dcf894c28be05900b158bdc2e28431c"
-  },
-  "sourceIntegration": {
-    "schemaVersion": 1,
-    "baseRevision": "bb369e31635908592683fb8566897c9d59715a86",
-    "sourceRevision": "3dd6c2784dc651c617f5c6830902f1d1f28caea4"
   }
 }
