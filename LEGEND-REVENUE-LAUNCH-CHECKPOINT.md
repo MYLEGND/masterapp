@@ -4955,3 +4955,56 @@ Implementation and evidence are preserved on the remote task branch at
 The current source-only request binds that implementation to baseline29181 above,
 with validate-only mode and no publication targets. This is not production admission.
 Protected fast-track integration and rendered acceptance remain pending.
+
+#### Bundle repair release preservation and current blocker
+
+Exact green application candidate: `186de854d4339ae18f4cb314a1a6f08e1ede5b0f`.
+Implementation remains `723e27e7bb25fda2bee5e64fe0d81c34a4498143`.
+PR771 merged source-only at `4e6554d8a34ca89ef7f98f77773be5fa75f92835`;
+fast-track run42846601423 succeeded without publishing. Security42843864875,
+architecture42843864707 and isolated build/contracts42843864679 all passed.
+These exact results are preserved; do not rerun unchanged application checks.
+
+Founder subsequently waived the remaining rendered localhost gate for this candidate:
+"We do not need the local test, we can deploy as soon as it is green. Do not re run
+everything, preserve non redundantly". This is WAIVED_BY_FOUNDER, not rendered PASS.
+No other admission, recovery, package or live-verification gate was waived.
+
+All three exact packages are built and canonically verified under
+`/private/tmp/legend-linked-bundle-release-186de854d/`. Manifest `packages.json`
+SHA256 `322993414f1d756de52cf17bfbd539db3645ca4a70ce096cbd93eed34090b08c`.
+Portal and Protect successful artifacts were retained. The first Parfait build was
+killed by confirmed Docker OOM during parallel packaging; only that failed package
+was retried serially and passed. No passing application test suite was rerun.
+
+The existing historical Mac mutex mode had been absent from consolidated workflow
+bytes. Its exact reviewed restoration and three focused ownership tests passed,
+preserved remotely at `ee618cef17a24ab572bb9de6b1242d79bea37ee9`. It is coordination
+only and holds the existing legend-approved-release mutex; no hosted deployment.
+This control restoration still needs source-only fast-track incorporation. The
+application code itself is already integrated. Preserve the same task branch;
+reconcile its control commits with the merge ancestry, never reset/recreate history.
+The existing native owner was independently reviewed for three-target scope,
+healthy baseline, zero-migration admission, candidate-specific waiver/authorization,
+exact running mutex observation, bounded async upload reconciliation and full phase
+chains. Its prior version remains beside completed five-app receipts. Before dispatch,
+bind its control revision to the actual current reviewed task head; application
+candidate/packages remain186de854d. Never dispatch the old control SHA as current head.
+
+Fresh provider observation: all five apps Running at
+`ea128c942b7d8bd4452b5ec6abc591ee624111fc`; journals terminal and configuration
+fingerprints retained. Existing recovery ZIP hashes verified. No production app
+was stopped, uploaded, restarted or migrated for this bundle repair.
+
+BLOCKED before shutdown: Azure SQL rejected the read-only migration-metadata query
+because this Mac's IP is not allowed. User decision requested and still pending:
+temporarily allow only the current Mac public IP in the existing SQL firewall,
+read migration metadata, then remove that rule; no database writes/customer reads.
+Do not bypass this denial or infer schema readiness. No firewall rule was changed.
+Local browser access remains disabled; its localhost acceptance gap is now explicitly
+waived above. Authenticated rendered live behavior remains unverified.
+Receipts: `AgentPortal/App_Data/linked-bundle-release-20261110/admission/`.
+Next: resolve the scoped firewall decision, verify zero pending schema, bind and
+hold the existing mutex, obtain final exact admission, then stop/upload/restart only
+portal/protect/parfait and verify runtime identities and affected live behavior.
+Preserve all completed packages/checks; never replay the previous five-app release.
