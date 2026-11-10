@@ -175,6 +175,18 @@ public sealed class WebsiteDesignTheme
     public decimal? FormControlMinHeight { get; set; }
     public decimal? FormControlPaddingBlock { get; set; }
     public decimal? FormControlPaddingInline { get; set; }
+    public decimal? FormMobilePanelPadding { get; set; }
+    public decimal? FormMobileStepGap { get; set; }
+    public decimal? FormMobileFieldGap { get; set; }
+    public decimal? FormMobileLabelGap { get; set; }
+    public decimal? FormMobileControlMinHeight { get; set; }
+    public decimal? FormMobileControlPaddingBlock { get; set; }
+    public decimal? FormMobileControlPaddingInline { get; set; }
+    public string? FormPanelColor { get; set; }
+    public string? FormTextColor { get; set; }
+    public string? FormHelpColor { get; set; }
+    public string? FormControlColor { get; set; }
+    public string? FormControlTextColor { get; set; }
     public string? SurfaceElevated { get; set; }
     public string? SurfaceMuted { get; set; }
     public string? BorderColor { get; set; }

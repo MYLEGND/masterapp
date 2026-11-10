@@ -8482,3 +8482,33 @@ test('scoped public Store hydrates its authored page without replacing live cata
     assert.equal(card.querySelector('a').getAttribute('href'),'/store/s/tenant/product/item');
   }finally{w.close();}
 });
+
+
+test('mobile form theme saves independent geometry and colors and restores desktop on resize',async()=>{
+  const doc=canonicalDocument();
+  doc.theme={formPanelPadding:28,formFieldGap:22,navy:'#143253'};
+  const f=await domFixture({doc,viewportWidth:1024});
+  try{
+    f.click('[data-open="theme"]');
+    f.input('[data-theme-key="formMobilePanelPadding"]','12');
+    f.input('[data-theme-key="formMobileFieldGap"]','0');
+    f.input('[data-theme-key="formMobileControlMinHeight"]','48');
+    f.input('[data-theme-key="formPanelColor"]','#081a3a');
+    const saved=await f.save();
+    assert.equal(saved.theme.formPanelPadding,28);
+    assert.equal(saved.theme.formMobileFieldGap,0);
+    assert.equal(saved.theme.navy,'#143253');
+    const mobile=await domFixture({doc:saved,search:'',viewportWidth:390});
+    try{
+      const root=mobile.w.document.documentElement;
+      assert.equal(root.style.getPropertyValue('--web-form-panel-padding'),'12px');
+      assert.equal(root.style.getPropertyValue('--web-form-field-gap'),'0px');
+      assert.equal(root.style.getPropertyValue('--web-form-control-min-height'),'48px');
+      assert.equal(root.style.getPropertyValue('--web-form-panel-color'),'#081a3a');
+      mobile.w.innerWidth=1280;mobile.w.dispatchEvent(new mobile.w.Event('resize'));
+      await new Promise(resolve=>setTimeout(resolve,80));
+      assert.equal(root.style.getPropertyValue('--web-form-panel-padding'),'28px');
+      assert.equal(root.style.getPropertyValue('--web-form-field-gap'),'22px');
+    }finally{mobile.close();}
+  }finally{f.close();}
+});

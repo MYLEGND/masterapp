@@ -775,6 +775,8 @@ public sealed class WebsiteStudioV3ContractTests
             Theme = new WebsiteDesignTheme
             {
                 Navy = "#143253", Gold = "#cb9e52", FontFamily = "Georgia",
+                FormMobilePanelPadding = 12, FormMobileFieldGap = 10, FormMobileControlMinHeight = 48,
+                FormPanelColor = "#081a3a", FormControlColor = "#ffffff", FormTextColor = "#ffffff",
                 FormMaxWidth = 720, FormPanelPadding = 28, FormStepGap = 32,
                 FormFieldGap = 22, FormLabelGap = 10, FormControlMinHeight = 56,
                 FormControlPaddingBlock = 15, FormControlPaddingInline = 18,
@@ -806,6 +808,10 @@ public sealed class WebsiteStudioV3ContractTests
         var clean = WebsiteContentSanitizer.Sanitize(source);
         var restored = WebsiteContentSanitizer.ReadPersisted(JsonSerializer.Serialize(clean, options), options);
         Assert.Equal(JsonSerializer.Serialize(clean.Theme, options), JsonSerializer.Serialize(restored.Theme, options));
+        Assert.Equal(12m, restored.Theme.FormMobilePanelPadding);
+        Assert.Equal(10m, restored.Theme.FormMobileFieldGap);
+        Assert.Equal(48m, restored.Theme.FormMobileControlMinHeight);
+        Assert.Equal("#081a3a", restored.Theme.FormPanelColor);
         Assert.Equal(720m, restored.Theme.FormMaxWidth);
         Assert.Equal(28m, restored.Theme.FormPanelPadding);
         Assert.Equal(32m, restored.Theme.FormStepGap);
@@ -832,11 +838,15 @@ public sealed class WebsiteStudioV3ContractTests
         {
             Theme = new WebsiteDesignTheme
             {
+                FormMobileControlMinHeight = 12, FormMobilePanelPadding = -1, FormPanelColor = "url(https://invalid.example)",
                 FormMaxWidth = 0, FormPanelPadding = -1, FormStepGap = 121,
                 FormFieldGap = -1, FormLabelGap = 49, FormControlMinHeight = 0,
                 FormControlPaddingBlock = 61, FormControlPaddingInline = 121
             }
         }).Theme;
+        Assert.Null(invalid.FormMobileControlMinHeight);
+        Assert.Null(invalid.FormMobilePanelPadding);
+        Assert.Null(invalid.FormPanelColor);
         Assert.Null(invalid.FormMaxWidth);
         Assert.Null(invalid.FormPanelPadding);
         Assert.Null(invalid.FormStepGap);

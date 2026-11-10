@@ -1134,7 +1134,7 @@ body.life-landing.page-mode-paid-landing header .navbar .nav-link:focus {
     display: grid;
     place-items: center;
     border: 1.5px solid rgba(239,200,111,0.78);
-    
+
     box-shadow: 0 8px 16px rgba(0,0,0,0.20);
 }
 .lq-human-strip-soft .lq-human-strip-avatar {
@@ -1572,7 +1572,7 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     font-size: .8rem;
     font-weight: 700;
 }
-@@media (min-width: 600px) {
+@@container protect-quote (min-width: 600px) {
     .lq-choice-grid.lq-grid-2 { grid-template-columns: repeat(2, 1fr); }
 }
 .lq-card {
@@ -1690,7 +1690,7 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     display: grid;
     grid-template-columns: 1fr;
 }
-@@media (min-width: 600px) {
+@@container protect-quote (min-width: 600px) {
     .lq-contact-grid { grid-template-columns: 1fr 1fr; }
     .lq-contact-grid .full { grid-column: 1 / -1; }
 }
@@ -1717,10 +1717,10 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     display: grid;
     grid-template-columns: 1fr;
 }
-@@media (min-width: 720px){
+@@container protect-quote (min-width: 720px){
     .lq-field-row.two{ grid-template-columns: repeat(2,1fr); }
 }
-@@media (min-width: 560px) and (max-width: 767.98px){
+@@container protect-quote (min-width: 560px) and (max-width: 767.98px){
     .lq-contact-step .lq-field-row.two{ grid-template-columns: repeat(2,1fr); }
 }
 .lq-field {
@@ -1786,7 +1786,7 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     display: grid;
     place-items: center;
     border: 2px solid rgba(239,200,111,0.92);
-    
+
     box-shadow: 0 12px 24px rgba(0,0,0,0.28);
 }
 .lq-agent-avatar img {
@@ -1834,7 +1834,7 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 .lq-success { color: #bbf7d0; }
 
 /* ── Mobile / tablet tightening (≤640px) ─────────────────────────────────── */
-@@media (max-width: 640px){
+@@container protect-quote (max-width: 640px){
     .lq-container {}
     .lq-header h1 { font-size: 1.32rem; line-height: 1.18; margin-bottom: 3px; }
     .lq-subtext { font-size: .88rem; line-height: 1.32; margin-bottom: 6px; }
@@ -1918,8 +1918,7 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 }
 
 /* ── Phone-only tightening (≤480px) ─────────────────────────────────────── */
-@@media (max-width: 480px){
-    /* Header — reduce nav height and psalms bar */
+@@media (max-width: 480px) {
     body:not(.landing-mode) .navbar { padding: 5px 10px 4px !important; }
     body:not(.landing-mode) .navbar-brand img { max-height: 28px !important; }
     body:not(.landing-mode) .header-bottom { margin-top: 3px !important; font-size: 0.76rem !important; letter-spacing: .6px !important; }
@@ -1929,6 +1928,13 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
         letter-spacing: .5px !important;
         gap: 5px !important;
     }
+}
+@@container protect-quote (max-width: 480px){
+    /* Header — reduce nav height and psalms bar */
+
+
+
+
 
     /* Hero shell */
     .lq-hero-shell {
@@ -2034,14 +2040,12 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 }
 }
 
-@@media (max-width: 430px){
+@@container protect-quote (max-width: 430px){
     .lq-choice-grid.lq-step1-twoup { grid-template-columns: 1fr !important; }
 }
 
 /* ── Landing Mobile Fast Path (paid traffic) ─────────────────────────────── */
-@@media (max-width: 767.98px){
-    body.life-landing main.layout-content {
-    }
+@@media (max-width: 767.98px) {
     body.life-landing.page-mode-paid-landing header .navbar {
         min-height: 56px !important;
         padding: 4px 10px !important;
@@ -2054,6 +2058,13 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
         max-height: 31px !important;
         filter: drop-shadow(0 3px 8px rgba(2,12,27,.20));
     }
+}
+@@container protect-quote (max-width: 767.98px){
+    body.life-landing main.layout-content {
+    }
+
+
+
 
     body.life-landing .lq-container {
     }
@@ -2153,7 +2164,7 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     }
 }
 
-@@media (max-width: 767.98px){
+@@container protect-quote (max-width: 767.98px){
     body.page-variant-emotional-continuity-v1 #lifeHeroTrustStrip {
         display: none !important;
     }
@@ -2165,18 +2176,22 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     }
 }
 
-@@media (min-width: 768px){
+@@container protect-quote (min-width: 768px){
     .lq-human-strip-inline {
         display: none !important;
     }
 }
 
-@@media (max-width: 390px){
+@@media (max-width: 390px) {
     body.life-landing.page-mode-paid-landing header .navbar {
         min-height: 52px !important;
         padding: 3px 8px !important;
     }
     body.life-landing.page-mode-paid-landing header .navbar-brand img { max-height: 28px !important; }
+}
+@@container protect-quote (max-width: 390px){
+
+
     body.life-landing .lq-hero-shell {
     }
     body.life-landing .lq-header h1 { font-size: 1.04rem !important; }
@@ -2876,7 +2891,7 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 .lq-booking-embed-shell.is-modal .lq-booking-iframe {
     min-height: min(78vh, 720px);
 }
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     .lq-post-submit-slot {
         margin-top: 14px;
     }
@@ -2951,7 +2966,7 @@ body.page-variant-contact-first-education-v1 .lq-contact-estimate-stat {
 body.page-variant-contact-first-education-v1 .lq-contact-estimate-chip {
     color: rgba(244,239,231,0.82);
 }
-@@media (max-width: 640px) {
+@@container protect-quote (max-width: 640px) {
     .lq-estimate-panel {
         max-width: 100% !important;
     }
@@ -3051,7 +3066,7 @@ body.page-variant-contact-first-education-v1 .lq-contact-estimate-chip {
         font-size: .92rem;
     }
 }
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     .lq-estimate-grid.is-single,
     .lq-estimate-grid.is-comparison {
         grid-template-columns: 1fr;
@@ -3066,7 +3081,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
 
 
 /* Desktop ad-to-landing continuity optimization */
-@@media (min-width: 768px) {
+@@container protect-quote (min-width: 768px) {
     .lq-header h1{
         max-width:22ch !important;
     }
@@ -3100,7 +3115,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
 }
 
 /* Emotional continuity desktop rail alignment */
-@@media (min-width: 768px) {
+@@container protect-quote (min-width: 768px) {
     body.page-variant-emotional-continuity-v1.life-landing .lq-hero-rail {
         position: relative;
         max-width: 690px;
@@ -3193,7 +3208,7 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     display: grid;
     place-items: center;
     border: 2px solid rgba(243,214,136,0.86);
-    
+
     box-shadow: 0 12px 22px rgba(0,0,0,0.24);
 }
 .lq-education-trust-avatar img {
@@ -3589,7 +3604,7 @@ body.page-variant-contact-first-education-v1 .lq-education-panel {
         inset 0 1px 0 rgba(255,255,255,0.04) !important;
 }
 body.page-variant-contact-first-education-v1 .lq-education-trust-avatar {
-    
+
     box-shadow:
         0 12px 22px rgba(7,14,26,0.28),
         inset 0 1px 0 rgba(255,255,255,0.08);
@@ -3698,7 +3713,7 @@ body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-cont
     color: rgba(244,239,231,0.78);
 }
 
-@@media (min-width: 768px) {
+@@container protect-quote (min-width: 768px) {
     .lq-contact-first-flow-surface .lq-step-question {
         white-space: nowrap;
     }
@@ -3845,7 +3860,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     margin-bottom: 0 !important;
 }
 
-@@media (min-width: 992px) {
+@@container protect-quote (min-width: 992px) {
     body.page-variant-contact-first-education-v1.life-landing .lq-hero-shell {
     }
 
@@ -3853,7 +3868,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         max-width: var(--cf-rail-width);
         margin: 0 auto 14px;
     }
-    
+
     body.page-variant-contact-first-education-v1.life-landing .lq-hero-banner-wrap {
         max-width: var(--cf-rail-width);
     }
@@ -3935,7 +3950,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 }
 
-@@media (min-width: 768px) {
+@@container protect-quote (min-width: 768px) {
     .lq-education-trust-card,
     .lq-education-panel {
         padding: 18px 20px;
@@ -3950,7 +3965,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 }
 
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     .lq-education-stack {
         gap: 10px;
     }
@@ -4106,7 +4121,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     margin-top: 10px;
 }
 
-@@media (min-width: 768px) {
+@@container protect-quote (min-width: 768px) {
     .lq-carrier-disclosure:not([open]) > *:not(summary) {
         display: block;
     }
@@ -4349,7 +4364,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 }
 
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     .lq-carrier-strip {
         margin-top: 12px;
         padding: 10px 10px 9px;
@@ -4398,7 +4413,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 }
 
-@@media (max-width: 480px) {
+@@container protect-quote (max-width: 480px) {
     .lq-carrier-strip-logo-frame {
         width: 108px;
         height: 30px;
@@ -4419,10 +4434,10 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 @@media (prefers-reduced-motion: reduce) {
     }
 
-@@media (max-width: 640px) {
+@@container protect-quote (max-width: 640px) {
     }
 
-@@media (max-width: 480px) {
+@@container protect-quote (max-width: 480px) {
     }
 
 /* Low-friction options landing variant */
@@ -4508,7 +4523,7 @@ body.page-variant-low-friction-options-v1.life-landing .lq-header {
     gap: 8px;
 }
 
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     body.page-variant-low-friction-options-v1.life-landing .lq-hero-shell {
     }
 
@@ -4633,7 +4648,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1
     display: none;
 }
 
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     body.life-final-step-active .lq-hero-shell {
     }
 }
@@ -4684,7 +4699,7 @@ body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat
     border-radius: 10px !important;
 }
 
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stats {
         grid-template-columns: 1fr !important;
         gap: 0 !important;
@@ -5145,7 +5160,7 @@ input:checked + .lq-answer-card {
     }
 }
 
-@@media (max-width: 720px) {
+@@container protect-quote (max-width: 720px) {
     .lq-above-fold-proof,
     .lq-contact-first-proof-chips,
     .lq-low-friction-hero-chips,
@@ -5522,7 +5537,7 @@ input:checked + .lq-answer-card {
                                                 @(string.Equals(secondDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? coverageGoalErrorText : protectingWhoErrorText)
                                             </div>
                                         </div>
-                                        
+
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="2" data-cms-native-step="2" data-cms-progress-label="Coverage range" hidden>
@@ -5552,7 +5567,7 @@ input:checked + .lq-answer-card {
                                             </div>
                                             <div class="lq-choice-error" id="err-step1-coverage-amount">@coverageAmountErrorText</div>
                                         </div>
-                                        
+
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="3" data-cms-native-step="3" data-cms-progress-label="Age" hidden>
@@ -5569,7 +5584,7 @@ input:checked + .lq-answer-card {
                                                         </div>
                                                         <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
                                                     </div>
-                                                    
+
                                                     <input
                                                         type="range"
                                                         min="@minSelectableAge"
@@ -5620,7 +5635,7 @@ input:checked + .lq-answer-card {
                                                 </div>
                                                 <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
                                             </div>
-                                            
+
                                         }
                                     </div>
 
@@ -5670,7 +5685,7 @@ input:checked + .lq-answer-card {
                                                         </div>
                                                         <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
                                                     </div>
-                                                    
+
                                                     <input
                                                         type="range"
                                                         min="@minSelectableAge"
@@ -5739,6 +5754,7 @@ input:checked + .lq-answer-card {
                                     <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">@finalStepHeading</div>
                                     <div class="lq-step-helper" id="lifeStep2Helper" @(string.IsNullOrWhiteSpace(finalStepHelper) ? "hidden" : null)>@finalStepHelper</div>
                                     <div id="lifeContactCaptureWrap">
+                                        <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
                                         <div class="lq-contact-grid">
                                         <div class="full lq-contact-capture-head">
                                             <div class="lq-agent-handoff lq-contact-agent-card" role="note" aria-label="Coverage guidance from @contactFirstTrustLabelName">
@@ -5836,9 +5852,7 @@ input:checked + .lq-answer-card {
                                             <button type="button" class="btn-ghost" id="step2BackBtn">Back to answers</button>
                                             <div class="lq-error" id="lifeError"></div>
                                             <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
-                                            <div class="lq-contact-grid">
-                                                <div class="full lq-contact-estimate-slot lq-contact-estimate-after-submit" id="lifeStep2EstimateSlot" hidden></div>
-                                            </div>
+
                                         </div>
                                     </div>
                                     <div class="lq-post-submit-slot" id="lifePostSubmitSlot" hidden></div>
@@ -6040,7 +6054,7 @@ input:checked + .lq-answer-card {
                             @(string.Equals(secondDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? coverageGoalErrorText : protectingWhoErrorText)
                         </div>
                     </div>
-                    
+
                 </div>
 
                 <div class="lq-micro-step" data-micro-step="2" data-cms-native-step="2" data-cms-progress-label="Coverage range" hidden>
@@ -6070,7 +6084,7 @@ input:checked + .lq-answer-card {
                         </div>
                         <div class="lq-choice-error" id="err-step1-coverage-amount">@coverageAmountErrorText</div>
                     </div>
-                    
+
                 </div>
 
                 <div class="lq-micro-step" data-micro-step="3" data-cms-native-step="3" data-cms-progress-label="Age" hidden>
@@ -6087,7 +6101,7 @@ input:checked + .lq-answer-card {
                                     </div>
                                     <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
                                 </div>
-                                
+
                                 <input
                                     type="range"
                                     min="@minSelectableAge"
@@ -6138,7 +6152,7 @@ input:checked + .lq-answer-card {
                             </div>
                             <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
                         </div>
-                        
+
                     }
                 </div>
 
@@ -6188,7 +6202,7 @@ input:checked + .lq-answer-card {
                                     </div>
                                     <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
                                 </div>
-                                
+
                                 <input
                                     type="range"
                                     min="@minSelectableAge"
@@ -6257,6 +6271,7 @@ input:checked + .lq-answer-card {
                 <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">@finalStepHeading</div>
                 <div class="lq-step-helper" id="lifeStep2Helper" @(string.IsNullOrWhiteSpace(finalStepHelper) ? "hidden" : null)>@finalStepHelper</div>
                 <div id="lifeContactCaptureWrap">
+                    <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
                     <div class="lq-contact-grid">
                         <div class="full lq-contact-capture-head">
                             <div class="lq-agent-handoff" role="note" aria-label="Coverage guidance from @contactFirstTrustLabelName">
@@ -6412,9 +6427,7 @@ input:checked + .lq-answer-card {
                         <button type="button" class="btn-ghost" id="step2BackBtn">Back to answers</button>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
-                        <div class="lq-contact-grid">
-                            <div class="full lq-contact-estimate-slot lq-contact-estimate-after-submit" id="lifeStep2EstimateSlot" hidden></div>
-                        </div>
+
                     </div>
                 </div>
                 <div class="lq-post-submit-slot" id="lifePostSubmitSlot" hidden></div>
@@ -6515,7 +6528,7 @@ input:checked + .lq-answer-card {
     display: none !important;
 }
 
-@@media (min-width: 1024px) {
+@@container protect-quote (min-width: 1024px) {
 
     #lifePostSubmitSlot .lq-booking-frame-only,
     #lifePostSubmitSlot .lq-booking-embed-status {
@@ -6579,7 +6592,7 @@ input:checked + .lq-answer-card {
     text-decoration: none !important;
 }
 
-@@media (min-width: 1024px) {
+@@container protect-quote (min-width: 1024px) {
     main.layout-content,
     .container.layout-content {
     }
@@ -6675,7 +6688,7 @@ input:checked + .lq-answer-card {
     }
 }
 
-@@media (max-width: 720px) {
+@@container protect-quote (max-width: 720px) {
 
     #lifePostSubmitSlot .lq-booking-iframe {
         min-height: 620px !important;
@@ -6783,7 +6796,7 @@ input:checked + .lq-answer-card {
     letter-spacing: .02em !important;
 }
 
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     #lifeProcessingPanel .lq-step-panel-pad {
         grid-template-columns: 1fr !important;
         text-align: center !important;
@@ -7559,7 +7572,7 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
     input.addEventListener('blur', applyMask);
   });
 
-  
+
 function stripPhoneDigits(value) {
   return String(value || '').replace(/\D/g, '');
 }
@@ -8769,7 +8782,7 @@ const contactFieldProgress = new Map();
       || 'Calculated';
 
     const shared=window.LEGEND_NATIVE_FORM_PRESENTATION?.reviewMarkup({kind:'life',
-      kicker:'Your starting range',copy:'Personalized from your answers. Submit to unlock the full carrier review.',
+      kicker:'Your starting range',copy:'Preliminary estimate, not a carrier quote. Request a licensed review to confirm options.',
       metrics:[{label:'Monthly range',value:monthlyRange},{label:'Coverage range',value:coverageRange}]});
     if(shared) return shared;
 
@@ -8777,7 +8790,7 @@ const contactFieldProgress = new Map();
       <section class="lq-contact-preview-mini" id="lifeStep2EstimateSummary" aria-label="Starting estimate preview">
         <div class="lq-contact-preview-mini-head">
           <div class="lq-contact-estimate-kicker">Your starting range</div>
-          <div class="lq-contact-preview-mini-copy">Personalized from your answers. Submit to unlock the full carrier review.</div>
+          <div class="lq-contact-preview-mini-copy">Preliminary estimate, not a carrier quote. Request a licensed review to confirm options.</div>
         </div>
 
         <div class="lq-contact-preview-mini-metrics" aria-label="Estimate starting range">
@@ -11112,7 +11125,7 @@ body.page-variant-low-friction-options-v1 #lifeEducationContactPanel .lq-step-qu
     box-shadow: none;
 }
 
-@@media (max-width: 720px) {
+@@container protect-quote (max-width: 720px) {
 }
 </style>
 
@@ -11140,7 +11153,7 @@ body.life-landing.life-quote-started .lq-contact-first-proof-chips {
     display: none !important;
 }
 
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     body.life-landing:not(.life-quote-started) .lq-hero-shell {
         min-height: auto !important;
     }
@@ -11179,7 +11192,7 @@ body.life-landing.life-quote-started .lq-contact-first-proof-chips {
     text-wrap: balance;
 }
 
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     .lq-hero-step-copy {
         margin: 2px auto 9px !important;
         padding: 0 4px !important;
@@ -11445,12 +11458,7 @@ body.life-final-step-active .lq-hero-shell {
     border-top: 1px solid rgba(244, 210, 124, 0.16) !important;
 }
 
-#lifeWizardForm .lq-card,
-#lifeWizardForm label.lq-card {
-    display: grid !important;
-    place-items: center !important;
-    text-align: center !important;
-}
+/* Choice layout is owned by shared public-inquiry-form.css and Studio presentation. */
 
 #lifeWizardForm .lq-choice-grid,
 #lifeWizardForm .lq-choice-grid.lq-step1-twoup,
@@ -11555,7 +11563,7 @@ body.life-final-step-active .lq-hero-shell {
     box-shadow: none !important;
 }
 
-@@media (max-width: 767.98px) {
+@@container protect-quote (max-width: 767.98px) {
     main.layout-content,
     .lq-container {
     }

@@ -2549,7 +2549,22 @@ public class WebsitePlatformController : ControllerBase
                 message = "The saved draft list contains entries that need review. All existing drafts were preserved." });
         var draft = drafts.SingleOrDefault(d => d.Id == request.DraftId);
         if (draft is null) return NotFound();
-        if (delete) drafts.Remove(draft);
+        if (delete)
+        {
+            // Delete only this snapshot. Preserve unknown historical metadata and
+            // stabilize compatibility IDs before removing an ordinal-based entry.
+            var stored = System.Text.Json.Nodes.JsonNode.Parse(state.NamedDraftsJson)!.AsArray();
+            for (var index = 0; index < drafts.Count; index++)
+            {
+                var row = stored[index]!.AsObject();
+                foreach (var key in row.Select(pair => pair.Key).Where(key => key.Equals("id", StringComparison.OrdinalIgnoreCase)).ToArray())
+                    row.Remove(key);
+                row["id"] = drafts[index].Id;
+            }
+            stored.RemoveAt(drafts.IndexOf(draft));
+            state.NamedDraftsJson = stored.ToJsonString(JsonOptions);
+            drafts.Remove(draft);
+        }
         else
         {
             WebsiteContentDocument restored;
@@ -2594,10 +2609,13 @@ public class WebsitePlatformController : ControllerBase
             state.ScheduledPublishUtc = null; state.ScheduledRevision = null;
             state.ScheduledActorJson = null; state.ScheduleError = null;
         }
-        state.NamedDraftsJson = JsonSerializer.Serialize(drafts, JsonOptions);
+        if (!delete) state.NamedDraftsJson = JsonSerializer.Serialize(drafts, JsonOptions);
         state.Revision++; state.UpdatedUtc = DateTime.UtcNow;
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
+        // Deletion does not interpret the working document. A recovery-required
+        // draft must never turn an already committed deletion into a false failure.
+        if (delete) return Ok(new { revision = state.Revision, drafts = drafts.Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
         return Ok(new { revision = state.Revision, document = Read(state.DraftJson), drafts = drafts.Select(d => new { d.Id, d.Name, d.UpdatedUtc }) });
     }
 

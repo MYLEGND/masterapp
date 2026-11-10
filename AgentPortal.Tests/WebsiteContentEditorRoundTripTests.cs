@@ -1402,6 +1402,37 @@ public sealed class WebsiteContentEditorRoundTripTests
     [InlineData(WebsiteEditorSiteKeys.Legend)]
     [InlineData(WebsiteEditorSiteKeys.Protect)]
     [InlineData(WebsiteEditorSiteKeys.Business)]
+    public async Task DeleteNamedDraft_DoesNotReadInvalidWorkingDocumentOrDiscardSurvivorMetadata(string siteKey)
+    {
+        using var fixture = new Fixture(siteKey);
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument("Existing content"), revision: 8);
+        var state = await fixture.Db.Set<WebsiteContentState>().SingleAsync();
+        var selected = Guid.NewGuid(); var survivor = Guid.NewGuid();
+        state.NamedDraftsJson = JsonSerializer.Serialize(new[] {
+            new { id = selected, name = "Delete", documentJson = state.DraftJson, futureMetadata = "selected" },
+            new { id = survivor, name = "Keep", documentJson = state.DraftJson, futureMetadata = "preserved" }
+        }, JsonOptions);
+        state.DraftJson = "{invalid working draft";
+        var published = state.PublishedVersionId;
+        await fixture.Db.SaveChangesAsync(); fixture.Db.ChangeTracker.Clear();
+        var result = Assert.IsType<OkObjectResult>(await fixture.CreateController().DeleteDraft(new(ticket, 8, selected)));
+        var response = JsonSerializer.SerializeToElement(result.Value, JsonOptions);
+        Assert.False(response.TryGetProperty("document", out _));
+        fixture.Db.ChangeTracker.Clear();
+        var saved = await fixture.Db.Set<WebsiteContentState>().SingleAsync();
+        Assert.Equal("{invalid working draft", saved.DraftJson);
+        Assert.Equal(published, saved.PublishedVersionId);
+        Assert.Equal(9, saved.Revision);
+        var remaining = Assert.Single(JsonDocument.Parse(saved.NamedDraftsJson).RootElement.EnumerateArray());
+        Assert.Equal(survivor, remaining.GetProperty("id").GetGuid());
+        Assert.Equal("preserved", remaining.GetProperty("futureMetadata").GetString());
+    }
+
+    [Theory]
+    [InlineData(WebsiteEditorSiteKeys.Legend)]
+    [InlineData(WebsiteEditorSiteKeys.Protect)]
+    [InlineData(WebsiteEditorSiteKeys.Business)]
     public async Task HistoricalNamedDraftIds_DeletePersistsAndPreservesOtherDrafts(string siteKey)
     {
         using var fixture = new Fixture(siteKey);
