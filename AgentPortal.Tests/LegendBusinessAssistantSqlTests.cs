@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Security.Claims;
+using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Domain.Entities;
 using Infrastructure.Analytics;
 using Infrastructure.Data;
@@ -23,6 +27,7 @@ public sealed class PersistentAssistantFactAttribute : FactAttribute
     }
 }
 
+[Collection("LegendConnectFounderEnvironment")]
 public sealed class LegendBusinessAssistantSqlTests
 {
     [PersistentAssistantFact]
@@ -93,6 +98,62 @@ public sealed class LegendBusinessAssistantSqlTests
         Assert.Equal("feature_allocation_exhausted", (await f.Admit(selection, Guid.NewGuid())).Reason);
         var expired = selection with { Evidence = selection.Evidence with { ExpiresUtc = DateTime.UtcNow.AddSeconds(-1) } };
         Assert.Equal("cost_bound_unverified_or_expired", (await f.Admit(expired, Guid.NewGuid())).Reason);
+    }
+
+    [PersistentAssistantFact]
+    public async Task ExactOperatorSettlementPreservesUnknownCashAndPreventsDuplicatePosting()
+    {
+        await using var f = await Fixture.CreateAsync(25m);
+        var selection = await f.AddOwnerAsync();
+        var admitted = await f.Admit(selection, Guid.NewGuid());
+        Assert.True(admitted.Admitted);
+        await using var db = f.Open();
+        using var protector = new MarketingCredentialProtector(new EphemeralDataProtectionProvider());
+        var actor = Guid.NewGuid().ToString("D");
+        var host = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Founder:Oid"] = actor }).Build();
+        var http = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new("oid", actor)], "synthetic")) } };
+        var service = new ReceptionistOperatorService(new MarketingConnectionStore(db, protector), f.Admission, host, protector, http, TimeProvider.System);
+        async Task<ReceptionistOperatorPlan> Plan(ReceptionistDatedCostObservation observation, string receipt)
+        {
+            var row = await db.MarketingConnections.AsNoTracking().SingleAsync(x => x.Id == selection.Snapshot.ConnectionId);
+            var accounts = await db.Set<ReceptionistBudgetAccount>().AsNoTracking().Where(x => x.Id == selection.OwnerAccount || x.Id == f.FundingId).ToListAsync();
+            var reviewed = DateTime.UtcNow;
+            var package = new ReceptionistOperatorPackage { Version = 1, Label = "Synthetic delayed receipt", Operation = "reconcile_assistant_cost",
+                ReviewedByFounderOid = actor, ReviewedUtc = reviewed, ExpiresUtc = reviewed.AddMinutes(10), MarketingConnectionId = row.Id,
+                ExpectedOwnerKey = selection.Owner.Key, Provider = "openai", ProviderProjectKey = selection.Snapshot.Configuration!.ProjectId,
+                ConfigurationId = selection.Snapshot.Revision, ConfigurationSha256 = ReceptionistConfigurationCodec.Hash(JsonSerializer.Serialize(selection.Snapshot.Configuration)),
+                ExpectedConnectionRevision = row.Revision, ExpectedAccountRevisions = accounts.ToDictionary(x => x.Id, x => x.Revision),
+                FundingScopes = new() { [f.FundingId] = accounts.Single(x => x.Id == f.FundingId).ScopeKey },
+                AssistantReservationId = admitted.ReservationId, CallCost = observation, ReceiptReference = receipt,
+                Evidence = [new("reconcile_assistant_cost", receipt, new string('a', 64), reviewed),
+                    new("assistant_provider_closure", "synthetic-closed-response", new string('b', 64), reviewed)] };
+            var json = JsonSerializer.Serialize(package, ReceptionistConfigurationCodec.Json);
+            var hash = ReceptionistConfigurationCodec.Hash(json); var key = "synthetic_" + Guid.NewGuid().ToString("N");
+            host["Receptionist:OperatorPackages:" + key + ":Json"] = json; host["Receptionist:OperatorPackages:" + key + ":Sha256"] = hash;
+            return await service.PlanAsync(key, hash);
+        }
+        var serviceDate = DateTime.UtcNow.AddSeconds(-1);
+        var partial = await Plan(new(null, 0m, serviceDate, 0.4m, null, 0.4m), "synthetic-partial");
+        Assert.True(partial.CanApply, string.Join(";", partial.Blockers));
+        Assert.Contains(partial.Facts, x => x.Label == "Final cash total" && x.Value.Contains("unknown"));
+        var request = new ReceptionistOperatorApplyRequest(partial.PackageKey, partial.PackageSha256, partial.ExpectedStateToken!);
+        Assert.True((await service.ApplyAsync(request)).ReadBackVerified);
+        Assert.Equal("already_applied", (await service.ApplyAsync(request)).Outcome);
+        var reserved = await db.Set<ReceptionistCostReservation>().AsNoTracking().SingleAsync(x => x.Id == admitted.ReservationId);
+        Assert.False(reserved.CashFinal); Assert.True(reserved.ConsumptionFinal); Assert.Equal(0.4m, reserved.ConsumptionObserved);
+        Assert.Equal(1, await db.Set<ReceptionistUsageReceipt>().CountAsync(x => x.AssistantReservationId == reserved.Id));
+        var final = await Plan(new(serviceDate, 0.2m, serviceDate, 0.4m, 0.2m, 0.4m), "synthetic-final");
+        Assert.True(final.CanApply, string.Join(";", final.Blockers));
+        Assert.True((await service.ApplyAsync(new(final.PackageKey, final.PackageSha256, final.ExpectedStateToken!))).ReadBackVerified);
+        reserved = await db.Set<ReceptionistCostReservation>().AsNoTracking().SingleAsync(x => x.Id == reserved.Id);
+        Assert.True(reserved.CashFinal); Assert.True(reserved.ConsumptionFinal);
+        Assert.Equal(0.2m, reserved.CashObserved); Assert.Equal(0.4m, reserved.ConsumptionObserved);
+        var periods = await db.Set<ReceptionistBudgetPeriod>().Where(x => x.BudgetAccountId == selection.OwnerAccount || x.BudgetAccountId == f.FundingId).ToListAsync();
+        Assert.All(periods, x => { Assert.Equal(0.2m, x.CashCommitted); Assert.Equal(0.4m, x.ConsumptionCommitted); });
+        var changedReceipt = await Plan(new(serviceDate, 0.3m, serviceDate, 0.4m, 0.3m, 0.4m), "synthetic-final");
+        Assert.False(changedReceipt.CanApply);
+        http.HttpContext.User = new ClaimsPrincipal(new ClaimsIdentity([new("oid", Guid.NewGuid().ToString("D"))], "synthetic"));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ApplyAsync(request));
     }
 
     private sealed record Selection(MarketingOwnerScope Owner, Guid OwnerAccount,
@@ -169,6 +230,9 @@ public sealed class LegendBusinessAssistantSqlTests
         public async ValueTask DisposeAsync()
         {
             await using var db = Open();
+            var reservations = db.Set<ReceptionistCostReservation>().Where(x => accountIds.Contains(x.OwnerBudgetAccountId)).Select(x => x.Id);
+            await db.Set<ReceptionistUsageReceipt>().Where(x => x.AssistantReservationId.HasValue && reservations.Contains(x.AssistantReservationId.Value)).ExecuteDeleteAsync();
+            await db.Set<ReceptionistCostPosting>().Where(x => accountIds.Contains(x.OwnerBudgetAccountId)).ExecuteDeleteAsync();
             await db.Set<ReceptionistCostReservation>().Where(x => accountIds.Contains(x.OwnerBudgetAccountId)).ExecuteDeleteAsync();
             await db.Set<ReceptionistBudgetPeriod>().Where(x => accountIds.Contains(x.BudgetAccountId)).ExecuteDeleteAsync();
             await db.MarketingConnections.Where(x => x.CommerceBusinessId.HasValue && businessIds.Contains(x.CommerceBusinessId.Value)).ExecuteDeleteAsync();

@@ -12825,6 +12825,10 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AssistantBindingJson")
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid?>("AssistantOperationId")
                         .HasColumnType("uniqueidentifier");
 
@@ -13229,6 +13233,9 @@ namespace Infrastructure.Migrations
                     b.Property<Guid?>("AccountChargeId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("AssistantReservationId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("CallId")
                         .HasColumnType("uniqueidentifier");
 
@@ -13263,6 +13270,8 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("AccountChargeId");
 
+                    b.HasIndex("AssistantReservationId");
+
                     b.HasIndex("CallId");
 
                     b.HasIndex("ScopeKey", "ProviderReceiptKey")
@@ -13270,7 +13279,7 @@ namespace Infrastructure.Migrations
 
                     b.ToTable("ReceptionistUsageReceipts", null, t =>
                         {
-                            t.HasCheckConstraint("CK_ReceptionistUsageReceipt_Target", "([CallId] IS NOT NULL AND [AccountChargeId] IS NULL) OR ([CallId] IS NULL AND [AccountChargeId] IS NOT NULL)");
+                            t.HasCheckConstraint("CK_ReceptionistUsageReceipt_Target", "([CallId] IS NOT NULL AND [AccountChargeId] IS NULL AND [AssistantReservationId] IS NULL) OR ([CallId] IS NULL AND [AccountChargeId] IS NOT NULL AND [AssistantReservationId] IS NULL) OR ([CallId] IS NULL AND [AccountChargeId] IS NULL AND [AssistantReservationId] IS NOT NULL)");
                         });
                 });
 
@@ -16843,6 +16852,11 @@ namespace Infrastructure.Migrations
                     b.HasOne("Domain.Entities.ReceptionistAccountCharge", null)
                         .WithMany()
                         .HasForeignKey("AccountChargeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Domain.Entities.ReceptionistCostReservation", null)
+                        .WithMany()
+                        .HasForeignKey("AssistantReservationId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Domain.Entities.ReceptionistCall", null)

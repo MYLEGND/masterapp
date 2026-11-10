@@ -314,6 +314,9 @@ private fun FounderAiConversationContent(
                 } else {
                     items(state.messages) { message -> FounderAiMessageBubble(message) }
                 }
+                if (state.isSending && state.provisionalAnswer.isNotEmpty()) {
+                    item { Text(text = state.provisionalAnswer) }
+                }
                 state.progress?.let { progress -> item { FounderAiStatusCard(progress) } }
                 state.failure?.let { failure -> item { FounderAiStatusCard(failure, isError = true) } }
             }

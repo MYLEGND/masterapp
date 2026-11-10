@@ -5075,3 +5075,102 @@ not an enforced repository access denial. Rendered localhost browser access was
 rechecked: Work settings disable local browsers and the Mac is locked. Founder is away
 from the Mac and cannot unlock it now. Rendered acceptance is BLOCKED, not waived.
 Continue independent work; no prior visual waiver transfers.
+
+
+## 2026-11-10 — added capability/quality/performance continuation
+
+The Founder added this work to the SAME release flow; do not start a second checkout,
+branch, assistant/tool stack, database or register. Standing requirements are now in
+AGENTS.md section15 and the existing pretrained implementation ledger. They are
+instructions, not an active scheduler. Codex remains sole implementor; Astra audits.
+
+Source preservation is VERIFIED on the existing task branch at
+`f8f92785f7695f5e809fc96507372045d405a25e`, parent33652c253. Astra verified all36paths
+against manifest SHA256 `2c436631657e0887bf345086b295dee9b9f57b803719eb0676e8e06706b8bdca`
+and accepted preservation only. Continuity finish read back exact GitHub HEAD.
+Fast-track remains4e6554d8, not merged with this foundation. A read-verified host-local
+archive also exists at `~/.codex/legend-mac/recovery/legend-ai-foundation-uncommitted-20261110T224330Z.tar.gz`,
+SHA256 `5e356ff2ca692a8f6cc63435a6388b1a898d33d341ff718b46a899038b678ba5`.
+This archive is host-local recovery, not cloud backup or feature acceptance.
+
+Current dirty continuation extends the existing operator preview/approval and dated
+cost postings with authoritative assistant receipt settlement and an immutable
+reservation binding. It is NOT reviewed/validated yet. The first schema migration
+is already locally applied; never rewrite/replay it. Receipt-target/binding additions
+need a separate reviewed migration and focused local tests. No production effects.
+
+After this in-flight work: map all actual entry points/providers/deployed identities;
+reproduce and instrument latency; connect missing shared upload/image/media/Studio,
+research/report/export and authorized action capabilities; expose truthful settings;
+run representative quality/latency/cost and mobile/desktop evaluation. Initial simple
+question targets p95<=3s first meaningful text and p95<=15s completion remain UNMEASURED.
+Actual Astra/model availability and equivalence are UNVERIFIED. No paid test budget,
+new service, limit increase, reload or retail-client access is inferred.
+
+The latest command requests deployment through the existing authorized Azure process
+once the combined candidate passes its gates, superseding the preceding assignment's
+no-deploy outcome. It does NOT waive exact review, provider/funding evidence, rendered
+acceptance, migration admission, release locks, selective packages or live verification.
+Mac locked/browser disabled and Founder away: rendered localhost gate remains BLOCKED.
+Keep independent implementation moving and preserve successful compatible evidence.
+
+### Continuation: receipt settlement and incremental response delivery
+
+Second additive migration `20261110230942_AddAssistantCostReceiptSettlement`, SHA256
+`c14874542426f7ec03f2712a1e56b56ef78f825b667b6aa88ead86a77d41fc51`, independently
+accepted by Astra for synthetic local rehearsal only and applied successfully through
+`scripts/db.sh local migrate` to the existing verified MasterAppLocalTest. No production
+schema effect. Log: `/private/tmp/legend-assistant-settlement-local-migrate.log`.
+The existing accounting/operator owners now retain immutable reservation bindings,
+preview exact dated receipt amounts, and settle cash/service independently with replay
+protection. Unknown costs remain reserved. Down refuses to discard recorded evidence.
+
+Focused local checks passed 9/9: five assistant SQL accounting cases (including partial
+and final settlement/replay), three incremental parser checks, and one mocked provider
+transport isolation/no-retry case. Log:
+`/private/tmp/legend-assistant-settlement-stream-tests.log`. No paid provider calls.
+Subsequent timing/terminal validation changes still require an exact final build/check.
+JS syntax and diff whitespace checks passed at this stage. NU1900 remains a failed
+vulnerability-feed lookup, not security acceptance.
+
+Confirmed source-level latency contributor: existing HTTP NDJSON streams status only;
+provider responses previously waited for full JSON. New dirty continuation adds Responses
+SSE parsing in the existing conversation owner, business-mode answer deltas through the
+existing progress transport, and untrusted provisional plain text in the web transcript.
+Only terminal completed responses enter saved assistant history. Interruption removes
+provisional UI and retains existing outcome-unknown reconciliation. Sanitized stage
+elapsed timings cover authorization/context/provider dispatch/first text/terminal and
+saved completion. This is not a measured five-minute root cause, a production latency
+benchmark, or mobile/native streaming acceptance. Legacy/native routes still need their
+own consumer integration and actual tracing; p95 targets remain unmeasured.
+
+Official references inspected: https://developers.openai.com/api/docs/guides/streaming-responses
+and https://developers.openai.com/api/docs/models/gpt-6-astra . Catalog existence does
+not verify organization access or authorize model changes/billable evaluation.
+
+Astra capability inventory found existing WebsiteMediaService + ISocialMediaStorage +
+UploadValidator and WebsitePlatformController library/draft owners; no image generation
+or editing executor was found. Existing AgentDocuments holds sensitive compliance
+records and is not blanket assistant disclosure permission. Research exists via
+LegendFounderToolAuthority.ResearchAsync; website portable export via WebsiteImportService;
+ad proposals via IAdvertisingCommandCenterService and existing approval endpoints.
+Business attachment/reference authorization, image adapter/funding, media/Studio wiring,
+scoped research/export/action wiring and configuration UI remain incomplete. Do not
+advertise these as delivered. Current business assistant remains recommendation-only.
+
+Streaming follow-up: bounded chunk/line/event/aggregate reads now reject oversized
+provider output before whole-line allocation. Final focused parser/transport tests
+passed 5/5 (`/private/tmp/legend-assistant-stream-bounded-tests.log`). Mobile consumers
+now decode and render provisional answer text separately from saved history; iOS
+`swiftc -frontend -parse` passed (syntax only), and existing Android FounderAiChatStreamTest
+and FounderAiMobileContractTest passed via offline Gradle (39s). No simulator/device or
+rendered acceptance is claimed. Native business-workspace selection remains unwired.
+
+Fresh Azure read-only inventory: all five existing apps Running. Portal explicitly sets
+`LegendConnect__Foundation__HostKind=Cloudflare`; allowlisted OpenAI model/effort/timeout
+settings were absent, so deployed effective defaults still require package/runtime
+verification. No credentials were printed or used. Cloudflare transport explicitly
+sends stream=false; its worker adapter also buffers model output. Adaptive Founder
+execution includes a planner before final synthesis and may use serial specialists.
+This evidence identifies additional tracing targets, not measured five-minute causality.
+No Cloudflare routing/model/budget changes or worker deployment have been made.

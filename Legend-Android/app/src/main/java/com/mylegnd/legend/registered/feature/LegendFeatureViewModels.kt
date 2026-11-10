@@ -60,6 +60,7 @@ data class FounderAiConversationState(
     val isSending: Boolean = false,
     val operationId: String? = null,
     val progress: String? = null,
+    val provisionalAnswer: String = "",
     val failure: String? = null,
     val conversations: List<FounderAiHistoryThread> = emptyList(),
     val hasMoreConversations: Boolean = false,
@@ -222,14 +223,19 @@ class FounderAiViewModel(
         refreshJob?.cancel(); refreshJob = null
         val epoch = generation
         _state.update { it.copy(isSending = true, operationId = submission.id, canRetry = false,
-            progress = "Preparing governed conversation…", failure = null) }
+            progress = "Preparing governed conversation…", provisionalAnswer = "", failure = null) }
         operation = viewModelScope.launch {
             fun current() = !retired && epoch == generation && _state.value.operationId == submission.id
             try {
                 when (val result = repository.chat(role, submission.id, submission.request) { envelope ->
                     if (current()) {
-                        _state.update { it.copy(progress = envelope.progress?.message) }
-                        if (persisted) refresh()
+                        val update = envelope.progress
+                        if (update?.stage == "answer_delta" && update.answerDelta != null) {
+                            _state.update { it.copy(provisionalAnswer = it.provisionalAnswer + update.answerDelta) }
+                        } else {
+                            _state.update { it.copy(progress = update?.message) }
+                            if (persisted) refresh()
+                        }
                     }
                 }) {
                     is LoadState.Data -> if (current()) {
@@ -252,7 +258,7 @@ class FounderAiViewModel(
                 // Cancellation does not imply that an earlier tool action was rolled back.
             } finally {
                 if (current()) {
-                    _state.update { it.copy(isSending = false, operationId = null, progress = null, canRetry = pending != null) }
+                    _state.update { it.copy(isSending = false, operationId = null, progress = null, provisionalAnswer = "", canRetry = pending != null) }
                     refresh()
                 }
             }

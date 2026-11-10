@@ -108,6 +108,7 @@ import kotlinx.serialization.Serializable
     val message: String,
     val round: Int? = null,
     val tool: String? = null,
+    val answerDelta: String? = null,
 )
 
 @Serializable data class MobileSessionResponse(

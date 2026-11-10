@@ -34,7 +34,7 @@ public sealed class LegendBusinessAssistantTransportTests
         var method = typeof(LegendFounderAiConversationService).GetMethod("SendResponseAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
         var task = (Task<JsonDocument?>)method.Invoke(service, new object?[] { "synthetic-test-key", "synthetic-model", "synthetic-context",
             new object[] { new { role = "user", content = "synthetic request" } }, Array.Empty<object>(), false, false,
-            TimeSpan.FromSeconds(30), "low", 512, CancellationToken.None, false, null, "proj_synthetic", "org_synthetic" })!;
+            TimeSpan.FromSeconds(30), "low", 512, CancellationToken.None, false, null, "proj_synthetic", "org_synthetic", null })!;
         await Assert.ThrowsAnyAsync<Exception>(async () => await task);
         Assert.Equal(1, handler.Attempts);
         Assert.Equal("proj_synthetic", handler.Project); Assert.Equal("org_synthetic", handler.Organization);

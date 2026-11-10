@@ -498,12 +498,12 @@ public sealed partial class ReceptionistAdmissionService
     }
 
     private static async Task<bool> ReceiptExistsAsync(MasterAppDbContext read, string scope, string receiptKey,
-        string payload, Guid? callId, Guid? chargeId, CancellationToken ct)
+        string payload, Guid? callId, Guid? chargeId, CancellationToken ct, Guid? assistantReservationId = null)
     {
         var existing = await read.Set<ReceptionistUsageReceipt>().AsNoTracking().SingleOrDefaultAsync(
             x => x.ScopeKey == scope && x.ProviderReceiptKey == receiptKey, ct);
         if (existing is null) return false;
-        if (existing.PayloadSha256 != payload || existing.CallId != callId || existing.AccountChargeId != chargeId)
+        if (existing.PayloadSha256 != payload || existing.CallId != callId || existing.AccountChargeId != chargeId || existing.AssistantReservationId != assistantReservationId)
             throw new InvalidOperationException("A provider accounting receipt cannot be changed, moved or posted twice.");
         return true;
     }

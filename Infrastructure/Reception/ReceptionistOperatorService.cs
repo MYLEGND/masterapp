@@ -81,17 +81,15 @@ public sealed partial class ReceptionistOperatorService(MarketingConnectionStore
         if (package.Operation == "accept_assistant_cost_bounds")
             return new(packageKey, expectedPackageSha256, package.Label, package.Operation, false,
                 ["Assistant cost evidence is read-only and is checked during assistant admission."], [], null);
+        if (package.Operation == "reconcile_assistant_cost")
+            return await PlanAssistantAccountingAsync(packageKey, expectedPackageSha256, package, actor, ct);
         ReceptionistOperatorState state;
         try
         {
             state = await admission.ReadOperatorStateAsync(package, expectedPackageSha256, ct);
             if (state.CompletedReference is null) state.RequirePackageRevisions(package);
             var secretHash = (await PreflightAsync(package, state, prepareBinding: false, expectedPackageSha256, ct)).SecretHash;
-            var now = clock.GetUtcNow().UtcDateTime;
-            var token = protector.Protect(state.Owner, PreviewPurpose, JsonSerializer.Serialize(new Preview(1, actor,
-                state.Owner.Key, packageKey, expectedPackageSha256, state.StateSha256, secretHash, now, now.Add(PreviewLifetime)), ReceptionistConfigurationCodec.Json))
-                ?? throw new InvalidOperationException("The operator preview could not be protected.");
-            if (token.Length > 4096) throw new InvalidOperationException("The operator preview exceeds its supported bound.");
+            var token = ProtectOperatorPreview(state.Owner, actor, packageKey, expectedPackageSha256, state.StateSha256, secretHash);
             return new(packageKey, expectedPackageSha256, package.Label, package.Operation, true, [], state.Facts, token);
         }
         catch (ReceptionistCurrentProjectRequiredException)
@@ -119,20 +117,10 @@ public sealed partial class ReceptionistOperatorService(MarketingConnectionStore
         var package = await ReadPackageAsync(request.PackageKey, request.PackageSha256, actor, owner, ct);
         if (package.Operation == "accept_assistant_cost_bounds")
             throw new InvalidOperationException("Assistant cost evidence cannot execute an operator action.");
-        if (string.IsNullOrWhiteSpace(request.ExpectedStateToken) || request.ExpectedStateToken.Length > 4096)
-            throw new ArgumentException("A bounded current operator preview is required.");
+        if (package.Operation == "reconcile_assistant_cost")
+            return await ApplyAssistantAccountingAsync(request, package, actor, owner, authorize, ct);
         var initial = await admission.ReadOperatorStateAsync(package, request.PackageSha256, ct);
-        var tokenJson = protector.Unprotect(initial.Owner, PreviewPurpose, request.ExpectedStateToken)
-            ?? throw new InvalidOperationException("The operator preview is unavailable.");
-        Preview? preview;
-        try { preview = JsonSerializer.Deserialize<Preview>(tokenJson, ReceptionistConfigurationCodec.Json); }
-        catch (JsonException) { throw new InvalidOperationException("The operator preview is invalid."); }
-        var now = clock.GetUtcNow().UtcDateTime;
-        if (preview is null || preview.Version != 1 || preview.ActorOid != actor || preview.OwnerKey != initial.Owner.Key ||
-            preview.PackageKey != request.PackageKey || preview.PackageSha256 != request.PackageSha256 ||
-            preview.IssuedUtc.Kind != DateTimeKind.Utc || preview.ExpiresUtc.Kind != DateTimeKind.Utc ||
-            preview.IssuedUtc > now || preview.ExpiresUtc <= now || preview.ExpiresUtc - preview.IssuedUtc != PreviewLifetime)
-            throw new InvalidOperationException("The operator preview is invalid or expired.");
+        var preview = ReadOperatorPreview(initial.Owner, request, actor);
         var preflight = await PreflightAsync(package, initial, prepareBinding: true, request.PackageSha256, ct);
         var outcome = "applied";
         async Task Guard(MasterAppDbContext write)
@@ -318,6 +306,7 @@ internal sealed record ReceptionistOperatorPackage
     public decimal? CashLimit { get; init; }
     public decimal? ConsumptionLimit { get; init; }
     public bool? Enabled { get; init; }
+    public Guid? AssistantReservationId { get; init; }
     public Guid? CallId { get; init; }
     public Guid? ExpectedCallRevision { get; init; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
@@ -362,6 +351,7 @@ internal sealed record ReceptionistOperatorPackage
         Supplied("binding", Binding is not null); Supplied("secrets", ApiCredentialSha256 is not null || WebhookSecretSha256 is not null);
         Supplied("opening", Opening is not null); Supplied("budget", BudgetAccountId.HasValue);
         Supplied("limits", CashLimit.HasValue || ConsumptionLimit.HasValue); Supplied("enabled", Enabled.HasValue);
+        Supplied("assistantReservation", AssistantReservationId.HasValue);
         Supplied("call", CallId.HasValue || ExpectedCallRevision.HasValue); Supplied("component", ComponentKey is not null);
         Supplied("callCost", CallCost is not null); Supplied("accountCharge", AccountCharge is not null);
         Supplied("voice", VoiceAllocations is not null); Supplied("finalVoice", FinalVoiceSeconds.HasValue);
@@ -373,6 +363,7 @@ internal sealed record ReceptionistOperatorPackage
         string[] allowed = Operation switch
         {
             "accept_assistant_cost_bounds" => [],
+            "reconcile_assistant_cost" => ["assistantReservation", "callCost"],
             "accept_binding" => ["binding", "secrets"], "open_budget_period" => ["opening"],
             "approve_budget_ceilings" => ["budget", "limits"], "set_budget_admission" => ["budget", "enabled"],
             "create_acceptance_window" or "revoke_acceptance_window" => ["window"],
@@ -393,6 +384,9 @@ internal sealed record ReceptionistOperatorPackage
                 if (!Evidence.Any(x => x.Kind == kind)) throw new ArgumentException("Exact assistant provider evidence is required.");
             return;
         }
+        if (Operation == "reconcile_assistant_cost" && (AssistantReservationId == Guid.Empty ||
+            !Evidence.Any(x => x.Kind == "assistant_provider_closure")))
+            throw new ArgumentException("An exact assistant reservation and verified provider closure evidence are required.");
         if (CallId.HasValue && (CallId == Guid.Empty || ExpectedCallRevision is null || ExpectedCallRevision == Guid.Empty))
             throw new ArgumentException("An exact call and expected revision are required.");
         if (RetirementReason is not null) ReceptionistConfigurationCodec.Required(RetirementReason, 500, nameof(RetirementReason));
@@ -489,7 +483,7 @@ internal sealed record ReceptionistOperatorPackage
         }
         if (CallCost is { } cost)
         {
-            ReceptionistConfigurationCodec.Identifier(ComponentKey!, 100, "component");
+            if (Operation != "reconcile_assistant_cost") ReceptionistConfigurationCodec.Identifier(ComponentKey!, 100, "component");
             DatedAmount(cost.CashDebitedUtc, cost.CumulativeCashForPeriod); DatedAmount(cost.ConsumptionIncurredUtc, cost.CumulativeConsumptionForPeriod);
             if (cost.FinalCashTotal is { } finalCash) ReceptionistConfigurationCodec.Money(finalCash);
             if (cost.FinalConsumptionTotal is { } finalConsumption) ReceptionistConfigurationCodec.Money(finalConsumption);

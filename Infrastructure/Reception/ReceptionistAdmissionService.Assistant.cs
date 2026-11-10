@@ -1,4 +1,5 @@
 using Domain.Entities;
+using System.Text.Json;
 using Infrastructure.Analytics;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +8,9 @@ using Shared.Analytics;
 namespace Infrastructure.Reception;
 
 public sealed record AssistantFundingAdmission(bool Admitted, string Reason, Guid? ReservationId = null);
+
+internal sealed record AssistantReservationBinding(Guid ConnectionId, Guid ConfigurationRevision, string WorkspaceKey,
+    string ConfigurationSha256, BusinessAssistantConfiguration Configuration);
 
 public sealed partial class ReceptionistAdmissionService
 {
@@ -107,7 +111,9 @@ public sealed partial class ReceptionistAdmissionService
                 OwnerBudgetAccountId = ownerAccount.Id, OwnerBudgetPeriodId = ownerPeriod.Id,
                 FundingBudgetAccountId = funding.Id, FundingBudgetPeriodId = periods.Single(x => x.BudgetAccountId == funding.Id).Id,
                 FundingControlRevision = funding.ControlRevision, ComponentKey = "assistant_response",
-                CashReserved = config.MaximumCashPerTurn, ConsumptionReserved = config.MaximumServicePerTurn };
+                CashReserved = config.MaximumCashPerTurn, ConsumptionReserved = config.MaximumServicePerTurn,
+                AssistantBindingJson = JsonSerializer.Serialize(new AssistantReservationBinding(snapshot.ConnectionId, snapshot.Revision, owner.Key,
+                    ReceptionistConfigurationCodec.Hash(JsonSerializer.Serialize(config)), config), ReceptionistConfigurationCodec.Json) };
             write.Add(reservation);
             // No inferred zero charge, expiring credit or successful model response
             // releases this hold. Settlement requires authoritative dated receipts.

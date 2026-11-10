@@ -10377,10 +10377,12 @@ private struct LegendFounderAiProgressUpdate: Decodable {
     let message: String
     let round: Int?
     let tool: String?
+    let answerDelta: String?
 }
 
 @MainActor
 final class LegendFounderAiStore: ObservableObject {
+    @Published private(set) var provisionalAnswer = ""
     @Published private(set) var isAvailable = false
     @Published private(set) var messages: [LegendFounderAiChatMessage] = []
     @Published private(set) var conversations: [LegendFounderAiHistoryThread] = []
@@ -10453,7 +10455,7 @@ final class LegendFounderAiStore: ObservableObject {
         conversationID = UUID(); lastMessageId = nil; persisted = false; historySkip = 0
         hasOlderMessages = false; hasNewerMessages = false; hasMoreConversations = false
         failureMessage = nil; refreshIdentity = nil; availabilityResolved = false
-        isAvailable = false; isSending = false; progressMessage = nil
+        isAvailable = false; isSending = false; progressMessage = nil; provisionalAnswer = ""
     }
 
     func refreshHistory(more: Bool = false, older: Bool = false, newer: Bool = false) {
@@ -10545,9 +10547,9 @@ final class LegendFounderAiStore: ObservableObject {
         guard let client else { return }
         refreshTask?.cancel(); refreshTask = nil; refreshIdentity = nil
         let epoch = generation
-        isSending = true; canRetry = false; failureMessage = nil
+        isSending = true; canRetry = false; failureMessage = nil; provisionalAnswer = ""
         defer {
-            if epoch == generation { isSending = false; progressMessage = nil; canRetry = pending != nil; refreshHistory() }
+            if epoch == generation { isSending = false; progressMessage = nil; provisionalAnswer = ""; canRetry = pending != nil; refreshHistory() }
         }
         do {
             let token = try await accessTokenProvider()
@@ -10569,8 +10571,12 @@ final class LegendFounderAiStore: ObservableObject {
                     completed = result; break
                 }
                 if envelope.type == "progress" {
-                    latestProgress = envelope.progress?.message
-                    progressMessage = latestProgress
+                    if envelope.progress?.stage == "answer_delta", let delta = envelope.progress?.answerDelta {
+                        provisionalAnswer += delta
+                    } else {
+                        latestProgress = envelope.progress?.message
+                        progressMessage = latestProgress
+                    }
                 } else if envelope.type == "heartbeat", let elapsed = envelope.elapsedSeconds {
                     progressMessage = "\(latestProgress ?? "Working") · \(elapsed)s"
                 }
@@ -11052,6 +11058,10 @@ struct LegendFounderAiConversationView: View {
                             .id(message.id)
                     }
 
+                    if store.isSending && !store.provisionalAnswer.isEmpty {
+                        Text(verbatim: store.provisionalAnswer)
+                            .accessibilityLabel("Response in progress; not yet saved: " + store.provisionalAnswer)
+                    }
                     if store.isSending {
                         HStack(spacing: 8) {
                             ProgressView()

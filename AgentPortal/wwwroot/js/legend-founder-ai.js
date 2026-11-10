@@ -1307,7 +1307,7 @@
             : fallback || `${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai could not complete that response.`;
     }
 
-    async function consumeChatResultStream(response, signal) {
+    async function consumeChatResultStream(response, signal, onAnswerDelta) {
         if (!response.ok || !response.body) {
             const raw = await response.text().catch(() => '');
             let result = null;
@@ -1330,6 +1330,10 @@
             try { payload = JSON.parse(trimmed); } catch { return; }
 
             if (payload?.type === 'progress') {
+                if (payload.progress?.stage === 'answer_delta' && typeof payload.progress.answerDelta === 'string') {
+                    onAnswerDelta?.(payload.progress.answerDelta);
+                    return;
+                }
                 applyOperationalProgress(payload);
                 return;
             }
@@ -1681,6 +1685,7 @@
         setBusy(true, 'Preparing a response…');
         const request = new AbortController();
         activeRequest = request;
+        let provisionalAnswer = null;
         try {
             const token = form.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
             const response = await fetch(modalElement.dataset.chatUrl, {
@@ -1695,7 +1700,18 @@
                 clearAuthenticatedHistory();
                 return;
             }
-            const result = await consumeChatResultStream(response, request.signal);
+            const result = await consumeChatResultStream(response, request.signal, delta => {
+                if (activeRequest !== request || epoch !== accountGeneration || !transcript) return;
+                if (!provisionalAnswer) {
+                    provisionalAnswer = document.createElement('article');
+                    provisionalAnswer.className = 'legend-founder-ai-message is-assistant';
+                    provisionalAnswer.setAttribute('aria-label', 'Response in progress; not yet saved');
+                    transcript.appendChild(provisionalAnswer);
+                }
+                // Provider text is untrusted. Render provisional text without HTML.
+                provisionalAnswer.appendChild(document.createTextNode(delta));
+                scrollToBottom();
+            });
             if (activeRequest !== request) return;
             if (result.failureKind === 'authorization') { clearAuthenticatedHistory(); return; }
             if (result.conversationId) {
@@ -1737,6 +1753,7 @@
                 false
             );
         } finally {
+            provisionalAnswer?.remove();
             if (epoch !== accountGeneration) return;
             if (activeRequest === request) {
                 activeRequest = null;

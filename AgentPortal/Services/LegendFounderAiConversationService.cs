@@ -236,7 +236,7 @@ public sealed partial class LegendFounderAiConversationService
         Func<LegendFounderAiProgressEvent, CancellationToken, ValueTask>? progress = null,
         Guid? operationId = null) =>
         request.Mode == "business"
-            ? ReplyBusinessAsync(founder, request, operationId, cancellationToken)
+            ? ReplyBusinessAsync(founder, request, operationId, cancellationToken, progress)
             : ReplyCoreAsync(founder, request, cancellationToken, progress, operationId, null);
 
     internal Task<FounderAiActionProposalReview?> GetActionProposalAsync(
@@ -2538,7 +2538,8 @@ public sealed partial class LegendFounderAiConversationService
         CancellationToken cancellationToken,
         bool catalogAcceptanceOnly = false,
         Func<Guid, bool, CancellationToken, Task>? onExternalDisposition = null,
-        string? businessProject = null, string? businessOrganization = null)
+        string? businessProject = null, string? businessOrganization = null,
+        Func<string, CancellationToken, ValueTask>? onText = null)
     {
         if (catalogAcceptanceOnly && !allowTools)
         {
@@ -2556,6 +2557,7 @@ public sealed partial class LegendFounderAiConversationService
         var payload = new
         {
             model,
+            stream = onText is not null,
             store = false,
             instructions,
             input,
@@ -2660,9 +2662,9 @@ public sealed partial class LegendFounderAiConversationService
                             .ReadAsStreamAsync(
                                 providerAttempt.Token);
 
-                    completedDocument = await JsonDocument.ParseAsync(
-                        stream,
-                        cancellationToken: providerAttempt.Token);
+                    completedDocument = onText is null
+                        ? await JsonDocument.ParseAsync(stream, cancellationToken: providerAttempt.Token)
+                        : await ReadResponseStreamAsync(stream, onText, providerAttempt.Token);
                     answerProduced = !string.IsNullOrWhiteSpace(ExtractOutputText(completedDocument.RootElement));
                     return completedDocument;
                 }
@@ -4685,7 +4687,8 @@ public sealed record LegendFounderAiProgressEvent(
     string Message,
     int? Round = null,
     string? Tool = null,
-    string? ScopeIdentity = null);
+    string? ScopeIdentity = null,
+    string? AnswerDelta = null);
 
 public sealed record LegendFounderAiChatMessage(
     string? Role,

@@ -329,3 +329,32 @@ User reports translation delivery absent and Azure tracking blank. Read-only pro
 - CONFIRMED authenticated Founder reproduction: AgentPortal Edit Protect Website supplies an edit handoff, but the public page has neither Save Live nor the editor panel. Live Protect HTML supplies the intentional apiBase empty string; the delivered shared legend-public-cms.js returns immediately on that value. The later absolute URL constructors also require a resolved origin, so removing the guard alone is insufficient.
 - Bounded authority: normalize the existing shared CMS API base for same-origin Protect while preserving the static LEGEND site's explicit base. Ticket protection, owner scope, expiry, content controller and persistence remain unchanged. No new editor, service, data migration or native changes.
 - Existing approved direct release authority receives a focused CMS regression test alongside its unchanged gates. Exact candidate review, direct release outcome and authenticated post-deployment editor proof remain pending at this entry. No public website content was changed during the initial reproduction.
+
+
+## 2026-11-10 continuation — capability, quality and performance
+
+The current implementation/release state lives in
+`LEGEND-REVENUE-LAUNCH-CHECKPOINT.md`; historical baselines and staffing above are
+not current branch or deployment authority. The Founder added the shared capability,
+quality and performance assignment to the existing Mac release flow. Its standing
+standard is AGENTS.md section15; this documentation is not scheduled automation.
+
+Continue existing service ownership, preserve the bundle and business-assistant
+foundation checkpoints, and finish the in-flight accounting work before changing
+provider execution. Next inspect/map all entry points and actual deployment/provider
+identities, reproduce the reported five-minute simple-answer delay with stage timing,
+then correct demonstrated bottlenecks. Verify full-path text streaming/cancellation,
+model/effort support and actual organization availability. Use the required evaluation
+matrix and measured p95 targets; neither an Astra label nor a prompt establishes
+quality parity. No latency, image, live-model or capability acceptance is claimed by
+recording this assignment.
+
+Capability work must connect the existing upload/retrieval, image/provider, tenant
+media/Studio draft, research, export, CRM and booking owners through the current tool
+authority. Settings, allocations and receipts extend current authorities. Preserve
+Founder rollout, explicit business/agent scope, no retail access, Shayla intake-only
+privacy, existing cash/service/provider caps and reload OFF. No new paid testing
+allocation is inferred from this instruction. Unknown integrations remain explicitly
+unavailable until verified. The latest assignment requests the existing authorized
+Azure flow after exact-candidate gates; deployment remains blocked by unmet gates,
+not implied by a source checkpoint or a saved instruction.
