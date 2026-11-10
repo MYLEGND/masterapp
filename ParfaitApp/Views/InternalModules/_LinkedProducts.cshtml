@@ -1,0 +1,31 @@
+@model ParfaitApp.Models.ParfaitLinkedProductsEditorViewModel
+@using System.Text.Json
+@using ParfaitApp.Models
+<details class="pf-product-accordion" data-pf-link-products data-saved-recipe="@JsonSerializer.Serialize(Model.Product.BundleComponents)">
+    <summary><strong>Link products</strong><span>Match sizes automatically</span></summary>
+    <div class="pf-product-accordion-body">
+        <input type="hidden" name="LinkedProductIdsJson" value="@JsonSerializer.Serialize(Model.Product.LinkedProductIds)" data-pf-linked-products disabled />
+        <p>Select the individual products together. Each matching size includes every selected product. New links use one unit each; saved quantities are retained.</p>
+        <fieldset>
+            <legend>Individual products</legend>
+            @foreach (var piece in Model.Products.Where(item => item.Id != Model.Product.Id && item.BundleComponents.Count == 0 && item.BillingKind == Domain.Billing.ClientSubscriptionScope.OneTimeProduct))
+            {
+                var variants = piece.InventoryBySize.Where(size => size.IsEnabled && size.InventoryItemId != Guid.Empty)
+                    .Select(size => new { Size = ParfaitProductCatalogDefaults.NormalizeSize(size.Size), size.InventoryItemId, Stock = piece.IsActive ? size.AvailableStockQuantity : 0 });
+                <label class="pf-check">
+                    <input type="checkbox" value="@piece.Id" checked="@(Model.Product.LinkedProductIds.Contains(piece.Id))" data-pf-link-choice data-variants="@JsonSerializer.Serialize(variants)" />
+                    @piece.Name @(piece.IsActive ? "" : "(hidden — unavailable)")
+                </label>
+            }
+        </fieldset>
+        <p role="status" aria-live="polite" data-pf-link-feedback></p>
+        @foreach (var message in Model.Product.BundleMessages)
+        {
+            <p role="status">@message</p>
+        }
+        <p>Unavailable sizes remain configured. Disabled or missing component sizes cannot be purchased. Use selected products regenerates matching sizes from the current selection.</p>
+        <button type="button" class="pf-secondary-action" data-pf-link-discard>Discard link selection</button>
+        <button type="button" class="pf-action" data-pf-link-apply>Use selected products</button>
+        <small>Selections apply only with this button. Existing products then use the editor’s automatic save; new products use Save Product.</small>
+    </div>
+</details>

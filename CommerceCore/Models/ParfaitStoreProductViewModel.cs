@@ -226,6 +226,8 @@ public sealed class ParfaitProductDiscountCodeEditorViewModel
         : $"{Amount:0.#}% Off";
 }
 
+public sealed record ParfaitLinkedProductsEditorViewModel(ParfaitProductEditorViewModel Product, IReadOnlyList<ParfaitProductEditorViewModel> Products);
+
 public sealed record ParfaitBundleComponent(string BundleSize, Guid InventoryItemId, int Units);
 
 public sealed record ParfaitInventoryRequirement(Guid InventoryItemId, int Units, string? ProductName = null, string? Size = null);
@@ -255,6 +257,9 @@ public sealed class ParfaitProductEditorViewModel
     public bool IsActive { get; set; } = true;
     public int DisplayOrder { get; set; }
     public List<ParfaitProductImageEditorViewModel> Images { get; set; } = [];
+    public string? LinkedProductIdsJson { get; set; }
+    public List<string> LinkedProductIds { get; set; } = [];
+    public List<string> BundleMessages { get; set; } = [];
     public string? BundleComponentsJson { get; set; }
     public List<ParfaitBundleComponent> BundleComponents { get; set; } = [];
     public List<ParfaitProductSizeInventoryEditorViewModel> InventoryBySize { get; set; } = ParfaitProductCatalogDefaults.CreateDefaultInventory();

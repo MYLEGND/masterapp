@@ -178,9 +178,12 @@ def local_environment(data):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('status', 'init', 'start', 'stop', 'run', 'migrate'))
+    parser.add_argument('action', choices=('status', 'init', 'start', 'stop', 'run', 'migrate', 'test'))
     parser.add_argument('app', nargs='?', choices=tuple(projects()))
+    parser.add_argument('--filter', help='Focused dotnet test filter; required for local test.')
     args = parser.parse_args()
+    require(args.action == 'test' or args.filter is None, '--filter is only valid for local test.')
+    if args.action == 'test': require(bool(args.filter), 'local test requires an explicit focused --filter.')
     canonical()
     if args.action == 'init':
         initialize()
@@ -191,13 +194,19 @@ def main():
         command(['docker', 'stop', NAME])
         print('Local SQL stopped; persistent database retained.')
         return
-    if args.action in ('start', 'run', 'migrate'):
+    if args.action in ('start', 'run', 'migrate', 'test'):
         start(data)
     proof = verify(data)
     if args.action in ('status', 'start'):
         print(json.dumps(proof))
         return
-    if args.action == 'migrate':
+    if args.action == 'test':
+        env = local_environment(data)
+        env['LEGEND_TEST_DB_IDENTITY'] = data['identity']
+        env['GITHUB_WORKSPACE'] = str(ROOT)
+        result = subprocess.run(['dotnet', 'test', str(ROOT / 'AgentPortal.Tests/AgentPortal.Tests.csproj'),
+            '--no-restore', '--filter', args.filter, '-p:UseSharedCompilation=false', '-m:1', '-nr:false'], cwd=ROOT, env=env)
+    elif args.action == 'migrate':
         result = subprocess.run(['bash', str(ROOT / 'scripts/db.sh'), 'apply'], cwd=ROOT, env=local_environment(data))
     else:
         require(args.app in projects(), 'run requires an app name.')

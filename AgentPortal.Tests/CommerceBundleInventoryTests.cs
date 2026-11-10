@@ -95,13 +95,18 @@ public sealed class CommerceBundleInventoryTests
         var store = new CommerceBusiness { Key = "bundle-store", DisplayName = "Bundle Store" };
         var otherStore = new CommerceBusiness { Key = "other-store", DisplayName = "Other Store" };
         var top = Product(store.Id, "Top", "M", 5);
-        var bottom = Product(store.Id, "Bottom", "L", 2);
+        var bottom = Product(store.Id, "Bottom", "M", 2);
         var foreign = Product(otherStore.Id, "Top", "M", 30);
         db.AddRange(store, otherStore, top, bottom, foreign);
         db.SaveChanges();
         var products = Service(db);
         var outfit = new ParfaitProductEditorViewModel { Id = "outfit", Name = "Outfit", Slug = "outfit", PriceCents = 2500 };
-        outfit.BundleComponentsJson = Recipe((top.InventoryItems[0].Id, 2), (bottom.InventoryItems[0].Id, 1));
+        // An existing saved recipe keeps its non-default units during automatic expansion.
+        var savedBundle = Product(store.Id, "outfit", "M", 0);
+        savedBundle.BundleComponentsJson = Recipe((top.InventoryItems[0].Id, 2), (bottom.InventoryItems[0].Id, 1));
+        db.Add(savedBundle);
+        db.SaveChanges();
+        outfit.LinkedProductIdsJson = JsonSerializer.Serialize(new[] { "Top", "Bottom" });
         products.SaveProduct(store.Id, outfit);
         Assert.Equal(2, products.GetActiveStoreProductById(store.Id, "outfit")!.Sizes.Single(size => size.Size == "M").StockQuantity);
         Assert.False(products.QuoteCart(store.Id, [Item("outfit", "M", 2), Item("Top", "M", 2)], null).IsValid);
@@ -139,7 +144,7 @@ public sealed class CommerceBundleInventoryTests
         Assert.Throws<StoreInventoryException>(() => products.DeleteProduct(store.Id, "Bottom"));
 
         outfit = products.GetAllProducts(store.Id).Single(product => product.Id == "outfit");
-        outfit.BundleComponentsJson = Recipe((bottom.InventoryItems[0].Id, 1));
+        outfit.LinkedProductIdsJson = JsonSerializer.Serialize(new[] { "Bottom" });
         products.SaveProduct(store.Id, outfit);
         var saved = new ParfaitOrderService(db).GetOrder(store.Id, prepared.Order.OrderNumber)!;
         Assert.Equal(2, saved.Items.Single(item => item.Id == "outfit").BundlePickList.Count);
@@ -156,14 +161,14 @@ public sealed class CommerceBundleInventoryTests
         var store = new CommerceBusiness { Key = "bundle-store", DisplayName = "Bundle Store" };
         var otherStore = new CommerceBusiness { Key = "other-store", DisplayName = "Other Store" };
         var top = Product(store.Id, "Top", "M", 3);
-        var foreign = Product(otherStore.Id, "Top", "M", 3);
+        var foreign = Product(otherStore.Id, "Foreign", "M", 3);
         db.AddRange(store, otherStore, top, foreign);
         db.SaveChanges();
         var products = Service(db);
         var outfit = new ParfaitProductEditorViewModel { Id = "outfit", Name = "Outfit", Slug = "outfit", PriceCents = 2500 };
-        outfit.BundleComponentsJson = Recipe((foreign.InventoryItems[0].Id, 1));
+        outfit.LinkedProductIdsJson = JsonSerializer.Serialize(new[] { "Foreign" });
         Assert.Throws<StoreInventoryException>(() => products.SaveProduct(store.Id, outfit));
-        outfit.BundleComponentsJson = Recipe((top.InventoryItems[0].Id, 1));
+        outfit.LinkedProductIdsJson = JsonSerializer.Serialize(new[] { "Top" });
         products.SaveProduct(store.Id, outfit);
         top.InventoryItems[0].IsEnabled = false;
         db.SaveChanges();

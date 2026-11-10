@@ -19,6 +19,12 @@ class LocalDatabaseTests(unittest.TestCase):
                 owner.main()
             init.assert_not_called()
 
+    def test_local_tests_require_explicit_scope_before_database_access(self):
+        with patch.object(owner.sys, 'argv', ['local-test-database.py', 'test']), patch.object(owner, 'config') as config:
+            with self.assertRaisesRegex(RuntimeError, 'explicit focused --filter'):
+                owner.main()
+            config.assert_not_called()
+
     def test_local_environment_does_not_inherit_production_credentials(self):
         with patch.dict(os.environ, {'SQLCONNSTR_MasterAppDb': 'production', 'AZURE_CLIENT_SECRET': 'production',
                                      'SQUARE_ACCESS_TOKEN': 'production', 'GRAPH_CLIENT_SECRET': 'production'}):

@@ -4897,3 +4897,54 @@ suitable for that suite. No check protection was removed. Final current-head CI 
 source-only integration remain required. All owned localhost app processes stopped;
 persistent SQL remains ready. Native checkout provenance passes against the published
 Mac task branch, while source intake remains explicitly selected.
+
+### Bounded linked-product bundle repair — 2026-11-10
+
+Founder authorized this repair only, including necessary tests, protected source
+integration and direct deployment of affected consumers after actual release gates.
+Baseline: `29181bd859fc54a3603c9f893576c2f35e802161`. The interrupted intake was
+reconciled against fresh remote heads: PID48937 was confirmed as the obsolete
+DeniedHost release fixture, stopped, and the existing source-intake owner advanced
+the same checkout/task branch. Identical reviewed source was preserved remotely;
+continuity preflight passed. No new checkout, database, service or sync owner.
+
+Shared owners changed: CommerceCore product model, ParfaitProductService and its
+bundle partial. Explicit product selections are resolved within the current store,
+expanded across every common enabled normalized size, and persisted with the existing
+inventory-ID recipe contract. Existing exact size/component quantities survive.
+Ordinary edits preserve saved recipes; only explicitly applying product selections
+regenerates them. Client recipes/stock/size rows cannot author bundle mappings.
+Incomplete/mismatched recipes and unavailable components cannot be quoted as purchasable.
+Existing cart demand, reservation, order snapshots and paid-inventory owners remain.
+The existing inventory-edit owner refreshes actual stock before its concurrency check.
+Component rename/delete/type changes remain blocked while referenced; hiding/disabling
+makes the corresponding bundle unavailable immediately. Explicitly applying links
+regenerates the current common sizes, including newly enabled sizes. No background
+synchronizer and no schema change were introduced.
+
+Removed the standalone pfBundlePicker and its manual size/piece handlers. One shared
+partial is inside both actual product forms. Multiple checkbox selections are drafts;
+Apply uses the existing save flow, while discard/dismiss does not apply a draft.
+The generated inventory is not manually editable. Matching/unmatched/zero-stock
+feedback stays inside the editor. No CSS override or second active editor was added.
+
+Passed locally: eight focused C# regressions, all using the existing verified
+MasterAppLocalTest for data tests; five JSDOM editor-handler regressions; four local
+database-owner tests; JavaScript syntax and diff checks. Parfait build passed. The
+focused dotnet test build also compiles the referenced app consumers. New synthetic
+scenarios are uniquely store-scoped and retained; no customer records, provider
+credentials, external payments/messages or schema creation/reset were used. The
+existing local database owner gained an explicit filtered test action; no alternate
+runner or database configuration source. Historical SQLite tests were adapted to the
+new selection contract but were not run locally under this task's database restriction.
+
+Canonical impact result: portal, protect, parfait; schema=false; routing=false.
+ClientApp and standalone website are unaffected. Rendered localhost acceptance is
+BLOCKED: computer tool returned "Local browser use is disabled in Work settings".
+JSDOM/markup/build/SQL checks are not rendered or authenticated end-to-end acceptance.
+Remaining rendered checks: create/edit editor placement, multi-selection, normalized
+matching/unmatched and zero-stock feedback, apply/save/reopen, discard/dismiss and
+ordinary editing at desktop/mobile sizes, using synthetic local data. No prior visual
+waiver applies. No production app was stopped, migrated or deployed for this repair.
+Independent exact-source acceptance, protected source integration, release admission
+and eventual stop/deploy/restart/live verification remain to be completed or recorded.
