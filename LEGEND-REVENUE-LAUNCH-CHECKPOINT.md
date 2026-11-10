@@ -4821,3 +4821,16 @@ Log: /private/tmp/legend-ad-release-full-schema-contract.log. This closes the
 observed CI initialize failure at RehearsalFixture.cs246; preserve current-head CI
 separately. Final operational owner and SQL wrapper are independently accepted,
 with Founder-deferred visual verification explicit and other gates retained.
+
+
+### Direct Mac Azure release completed — 2026-11-10
+
+Production source: `ea128c942b7d8bd4452b5ec6abc591ee624111fc`, prepared from the clean single active checkout `/Users/zacowen/MASTERAPP`. All required exact-head security, architecture, migration-probe and focused build/test checks passed. The architecture runner filesystem failure passed its bounded retry. All five packages were independently accepted; manifest SHA-256 `671d22c1b9de37150ee77339572df23bdd8bceb9ce2e502d0919ab4eb4c05c30`.
+
+Completed stop → exact two-migration transaction → five uploads → restart. Production history is 239, with ReceptionistSetupGuide and CommerceBundleInventory applied and independently read back; no SQL replay occurred. All five apps are Running and each serves the exact production source. Portal `/healthz` and the other four public roots return HTTP 200. Parfait `/internal/denied` does not render a supplied synthetic raw error. Live verification receipt SHA-256 `2972217d35d12267db8c687ac64b17ed7d47ee28a3b9577f16622bd2d29d9e2c`, observed 2026-11-10T09:25:45.352171+00:00.
+
+Successful Azure deployment IDs: `portal: a42aa3253ec7400781de7cc6a5942a60`, `client: 47f8ad1d05b44736b0a275682b67fd16`, `protect: 8155c8e9d66c4b8b8c96901246bfdff4`, `parfait: 121e84491bd345719adc634a0c6dbfbb`, `website: b810edcb4b3e49f1a540150bc479bd05`.
+
+Reconciliation supersedes the earlier no-upload statement: before this final release, Portal already had successful upload `a84b1cdfd2714214a38e0ad8b77a0b8c` of `9436e3782daa702e51369fe5fd17d5e8505f6f3a`, but startup was blocked by the two missing migrations. Exact installed identity was independently reviewed as degraded, never falsely marked healthy. The final release restored healthy Portal startup. Read-only Azure query failures interrupted stop/start tails; reviewed recovery continued only unattempted targets. Client and Protect remote uploads succeeded while their local CLI waits hung; exact deployed assembly hashes and terminal journals were reconciled, actual interrupted CLI exit 143 preserved, and neither upload replayed. Remaining uploads used async submission with mandatory terminal-success checks.
+
+Detailed local receipts remain under `AgentPortal/App_Data/release-resume-20261109/`. No application configuration, DNS or existing notification cutoff was changed. Rendered visual acceptance was explicitly deferred by Founder until after deployment; browser host remains unavailable, so visual acceptance and authenticated customer journeys are not claimed. Source synchronization into `Legend/fast-track-release` must use the existing source-integration-only request and preserve this deployed revision, without a second production publish.
