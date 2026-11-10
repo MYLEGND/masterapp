@@ -4787,3 +4787,23 @@ attempt failed localhost name resolution; it was interrupted and its owned test
 container removed. A bounded literal-loopback retry is prepared. No production
 mutation occurred. Full rendered local journeys and exact release admission remain
 outstanding; no CI, migration, deployment or live-success evidence is fabricated.
+
+
+### Migration fixture closure before deployment
+
+All five native packages for9436e3782 completed and retain their exact provenance.
+Current-head security and architecture passed, but the PR build's offline migration
+contract rejected the new bundle successor. The disposable fixture now recognizes
+only its exact two nullable columns, descriptor digest and ordered successor;
+unknown/reordered/altered operations remain rejected. The guide scenario includes
+only that known successor. The offline contract test and 57 Python migration-package
+regressions passed. No production
+append authority was broadened. Final independent review/preservation remains due.
+
+The exact native SQL wrapper passed success, mid-migration rollback, postcondition
+rollback and replay rejection. sqlcmd interactive stdin corrupted long seed lines;
+protected-file input (-i) passed the same checks. SQL digest remains
+ae5a3b769e5a8c4bf7593081a9d0cf62ff473b718bbf7523d39cd8bca25dde4d.
+Receipt: /private/tmp/legend-ad-release-migration/rehearsal-result.json. No production
+mutation has occurred. Founder explicitly requested deployment before remaining
+follow-up; record any deferred local visual acceptance honestly, never as PASS.

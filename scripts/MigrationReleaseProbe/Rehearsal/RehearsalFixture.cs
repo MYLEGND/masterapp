@@ -128,6 +128,7 @@ internal static partial class RehearsalFixture
         var contract = CandidateContract.Current(db);
         ValidateExpandedFixture(db, contract);
         var guideSuccessor = HasSetupGuideMigration(db) ? 1 : 0;
+        var additionalSuccessors = guideSuccessor + (HasBundleMigration(db) ? 1 : 0);
         var requestedCount = Environment.GetEnvironmentVariable("LEGEND_REHEARSAL_PENDING_COUNT");
         if (requestedCount is "store-all" or "store-crm-provisioning-membership" or "store-provisioning-membership" or "store-membership" or "crm-store" ||
             requestedCount?.EndsWith("-crm-store", StringComparison.Ordinal) == true)
@@ -145,15 +146,16 @@ internal static partial class RehearsalFixture
                 "management-browser-diagnostics-crm-store" => "8", "training-management-browser-diagnostics-crm-store" => "9",
                 "canonical-payment-training-management-browser-diagnostics-crm-store" => "10",
                 _ => throw new ProbeObservationFailure("INPUT_UNAVAILABLE") };
-            requestedCount = (int.Parse(requestedCount) + contract.Migrations.Count(m => ExpandedMigrations.Contains(m.Id)) + guideSuccessor).ToString();
+            requestedCount = (int.Parse(requestedCount) + contract.Migrations.Count(m => ExpandedMigrations.Contains(m.Id)) + additionalSuccessors).ToString();
         }
-        if (requestedCount == "expanded-store-only") requestedCount = (ExpandedMigrations.Length + guideSuccessor).ToString();
-        if (requestedCount == "standalone-reconciliation-only") requestedCount = (2 + guideSuccessor).ToString();
+        if (requestedCount == "expanded-store-only") requestedCount = (ExpandedMigrations.Length + additionalSuccessors).ToString();
+        if (requestedCount == "standalone-reconciliation-only") requestedCount = (2 + additionalSuccessors).ToString();
         if (requestedCount == "receptionist-guide-only")
         {
-            if (guideSuccessor != 1 || contract.Migrations[^1].Id != SetupGuideMigration)
+            var expected = HasBundleMigration(db) ? new[] { SetupGuideMigration, BundleMigration } : new[] { SetupGuideMigration };
+            if (guideSuccessor != 1 || !contract.Migrations.TakeLast(expected.Length).Select(m => m.Id).SequenceEqual(expected))
                 throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
-            requestedCount = "1";
+            requestedCount = expected.Length.ToString();
         }
         if (requestedCount == "payment-and-successors")
             requestedCount = contract.Migrations.SkipWhile(m => m.Id != "20261011064911_AddBusinessScopedMerchantPayments").Count().ToString();

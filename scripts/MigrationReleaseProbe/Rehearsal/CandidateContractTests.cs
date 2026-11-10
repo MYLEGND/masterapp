@@ -15,6 +15,21 @@ internal static class CandidateContractTests
             .UseSqlServer("Server=127.0.0.1;Database=ContractTests;Integrated Security=true").Options);
         var assembly = db.GetService<IMigrationsAssembly>();
         SetupGuideContractTests(db, assembly);
+        if (assembly.Migrations.TryGetValue(RehearsalFixture.BundleMigration, out var bundle))
+        {
+            IReadOnlyList<MigrationOperation> BundleOperations() => assembly.CreateMigration(bundle, db.Database.ProviderName!).UpOperations;
+            var exact = BundleOperations();
+            Check(RehearsalFixture.ExactStandaloneFixtureOperations(RehearsalFixture.BundleMigration, exact), "exact bundle additions");
+            Check(!RehearsalFixture.ExactStandaloneFixtureOperations(RehearsalFixture.BundleMigration, exact.Reverse().ToArray()), "bundle operation order");
+            Check(!RehearsalFixture.ExactStandaloneFixtureOperations(RehearsalFixture.BundleMigration, exact.Take(1).ToArray()), "missing bundle operation");
+            Check(!RehearsalFixture.ExactStandaloneFixtureOperations(RehearsalFixture.BundleMigration, exact.Concat(exact.Take(1)).ToArray()), "duplicate bundle operation");
+            foreach (var mutate in new Action<AddColumnOperation>[] { x => x.IsNullable = false,
+                x => x.ColumnType = "nvarchar(32)", x => x.Table = "Unknown", x => x.DefaultValue = "[]" })
+            {
+                var changed = BundleOperations(); mutate((AddColumnOperation)changed[0]);
+                Check(!RehearsalFixture.ExactStandaloneFixtureOperations(RehearsalFixture.BundleMigration, changed), "bundle drift rejected");
+            }
+        }
         const string owner = "20261103081639_ScopedMerchantWebsiteOwners";
         if (assembly.Migrations.ContainsKey(owner))
         {
@@ -51,6 +66,18 @@ internal static class CandidateContractTests
                 "production promotion remains unsupported");
             var current = CandidateContract.Current(db);
             RehearsalFixture.ValidateExpandedFixture(db, current);
+            if (assembly.Migrations.ContainsKey(RehearsalFixture.BundleMigration))
+            {
+                var bundleEntry = current.Migrations.Single(x => x.Id == RehearsalFixture.BundleMigration);
+                foreach (var changed in new[] { bundleEntry with { Supported = false },
+                    bundleEntry with { Columns = bundleEntry.Columns.Reverse().ToArray() },
+                    bundleEntry with { Columns = bundleEntry.Columns.Take(1).ToArray() } })
+                {
+                    var bad = current with { Migrations = current.Migrations.Select(x => x.Id == changed.Id ? changed : x).ToArray() };
+                    try { RehearsalFixture.ValidateExpandedFixture(db, bad); throw new Exception("Bundle descriptor drift accepted"); }
+                    catch (ProbeObservationFailure error) when (error.Message == "MIGRATION_COMPATIBILITY_UNPROVEN") { }
+                }
+            }
             var malformedOriginal = current with { Migrations = current.Migrations.Select(x => x.Id != "20261011064911_AddBusinessScopedMerchantPayments" ? x : x with {
                 Tables = x.Tables.Select(t => t.Name != "CommerceMerchantAuthorizations" ? t : t with {
                     Columns = t.Columns.Select(c => c.Name != "ClientProfileId" ? c : c with { Type = "nvarchar(36)" }).ToArray() }).ToArray() }).ToArray() };

@@ -679,7 +679,8 @@ def test_schema_contract(directory):
         ('20261103174446_SharedCommerceShippingState', '28661e65b1183ce05e6764e9c9050d9e748c4547e1850f0bd189bb89d2efc02e', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
         ('20261104012500_ParfaitMemberPageRestrictions', '3431b5357098c33623f2fa8d1233439c7cb7fb48f4c761c247406d5957592023', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
         ('20261104014500_TrainingPromotionMemberLimits', '43410794881f1459251f1a7038111ccaa7f752332e5f91a37fbb865e83478cc1', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
-        ('20261107153025_AddReceptionistSetupGuide', 'ec54ce063d0ab6f9507b3d337e8dc771bc56f1da56329e42d350e75acd54ed6a', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS')]
+        ('20261107153025_AddReceptionistSetupGuide', 'ec54ce063d0ab6f9507b3d337e8dc771bc56f1da56329e42d350e75acd54ed6a', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
+        ('20261110000000_AddCommerceBundleInventory', 'cab09944fee8fcb6c027c64c9dc91f36e93bb58cceec38c765b46bae7f026bc7', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS')]
     migrations = current['migrations']
     for index, (migration_id, digest, marker) in enumerate(reviewed):
         entries = [row for row in migrations if row.get('id') == migration_id]
