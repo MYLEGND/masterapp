@@ -4087,3 +4087,750 @@ accounting operations as applicable, a fresh restricted test window, human-heard
 two-way voice, release of the completed call slot and a successful second call
 before separately accepted public website activation. This guide/style source
 change does not establish those operational outcomes.
+
+
+## 2026-11-09 — Canonical advertising measurement repair / Mac handoff
+
+Scope: Zac explicitly selected `isolation/ad-measurement-canonical-20261109` in MYLEGND/masterapp. Sole implementer Codex; read-only Astra low review. Initial HEAD and comparison base: `6eed2f4ab7adad92a07f999295582dcb00355181`; upstream origin/isolation/ad-measurement-canonical-20261109; initially clean, zero local-only commits. Checkout `/workspace/scratch/98ab3c19ee81/masterapp`. No Legend Workspace/Codespace, deployment, migration, campaign, credential, budget, or production submission actions.
+
+### Evidence and disposition
+
+Read the current canonical router libfile_4488349df2bc8191b625c453afaae1b6, COO libfile_88fc238945a8819181401a4a07860dff, Engineering role baseline libfile_f1a9688195148191817bc0204a3f1ce7, repository AGENTS.md and prior checkpoint. Read both full receipts libfile_c4f2eea74f388191b3c5acecabf18c8f and libfile_90744a5b1320819189728050d3f8fa07. Personal Context returned Ad Test Results conversation summaries, not the complete original transcript; original conversation/readiness wording remains unavailable. Receipt dates are November 5; source comparison November 9, not deployed-version proof.
+
+- FIXED: Snapshot previously trusted legacy MetaTracking and defaulted unknown to Pending. It now joins displayed canonical lead/source identities to Meta evidence with owner, site, version and destination isolation. Shared MarketingDeliveryEvidencePolicy owns matching and status interpretation, also used by Event Map. Positive provider receipt is required for accepted; blocked reasons, transport-only, missing, failure, retry, mixed, reconciliation and configuration states remain distinct. Legacy browser evidence is retained only for matching event/destination. QA exclusion remains intact.
+- FIXED: diagnostics now consumes CanonicalLeadCount from the existing canonical health snapshot. Removed the duplicate diagnostic lead predicate. Founder selected-site/all-sites, alias owner, environment, quality and store exclusion use the same canonical population. Count is independent of event traffic filtering, as before.
+- ALREADY CORRECT / preserved: OpenAI transport acknowledgement is distinct from acceptance; source is AnalyticsEvent. Verified the linked account adacct_6ab78a328a20819d92c88b989404c4fb and source cds_6ab8e68ce8c0819d9ac236a8f4553592 still exist. Exact historical pending/failed event IDs, response error, destination and retry state could not be read through available production access; unresolved live-evidence dependency, no sender change justified.
+- ALREADY CORRECT / preserved: Google stage qualification and exact action/click-ID/time response matching. Authorized Google account listing returned no accessible accounts. Serving-account/conversion-customer association for 5707145952 and intended campaign goal remain unverified. Zero attempts/browser tag absence do not prove uploader failure. No campaign edits.
+- PRESERVED: inquiry authority, atomic lead/CRM/event persistence, consent/human gate, deduplication/retry identity and provider dispatchers. Protect's blocked test is not eligible acceptance. No live replay performed.
+
+### Changed owners
+
+- Infrastructure/Analytics/AnalyticsQueryService.cs: canonical Snapshot join and canonical health lead count.
+- Infrastructure/Analytics/MarketingHealthProjection.cs: internal shared count, no public health contract expansion.
+- Infrastructure/Analytics/MetaSignalAnalyticsService.cs: remove duplicate population query.
+- Infrastructure/Analytics/MarketingMeasurementEvidenceService.cs: shared Meta matching/status policy and strict explicit-destination isolation.
+- Infrastructure/WebsiteEditing/WebsiteEventMapQuery.cs: reuse matching/status policy.
+- SHARED/Analytics/DrilldownDtos.cs: evidence provenance.
+- AgentPortal/wwwroot/js/website-analytics.js: honest rendering of authoritative states.
+- AgentPortal.Tests/LeadSnapshotAttributionTests.cs: accepted without legacy metadata, blocked, missing, transport, mismatches, mixed providers, reconciliation, QA and browser dedup regression cases.
+- AgentPortal.Tests/AnalyticsCanonicalReconciliationTests.cs: scoped population/quality reconciliation and reduced-query expectations.
+- AgentPortal.Tests/CanonicalMeasurementTruthTests.cs: mock canonical health snapshot contract.
+- AgentPortal.Tests/AnalyticsPageRoutingTruthTests.cs: shared policy source assertion.
+- tests/analytics/openai-transport-evidence.test.mjs: Meta badge state/escaping regressions in existing harness.
+- This existing checkpoint: continuity and Mac handoff only.
+
+### Executed validation
+
+SDK 10.0.403 installed only in scratch. Restore initially failed in default artifact path; unique MasterAppArtifactsRoot plus serialized restore succeeded. Existing obsolete TestServer/WebHostBuilder and nullable warnings remain.
+
+```bash
+DOTNET_CLI_TELEMETRY_OPTOUT=1 /workspace/scratch/98ab3c19ee81/dotnet/dotnet restore AgentPortal.Tests/AgentPortal.Tests.csproj --disable-parallel -m:1 -p:MasterAppArtifactsRoot=/workspace/scratch/98ab3c19ee81/build-artifacts
+GITHUB_WORKSPACE=/workspace/scratch/98ab3c19ee81/masterapp DOTNET_CLI_TELEMETRY_OPTOUT=1 /workspace/scratch/98ab3c19ee81/dotnet/dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-restore -m:1 -p:MasterAppArtifactsRoot=/workspace/scratch/98ab3c19ee81/build-artifacts --filter 'FullyQualifiedName~LeadSnapshotAttributionTests|FullyQualifiedName~AnalyticsCanonicalReconciliationTests|FullyQualifiedName~WebsiteEventMapTests|FullyQualifiedName~CanonicalHumanEligibilityTests|FullyQualifiedName~ScopedMarketingMeasurementTests|FullyQualifiedName~OpenAiMeasurementEvidenceTests|FullyQualifiedName~OpenAiMeasurementHealthTests|FullyQualifiedName~ExternalAdsCanonicalIntegrationTests|FullyQualifiedName~WebsiteLifeLeadCaptureServiceTests|FullyQualifiedName~CanonicalMeasurementTruthTests|FullyQualifiedName~LaunchAuditProjectionTests|FullyQualifiedName~AnalyticsPageRoutingTruthTests|FullyQualifiedName~AdversarialReportingTruthTests' --logger 'trx;LogFileName=ad-measurement-final.trx' --results-directory /workspace/scratch/98ab3c19ee81/test-results
+node --check AgentPortal/wwwroot/js/website-analytics.js
+node --test tests/analytics/*.test.*
+(cd tests/website && npm ci --ignore-scripts --no-audit --no-fund)
+node --test tests/website/website-analytics-runtime.test.mjs
+git diff --check
+```
+
+Final: 205 backend passed, 0 failed, 0 skipped; 31 analytics JS passed; 68 runtime tests passed. Backend per suite: LeadSnapshotAttribution28, AnalyticsCanonicalReconciliation39, WebsiteEventMap11, CanonicalHumanEligibility17, ScopedMarketingMeasurement16, OpenAiMeasurementEvidence5, OpenAiMeasurementHealth18, ExternalAdsCanonicalIntegration30, WebsiteLifeLeadCaptureService8, CanonicalMeasurementTruth11, LaunchAuditProjection6, AnalyticsPageRoutingTruth13, AdversarialReportingTruth3. Existing capture/identity suites cover repeated submissions and retries. The first backend run was 185 passed/2 failed: stale mock and browser-evidence regression; both fixed before final rebuild. First runtime attempt lacked jsdom; installed existing locked dependencies, then 68 passed. Dependencies were moved out of checkout after testing. No test failure concealed as a pass.
+
+Astra independently accepted source diff SHA-256 cc7183519773143dbc0d78f109b6ce8a80159b3d7261a4ee50edf313971cb729 (12 source/test files; documentation excluded), including the unstamped-browser fix. No production acceptance implied. Full GitHub required gates architecture-validation, approved-release-security and build-and-focused-tests were not dispatched or claimed green by this task; preserve them for future protected release integration. Localhost browser journey on the Mac and production acceptance are still required.
+
+### Preservation and Mac procedure
+
+Native session preflight ran against this branch/base and confirmed clean matching ancestry, then stopped because native git push credentials were unavailable. Native push dry-run also failed with `could not read Username`. Use the authorized GitHub connector to preserve this exact candidate with expected-head fast-forward; do not call native session finish successful without its actual receipt. Final commit/publication verification belongs in the return receipt. No direct-release-request or release base changes.
+
+On the Mac, begin in the existing masterapp repository. Do not reset, stash, discard or overwrite local changes. Confirm origin is MYLEGND/masterapp. Fetch is read-only with respect to the working tree:
+
+```bash
+git status --short --branch
+git remote -v
+git fetch --no-tags origin refs/heads/isolation/ad-measurement-canonical-20261109:refs/remotes/origin/isolation/ad-measurement-canonical-20261109
+git rev-parse origin/isolation/ad-measurement-canonical-20261109
+git log --left-right --oneline HEAD...origin/isolation/ad-measurement-canonical-20261109
+```
+
+Compare fetched SHA with the final handoff. If Mac HEAD contains changes absent from this candidate, reconcile them deliberately before selecting deployment source. Never replace newer Mac work with this older baseline. If already on this branch with a clean tree, `git merge --ff-only origin/isolation/ad-measurement-canonical-20261109` is the safe update. If on another branch, inspect `git worktree list` and `git branch --list isolation/ad-measurement-canonical-20261109` first. When that branch/path does not already exist locally, a separate worktree preserves the current checkout:
+
+```bash
+git worktree add --track -b isolation/ad-measurement-canonical-20261109 ../masterapp-ad-measurement origin/isolation/ad-measurement-canonical-20261109
+```
+
+Do not run this creation command if the branch/worktree already exists; use its existing location. This is a manual successor handoff, not a second simultaneous writer. Verify HEAD and a clean working tree there. Read AGENTS.md and run its session preflight with the verified published SHA as base. On Mac use the installed .NET 10 SDK and an isolated artifact directory (for example /tmp/masterapp-ad-measurement-20261109) in place of the scratch paths in the exact restore/test commands above; set GITHUB_WORKSPACE="$PWD". Reinstall the existing tests/website locked dependencies for the JS runtime tests. Review the diff from 6eed2f4ab7adad92a07f999295582dcb00355181.
+
+Run ProtectWebsite and AgentPortal with their existing approved local launch/configuration through `dotnet run --project Protect-Website/ProtectWebsite.csproj` and `dotnet run --project AgentPortal/AgentPortal.csproj` (separate terminals, same isolated artifact property when used). Do not substitute production credentials/data or apply migrations to bypass a startup error. Existing pending migrations/configuration must be reconciled through the existing local procedure; this task adds no migration. Check startup logs and the actual printed localhost URLs. Exercise the selected Protect landing and full quote path on mobile and desktop, then scoped Portal CRM/Snapshot/diagnostics/Event Map. Only after localhost acceptance should Zac use the existing verified Mac direct-deployment procedure; that external runner/configuration was not inspected here, so no deployment command is invented.
+
+### Post-deployment acceptance checklist (not executed)
+
+1. Verify deployed commit and application/static asset provenance match the selected Mac candidate.
+2. Selected Protect landing: mobile and desktop navigation, CTA, quote steps, validation, consent, back/exit behavior, recommendation and follow-up handoff all work; no overflow or obscured controls.
+3. Use one authorized human test journey with recorded time/session/site; verify one correctly scoped CRM record, complete intake/history and actual follow-up receipt. Repeated submission/retry must not duplicate the lead/business outcome.
+4. Correlate canonical AnalyticsEvent and provider-specific destination delivery. Meta accepted requires positive provider receipt; a human-evidence block stays blocked with reason. Browser/server use stable dedup identity. OpenAI transport-only stays unverified until a correlated provider acceptance exists.
+5. Reconcile Protect-only, LEGEND-only and Founder all-sites Snapshot/diagnostic counts under identical dates, environment and quality settings. Event Map and Snapshot agree; QA/internal traffic stays excluded from learning.
+6. Google import verification requires the intended qualified stage plus real consented attribution, intended action/customer and matching receipt; do not fabricate click IDs or policy outcomes. Confirm serving/conversion account association and campaign goal through authorized access.
+7. Confirm one business count and one deduplicated conversion outcome, no cross-owner/site/destination leakage. Retain unresolved provider evidence explicitly. Keep branch and recovery until merge, deployment and live acceptance are confirmed.
+
+No live/ad-ready/profitability claim. Return through existing Layla/Handoffs route; receiving ACK and any external operation state not directly observed remain UNKNOWN / RETURN PENDING.
+
+## Canonical delivery diagnosis follow-up — 2026-11-09
+
+Continues the same sole-writer task and branch `isolation/ad-measurement-canonical-20261109`, from clean, remotely preserved `2d6ca50839749daa987ec73951faf0f3593bcb25`. Original comparison base remains `6eed2f4ab7adad92a07f999295582dcb00355181`. No branch/release-base change, production submission, deployment, migration, credential change or campaign mutation. Prior accepted Snapshot/population fixes and recovery history retained.
+
+### Newly observed evidence and bounded correction
+
+Authenticated read-only Portal inspection observed OpenAI Pending 2, Retrying 0, Failed 1 and Sent 14, while evidence correctly described the 14 as transport acknowledgments with provider acceptance unverified. Studio's existing conversion_trace correlated the actual Nov 5 LEGEND inquiry to AnalyticsEvent 76272, event `6f5b7770-62b3-4bbf-8b9f-29dcabe87d2e`, lead/client event `98f92faf-0337-1f86-b2e1-cd397005a7da`, and OpenAI receipt `0c46238c-bda9-4a49-b132-72a22145f612`: HTTP 200, one attempt, sent 2026-11-05T13:26:54.7453064 UTC, canonical source AnalyticsEvent, semantics http_2xx_transport_only. Destination matches the previously documented account/source/pixel. This receipt is not the unresolved failed row. The source remains canonical AnalyticsEvent; no alternate Meta-based sender was introduced. The existing human gate, stable identity, deduplication, retries and expiry/claim protections are unchanged.
+
+Two regression failures were reproduced against the previously accepted assemblies: blocked_human_evidence was counted Pending; Status=sent with HTTP 500 was counted Sent by health. Red run: four passed, two failed. The shared evidence policy now separates blocked from pending for provider summaries; OpenAI health reuses its HTTP transport predicate for counts and timestamp. It does not claim provider acceptance. Existing health contracts/controller projections/view expose at most 20 receipt diagnostics, unresolved first, with canonical event/source, receipt ID, sanitized error code, HTTP status, attempt/retry/claim-expiry timing and destination binding. No provider response body, free-text error, secret or claim token is exposed. OwnerKey plus raw owner dimensions and server channel isolate Founder, agent and business owners. The UI explicitly labels these details as owner/all-sites; previous destinations remain labeled separately. This is a read projection from the existing ledger, not another ledger or sender.
+
+Changed owners: MarketingMeasurementEvidenceService.cs (shared status policy), OpenAiMeasurementDelivery.cs (health only), OpenAiMeasurementContracts.cs (diagnostic DTO), both WebsiteAnalyticsController and BusinessAnalyticsControllerBase (same health projection), shared analytics Index.cshtml/website-analytics.js (honest counts and safe text rendering), existing OpenAiMeasurementEvidenceTests/OpenAiMeasurementHealthTests and analytics JS suite (regression, privacy, destination and Founder/agent/business isolation).
+
+### Provider and access dependencies, not completed code
+
+Google's authenticated account selector identified 570-714-5952 as LEGEND® Manager, with separate Legend Legacy Protection and LEGEND® accounts. Selecting the manager was blocked by Google's explicit unauthorized-AI-agent access denial; inspection stopped without bypass. HYPD account enumeration returned no accounts. Actual serving-account/conversion-customer association and intended campaign goals remain UNKNOWN. Portal showed five configured stage mappings and zero attempts, which does not establish an uploader defect. Official Google documentation requires the effective google_ads_conversion_customer and documents a June 15, 2026 legacy-upload eligibility restriction (CUSTOMER_NOT_ALLOWLISTED_FOR_THIS_FEATURE); no observed delivery error proves it applies to this integration. Verify capability through authorized account access before proposing a transport change: https://developers.google.com/google-ads/api/docs/conversions/overview . No GTM, goal, Primary/Secondary, campaign, budget or import change was made.
+
+The complete original Ad Test Results transcript remains inaccessible through the available history route; both detailed receipts were previously read. The exact unresolved OpenAI failed receipt, error and retry state remain UNKNOWN. The bounded diagnostic projection removes the demonstrated source-side visibility gap for the next deployed/local inspection; it does not retroactively prove the original provider failure's cause. A Studio conversion_health read timed out; no blind retry or mutation followed.
+
+### Follow-up validation and handoff
+
+Validation results are recorded below after completion. Initial full compiler attempts failed before test discovery (exit 137 / compiler OutOfMemoryException); these are not test passes. The red regression run used BuildProjectReferences=false only against accepted baseline assemblies. Final changed-source validation must build project references. Node syntax, 32 analytics JS tests and 68 existing browser-runtime tests passed. No GitHub release gates, Mac localhost or post-deployment live acceptance has been executed by this task.
+
+Mac procedure and live checklist above remain applicable; compare against the final follow-up SHA in the return receipt, not the previous 2d6ca508 candidate. Also inspect owner-scoped OpenAI delivery details after local/deployed startup: locate the exact failed receipt, verify current versus historical destination, recorded error and retry timing, and keep transport acknowledgment separate from acceptance. Fix only an evidenced remaining provider/source defect. Preserve the branch and recovery until merge, deployment and acceptance. Layla receiving ACK remains UNKNOWN / RETURN PENDING.
+
+The memory isolation build compiled full Infrastructure successfully with analyzers disabled; no source/migration inputs were removed. Final focused command (analyzer-enabled build/release gates remain a separate required check):
+
+```bash
+DOTNET_PROCESSOR_COUNT=2 DOTNET_gcServer=0 GITHUB_WORKSPACE="$PWD" /workspace/scratch/98ab3c19ee81/dotnet/dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -p:RunAnalyzers=false -p:MasterAppArtifactsRoot=/workspace/scratch/98ab3c19ee81/build-artifacts --filter 'FullyQualifiedName~OpenAiMeasurement|FullyQualifiedName~ScopedMarketingMeasurementTests|FullyQualifiedName~ExternalAdsCanonicalIntegrationTests|FullyQualifiedName~MarketingDeliveryLeaseTests|FullyQualifiedName~CanonicalDeliveryExpiryTests|FullyQualifiedName~CanonicalOpenAiProjectionTests|FullyQualifiedName~LeadSnapshotAttributionTests|FullyQualifiedName~AnalyticsCanonicalReconciliationTests|FullyQualifiedName~WebsiteEventMapTests|FullyQualifiedName~CanonicalHumanEligibilityTests|FullyQualifiedName~WebsiteLifeLeadCaptureServiceTests|FullyQualifiedName~CanonicalMeasurementTruthTests|FullyQualifiedName~LaunchAuditProjectionTests|FullyQualifiedName~AnalyticsPageRoutingTruthTests|FullyQualifiedName~AdversarialReportingTruthTests' --logger 'trx;LogFileName=delivery-diagnostics-final.trx' --results-directory /workspace/scratch/98ab3c19ee81/test-results
+node --check AgentPortal/wwwroot/js/website-analytics.js
+node --test tests/analytics/*.test.*
+node --test tests/website/website-analytics-runtime.test.mjs
+git diff --check
+```
+
+Final follow-up result: **301 backend passed, 0 failed, 0 skipped**, with full project references compiled and `RunAnalyzers=false` as explicitly noted above; **32 analytics JS and 68 runtime passed**, syntax and diff checks passed. TRX: delivery-diagnostics-final.trx; build/test log: delivery-diagnostics-noanalyzers.log. Existing obsolete TestServer/WebHostBuilder and nullable warnings remain. Source diff SHA-256 excluding this documentation: `e48d8fa266ebe2a6f99e4f9ef8b8b3ff5ec289da6dabc3a7e0f3d233c92b97f1`. No additional test systems or production test data were created. Required analyzer-enabled build, GitHub release gates, Mac localhost and live journey acceptance remain unexecuted/unverified. These results authorize preservation/review only, not a live/readiness assertion.
+
+## Scoped store mapping and analytics acceptance — 2026-11-09
+
+Founder authorized this bounded follow-up on the same branch, starting clean at `01dd974c4534ec8a428c709c402373069cfcea9a`. Repository `/workspace/scratch/98ab3c19ee81/masterapp`, origin MYLEGND/masterapp, upstream isolation/ad-measurement-canonical-20261109. Native session preflight reconciled matching local/remote ancestry and no dirty/local-only work, then native push credentials failed; use the established authenticated GitHub expected-head preservation route. No other writer, branch switch, release-base change, deploy, migration, campaign or provider mutation.
+
+Findings and corrections:
+- The Store primary Leads card consumed Summary.VerifiedLeads, while the canonical lead predicate deliberately excludes store scope. Replaced the Store-only card with Paid orders from the existing `/commerce` report. Store quote/session lead-conversion cards now show purchase events and recorded net order revenue. Lead-persistence/handoff health cards are website-only; Store displays the existing paid-order/purchase-event reconciliation counts. Website inquiry analytics remain unchanged. Counts are never cosmetically renamed from leads to purchases.
+- Existing ParfaitInternalAnalyticsService is a shared commerce read projection, despite its historical class name. It obtains events through IAnalyticsQueryService.ScopedEvents and orders through ParfaitOrderService, which reads CommerceOrders with CommerceBusinessId filtering. Store routes preserve the store scope and owner resolver. No new ledger, event producer, attribution implementation, storage table or store-specific provider sender was created.
+- Precision: existing order metrics select orders by creation date and paid status includes subsequently refunded orders. UI now states those semantics. Net revenue is recorded order revenue, not proof of merchant settlement. Purchase-event counts remain separate from paid orders and expose reconciliation gaps. Current currency rendering remains the existing USD report convention.
+- Google/TikTok configuration UI previously hard-coded five insurance outcomes, omitting already-supported Lead, AppointmentCompleted, AddToCart, InitiateCheckout and Purchase. Replaced both lists with the existing MarketingConversionDestinationCatalog filtered through AnalyticsEventCatalog server-authority definitions. Labels come from the canonical behavior display names (Inquiry received, Purchase completed, etc.); stable event identities remain unchanged. Rendering all supported definitions also prevents saving this replacement-style configuration from silently deleting non-rendered existing mappings.
+- Failed, malformed or late commerce responses cannot show prior-scope values or a success status. Traffic can remain available while order evidence explicitly reports unavailable; no zero is fabricated. The existing request ID/scope version guards apply.
+
+Bounded mapping check:
+| Destination | Canonical source and configuration | Result / limit |
+| --- | --- | --- |
+| Meta | AnalyticsEvent / existing advertising projection and destination catalog; positive provider receipt required | Existing supported translations retained, no arbitrary frontend renaming |
+| OpenAI | Same AnalyticsEvent / destination catalog, existing account/source/pixel authority | Existing translations retained; transport still separate from acceptance; unresolved live failed receipt unchanged |
+| Google | Same canonical projection and MarketingConnectionStore mappings | All supported server event mappings editable; selected-customer resource validation retained. Live serving/conversion-customer relationship and legacy-upload capability remain unverified; cross-customer configuration is not newly implemented or claimed supported |
+| TikTok | Same canonical projection and MarketingConnectionStore mappings | All supported server event names editable; event-source/token and owner/revision checks retained |
+| Store | Same canonical AddToCart, InitiateCheckout, Purchase identities; scoped CommerceOrders and analytics read projection | No duplicate source of truth; paid orders, purchase events and inquiries remain distinct |
+
+Files: shared analytics Index.cshtml (catalog-backed mapping fields and Store-specific metrics); website-analytics.js (existing scoped commerce report projection and explicit partial failure); ExternalAdsCanonicalIntegrationTests.cs (six owner/provider save/reload/isolation cases); existing website-analytics-runtime.test.mjs (mapping preservation, orders versus leads, failure and late-response regressions). This checkpoint records continuity. No backend event or persistence implementation needed modification for the demonstrated UI omissions.
+
+Validation details follow below. Analyzer-enabled full test command failed before discovery with compiler exit137 in unchanged Infrastructure. The existing constrained route compiles all project/source inputs with RunAnalyzers=false; it does not waive analyzer or GitHub release gates. No local Mac or live acceptance has occurred. Preserve original test evidence and prior commits. Return through the same private Handoffs; receiver ACK remains UNKNOWN / RETURN PENDING.
+
+Executed follow-up validation: **142 backend passed, 0 failed, 0 skipped; 72 browser-runtime passed; 32 analytics JS passed.** Syntax and git diff checks passed. Full project references and Razor views compiled with analyzers disabled; no source files/migrations excluded. An initial new runtime assertion failed only because catalog-order versus fixture-order differed; it now compares the preserved mappings by canonical identity. Source diff SHA-256 (documentation excluded): `ea3447bb41731ac09e61c8fc3fa77129598d2341269e73ee68e80d53fd5b8dba`. Astra independently reviewed this exact diff; final commit and remote verification are in the return receipt.
+
+Exact commands:
+```bash
+DOTNET_PROCESSOR_COUNT=2 DOTNET_gcServer=0 GITHUB_WORKSPACE="$PWD" /workspace/scratch/98ab3c19ee81/dotnet/dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -p:RunAnalyzers=false -p:MasterAppArtifactsRoot=/workspace/scratch/98ab3c19ee81/build-artifacts --filter 'FullyQualifiedName~ExternalAdsCanonicalIntegrationTests|FullyQualifiedName~ScopedMarketingMeasurementTests|FullyQualifiedName~ParfaitAnalytics|FullyQualifiedName~BusinessAnalytics|FullyQualifiedName~StoreContinuationIsolationTests|FullyQualifiedName~CanonicalOpenAiProjectionTests|FullyQualifiedName~CanonicalHumanEligibilityTests' --logger 'trx;LogFileName=store-mapping-final.trx' --results-directory /workspace/scratch/98ab3c19ee81/test-results
+node --check AgentPortal/wwwroot/js/website-analytics.js
+node --test tests/analytics/*.test.*
+node --test tests/website/website-analytics-runtime.test.mjs
+git diff --check
+```
+The same backend command without RunAnalyzers=false failed with csc137 before tests; store-backend.log preserves it. Runtime uses the previously restored locked tests/website dependencies, moved back outside the checkout after execution. No additional restore or service provisioned.
+
+Mac handoff: follow the existing non-destructive branch sync instructions above using the final follow-up SHA, retaining all prior commits and local changes. Before deployment, run analyzer-enabled validation and the repository-required release checks in the authorized environment, then localhost acceptance. In the selected Store, verify paid/refunded order semantics and date/quality filters, separate purchase-event reconciliation, a different Store's isolation, unavailable/late response behavior, and Google/TikTok mapping save/reload preserving both inquiry and commerce destinations. Do not send synthetic production orders or conversions. Existing Protect mobile/desktop, CRM/follow-up, stable identity and provider receipt checklist remains required. No claim that all live configuration or future provider contracts can be completed entirely from the frontend.
+
+## Store bundle inventory — November 9, 2026 (Phoenix)
+
+Founder directed this follow-up on `isolation/ad-measurement-canonical-20261109`, continuing clean baseline `6c45e8a6815130f15e239f6668a673f6e983a8de`. Native remote readback matched that baseline. Session preflight was invoked after this task's edits and correctly reported its dirty worktree; all such edits belong to this task. No merge, production migration, provider action, or deployment was performed.
+
+- Products → Size Inventory → **Link bundle pieces** maps an outfit size to exact same-store inventory variants and quantities. This is a product recipe stored on the existing CommerceProduct. The product retains its own selling price, images and SKU. Exact variants are supported, including mixed component sizes. The picker previews availability, preserves staged edits until Apply, and uses the existing product save path. An outfit is excluded from physical unit totals because its pieces are already represented there.
+- Storefront availability is the smallest component capacity after pending holds. The quote shares one quantity pool across bundles, loose pieces and repeated cart lines. A serializable checkout preparation verifies the server quote and persists an immutable per-line inventory snapshot and processing hold before provider invocation. Existing legacy processing lines use their original product and size. Verified capture converts the hold to physical stock decrements inside the existing atomic OrderAndInventory completion receipt; replays do not double-debit. Confirmed declines release the hold. Ambiguous payments retain the hold until reconciled through the existing payment path.
+- Recipe edits after checkout cannot change its stock allocation or fulfillment pick list. Existing saved variants cannot be deleted, repurposed, or converted while referenced or held. Quantity edits protect against stale values overwriting a completed sale. The operator order view shows the original pick list while the sale remains one purchased bundle line for revenue and advertising. Refunds retain existing financial semantics and do not imply physical restocking.
+- Migration `20261110000000_AddCommerceBundleInventory` adds nullable recipe and snapshot columns and leaves prior rows compatible. SQLite bootstrap patches the same columns locally. Release sequence is database migration, updated checkout/management hosts serving the store, then author bundle recipes. Do not author recipes during a mixed-version rollout. Preserve the columns for application rollback and resolve any active bundle orders before routing checkout to a version that does not understand the snapshots.
+
+Focused evidence covers variant picker behavior, quote and reservation contention across two database contexts with stale quotes, legacy holds, failed preparation, payment replay, immutable recipes, same-store constraints and SQL Server/SQLite schema compatibility. Simultaneous production host behavior and live payment journeys remain release acceptance work.
+
+Exact local result: **302 focused .NET tests and 73 browser-runtime tests passed**. All project references and Razor views built with `RunAnalyzers=false`; analyzer-enabled and protected release checks remain separate. The .NET filter selected `CommerceBundleInventoryTests`, `ParfaitProductPersistenceTests`, `MerchantPayment`, `StoreCart`, `ParfaitOrder`, `ParfaitCheckout`, `ScopedParfaitCommerceAuthorityTests`, `CommerceCanonicalInternalBrandIsolationTests`, `SqliteMissingModelTablesTests`, `CommerceOrder`, `CommerceCoreOwnershipContractTests`, `CentralizedWebsiteCommerceTests`, and `CommerceManagementCapabilityPolicyTests`. TRX is `test-results/bundle-exact.trx`. Browser command was `node --preserve-symlinks --test tests/website/store-bundle-picker.test.mjs tests/website/website-analytics-runtime.test.mjs` using the existing locked jsdom dependencies. Source diff SHA-256 excluding this checkpoint is `774d10fcd4951fa88415b0f4700e8f38e34787cd46930d3a7d5bc3cf466ecd89`.
+
+
+## Protect and shared Studio form presentation — November 9, 2026 (Phoenix)
+
+Same authorized isolated branch, continuing clean remotely verified `8e5ade9169ce16d883274af0b941e6c7742e641a`. Native session preflight verified no divergence/dirty work but its push dry-run failed for missing HTTPS credentials. Founder explicitly directed reuse of the prior independently reviewed GitHub connector preservation route. No release-base change, production draft deletion/publication, submission, migration, or deployment.
+
+Sources read: current router/COO/Engineering role sources, repository AGENTS and this checkpoint; retrieved excerpts from “Assess Insurance Website Competitiveness” and its referenced mobile-density observations (not a complete original transcript); shared form schema/sanitizer/Studio/runtime, Life view, Coverage modal and draft controller/management UI. Public Protect Life inspected at desktop and a zoom-induced narrow viewport without answering/submitting a lead. This is responsive inspection, not device emulation or a completed journey.
+
+Completed source corrections:
+- Existing WebsiteDesignTheme now supports seven optional mobile form geometry values and five semantic form colors. Same sanitizer, serialization, Studio controls and rendering own these settings. Mobile values inherit explicit global choices when blank; otherwise shared compact defaults apply. Per-field/breakpoint presentation and all runtime/validation/consent/tracking authorities remain intact.
+- Shared compact defaults use 16px panel padding, 16px step spacing, 12px field gaps, 6px label gaps and 48px controls. Mobile text inputs default to at least 16px text. Native choice rows use a compact icon beside text and at least 56px height. Existing authored settings remain authoritative; this does not rewrite saved sites or force defaults over deliberate overrides.
+- Life quote width rules follow the existing protect-quote container so narrow Studio previews match the form canvas. Header/navbar/psalms rules outside that container retain viewport media queries. Removed only the demonstrated forced centered choice-card layout. Other historical presentation constraints were retained pending individual evidence; this is not a claim that every arbitrary layout is unrestricted.
+- Both native Life variants put the same computed estimate slot before contact capture. Existing calculation, ID, validation, submit, persistence and event code remains unchanged. Copy identifies the preview as a preliminary estimate and distinguishes the licensed review. No invented carrier, premium, policy or acceptance outcome.
+- Shared named-draft deletion returns committed revision/draft metadata without parsing the working document after save. Raw surviving entries retain payloads/unknown metadata and stable compatibility IDs. Completeness, scope, ticket and revision guards remain. Management consumes this receipt directly without a full-site reload. This fixes a demonstrated source failure path; the exact live Protect error was not captured, so production resolution remains to be verified.
+- Existing Coverage modal dismissal/focus behavior already has passing regression coverage and was preserved.
+
+Validation: 181 focused .NET tests passed with full project references and Razor compilation, using the existing constrained RunAnalyzers=false route. 477 browser-runtime tests passed; after independent review split shell media rules from quote container rules, all 9 quote-applicability tests passed again. Final compiled result recorded below. Earlier intermediate runs had one dependency-resolution failure (Node symlink resolution; fixed with NODE_OPTIONS=--preserve-symlinks), and one new test regex mistakenly counted data-cms-review-id as an HTML id (corrected). Neither was reported as green. Headless Chromium fixture rendering failed before startup with socket Operation not permitted. Required analyzer/security/release gates, rendered Mac localhost and post-deployment acceptance remain NOT RUN.
+
+Exact commands:
+```bash
+NODE_OPTIONS=--preserve-symlinks DOTNET_PROCESSOR_COUNT=2 DOTNET_gcServer=0 GITHUB_WORKSPACE="$PWD" /workspace/scratch/98ab3c19ee81/dotnet/dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-restore -m:1 -p:UseSharedCompilation=false -p:RunAnalyzers=false -p:MasterAppArtifactsRoot=/workspace/scratch/98ab3c19ee81/build-artifacts --filter 'FullyQualifiedName~WebsiteContentEditorRoundTripTests|FullyQualifiedName~WebsiteStudioV3ContractTests|FullyQualifiedName~WebsiteNamedDraftReaderTests|FullyQualifiedName~WebsiteLifeLeadCaptureServiceTests' --logger 'trx;LogFileName=studio-forms-reviewed.trx' --results-directory /workspace/scratch/98ab3c19ee81/test-results
+node --preserve-symlinks --test tests/website/legend-public-cms.test.mjs tests/website/profile-management.test.mjs tests/website/quote-intake-applicability.test.mjs
+node --preserve-symlinks --test tests/website/quote-intake-applicability.test.mjs
+node --check SHARED/WebsitePlatform/legend-public-cms.js
+node --check Legend-Design/legend-website-management.js
+git diff --check
+```
+
+Mac: use the existing non-destructive branch sync instructions above with this follow-up's final verified SHA. Preserve all earlier bundle/analytics commits. No new migration in this follow-up; the prior bundle migration requirement still applies. Before direct deploy, run normal analyzer-enabled/release checks and localhost acceptance at 390px, 430px, tablet and desktop: native Life/product quote paths, Studio Mobile preview, mobile/global setting save/reload and reset, untouched scoped site's isolation, estimate-before-contact, required/consent/error/success states, modal exit/back/focus, two successive draft deletions with unchanged current/live document, one canonical CRM record and deduplicated correlated event/provider reporting. Keep existing drafts and history unless intentionally selecting a disposable local draft. No live lead or production conversion was manufactured. Retain branch through deployment and acceptance; Layla receiver ACK remains UNKNOWN / RETURN PENDING.
+
+Final compiled verification after the shell/container correction: **181 passed, 0 failed, 0 skipped**, studio-forms-reviewed.trx. Final source diff SHA-256 excluding this checkpoint: `9ae60a170bf67d284970f08cc81b51404ee9ec9e8cb32092ae4ae3f511d4befd`. Final reviewed commit/remote identity is recorded in the completion receipt.
+
+## Mac local startup investigation — November 9, 2026
+
+Fetched branch HEAD exactly matched `af4b71dd5aaf497757e8cf8c126335eb1113d889`.
+Existing main checkout remains on `isolation/local-static-assets-parity-20261101`
+at `bbeeb43b7d7f43c4f79d29939a65a23c2eeca144`, retaining its 16 local-only commits.
+The candidate worktree is `.worktrees/ad-measurement-canonical-20261109`.
+Native session preflight passed with the preserved candidate as base. No merge or deployment.
+
+Mac .NET 10.0.101 analyzer-enabled Release build of AgentPortal.Tests and references
+passed (0 errors, 12 warnings) using `RunAnalyzers=true`, `UseSharedCompilation=false`,
+`-m:1 -nr:false` and isolated `MasterAppArtifactsRoot`. NuGet vulnerability lookup
+warnings remain; this is not successful security admission.
+
+The reported `dotnet run` came from the original checkout. Its Development profile
+inherited a production SQL connection from shared user secrets. No production
+migration was attempted. Ignored local launch profiles in both checkouts now
+explicitly select a new loopback development database and blank AzureAd/Graph/OpenAI
+secrets, disable billing reconciliation/notifications and MetaAds, and use localhost
+Protect links. Shared user secrets remain unchanged. These local-only changes are
+not represented by the source commit and do not establish authenticated runtime acceptance.
+
+The fresh local database inventory reports 235 pending migrations, including
+`20261107153025_AddReceptionistSetupGuide` and
+`20261110000000_AddCommerceBundleInventory`. The existing `scripts/db.sh apply`
+was invoked with a private `MASTERAPP_LOCAL_DB_CONNECTION` restricted to loopback
+and isolated build output. Its build succeeded, but its full backend suite returned
+**6,583 passed, 62 failed, 5 skipped, 6,650 total** (10m59s). Procedure exit 30:
+BUILD OR TEST FAILURE. It stopped before creating/migrating the local database.
+Do not bypass this gate or describe local startup as repaired.
+
+Three demonstrated stale assertions were corrected in two existing test files:
+security validation covers both historical approved-changes and fast-track branches;
+the Founder client uses the canonical shared brand title instead of a literal label.
+Workflow/runtime behavior and all security/provenance/no-deployment assertions remain
+unchanged. Astra low independently accepted only this three-line correction.
+The focused corrected run passed **3/3, 0 failures, 0 skips**, with analyzers retained.
+An initial sandboxed VSTest attempt aborted on its communication socket; the approved
+local-socket retry executed the tests. Full-suite failures are not thereby cleared.
+
+Private evidence and the original launch-profile backup are retained under
+`AgentPortal/App_Data/local-startup-20261109/` in the candidate worktree (ignored,
+not a remote backup). Full log: `db-apply.log`; focused log:
+`focused-corrections-network.log`; receipt: `local-startup-contracts.trx`.
+Temporary execution evidence also remains under `/private/tmp/legend-local-startup-20261109`.
+
+Outstanding: classify and correct remaining full-suite failures before local migrations,
+verify startup and all requested localhost journeys, and complete release checks/artifacts.
+Independent review of the preserved candidate also found merchant pre-provider failures
+can leave inventory holds active without a payment attempt; full-candidate acceptance
+remains withheld until a race-safe canonical correction and regression evidence.
+No localhost journey, live provider acceptance, production migration, source merge,
+deployment, Studio publication or campaign change is claimed.
+
+## Mac full-suite repair in progress — November 9, 2026
+
+Founder explicitly rejected a local-migration exception and required the full test
+suite to be repaired first. Continuing remotely preserved `3e8257d0cba364827405d8648f11d24b7e57061b`
+on the same worktree/branch. No database creation, migration, merge or deployment.
+
+Current source corrections preserve prepared checkout snapshots, reacquire saved
+variant reservations (including legacy loose-item lines), and release only holds
+without durable processor claims. Serializability, fresh tracked state, canonical
+payable eligibility and claim-insertion cleanup prevent stale receipts and abandoned
+tracked inserts. Pending/unknown durable claims retain their holds. Independent
+Astra low review found no remaining source issue after these corrections; acceptance
+is still pending full validation. Synthetic SQLite contention and injected failures
+are not production SQL Server concurrency or live payment evidence.
+
+Test repairs isolate fixture-specific EF singleton interceptors and Founder process
+environment, align archive/translation assertions with existing retained-history
+and original-message-with-notice behavior, regenerate the canonical copy manifest
+(1,066 additions; no existing entries removed/changed), and permit the existing CRM
+synthetic browser harness on a verified local Mac while retaining authentic CI gates.
+The larger manifest also requires a catalog-size-derived continuation bound in its
+existing batching test; completion and exact batching assertions remain.
+
+Completed intermediate evidence (not final-HEAD release acceptance): analyzer-enabled
+Debug build and focused checkout/messaging suite 262 passed, zero failed/skipped;
+affected website runtime suite 550 passed, zero failed/skipped; actual Mac synthetic
+CRM browser plus translation regression 2 passed; two model regressions passed using
+the existing pinned local MLX model and verified FounderMac identity. No external
+model provider was used. The model was stopped during large compilation and restarted
+for the full suite. NuGet audit metadata refreshed successfully with `--force
+--no-http-cache`, resolving cached lookup warnings.
+
+Static security no-skips, secret-scan, composition and keyring checks passed.
+Continuity regression: 75 passed using `TMPDIR=/private/tmp
+GIT_DEFAULT_REF_FORMAT=reftable python3 scripts/test-sync-published-checkout.py`
+with authorized temporary home recovery fixtures. Earlier runs exposed macOS
+symlink/case-folded ref fixture limitations and sandbox denial, not source acceptance.
+Deployment-policy regression: 316 passed with installed Python 3.13; default Apple
+Python 3.9 lacks required hashlib/date behavior. Release-policy tests additionally
+need the existing test environment's PyYAML dependency.
+
+Unfiltered .NET validation is running against the reviewed compiled source with
+actual local inference and Chrome. It has exposed the stale 60-request catalog test
+limit above; final source must be rebuilt and the complete suite rerun. Database
+initialization and app startup remain BLOCKED on this gate. Evidence currently lives
+in `/private/tmp/legend-full-suite-repair`; final evidence must be retained with this
+checkpoint before source preservation. These temporary logs are not durable recovery.
+
+### Follow-up validation and remaining model gate
+
+The latest analyzer-enabled test assembly build passed. Repaired localization,
+merchant-payment, actual-startup composition and receptionist fixtures passed
+351/351 (zero skipped) in 2m23s; the first sandboxed attempt aborted before execution
+because VSTest could not bind its localhost socket. Authorized execution passed.
+Semantic-oracle regressions passed 31/31 (zero skipped): Markdown portfolio count
+labels are accepted, while the observed incorrect 30-open-ticket arithmetic answer
+and conflicting final totals are rejected. These assertions do not substitute
+answers or relax the model capability gates.
+
+The separate actual-model evidence run completed 11 tests: 4 passed, 7 failed,
+zero skipped. Independent Astra review of captured requests confirmed the failing
+Wren response received the admitted mortality answer and nine evidence records;
+the calculator was exposed but not called, and the model answered the comparison
+incorrectly. Portfolio execution and receipt propagation worked; its incidental
+Markdown assertion was corrected above. Other actual reasoning/language failures
+remain. No missing tool or evidence wiring was established. The only installed
+pinned Qwen3 4B local model has not met the existing capability gate. A request to
+evaluate another local model is pending Founder decision; no model switch is made.
+The unfiltered run is still executing and is not reported as passed.
+
+Release-policy regression completed 212/212 using installed Python 3.13 in the
+existing local test environment (PyYAML available). Affected .NET test dependency
+graph vulnerability inventory reported no vulnerable packages; this is not complete
+release security admission. Database initialization, localhost app acceptance,
+release artifacts and deployment remain unexecuted. Current source edits remain
+uncommitted pending complete validation and exact-scope acceptance.
+
+The older-assembly unfiltered run completed: 6,494 passed, 155 failed, 5 skipped,
+6,654 total, 31m13s (`full-repair.trx`). Failure groups: 131 receptionist operator,
+3 receptionist inquiry, 9 merchant, 1 localization, 2 reaction fixtures, 7 held-out
+model and 2 computed-language model cases. The 351 focused passing results above
+cover the first four repaired groups. The two late reaction failures established
+that disabling EF provider caching still observes its global cache-size warning;
+the fixture now owns/disposes its SQLite provider and retry strategy, with no
+warning suppression. Its 22 reaction regressions passed, zero failed/skipped.
+Astra reviewed that correction without findings. A new complete run remains required.
+The owned model worker was stopped after completed evaluation. Evidence logs/TRX
+and synthetic captures are retained locally under ignored
+`AgentPortal/App_Data/full-suite-repair-20261109` (not remote preservation).
+Remote readback remains exactly `3e8257d0cba364827405d8648f11d24b7e57061b`.
+No final reviewed deployment candidate or deployment artifacts exist for these edits.
+
+### Founder correction: retired Mac inference is not the target runtime
+
+Founder confirmed all inference moved to the canonical five-model Cloudflare
+runtime and the Mac model was intended for deletion. The prior decision to start
+Qwen from stale local session configuration was incorrect. Its capability failures
+are retained as historical observations, not a requirement to install or qualify
+another Mac model. No new local model is authorized or downloaded. The owned
+worker is stopped. Source commits eb851cd269f33693d24b12cd9e647d2d3064f6c8,
+36b71c212c075af618143f90781f50b8a9d3bff5 and
+ed0f722f87f44be7f59e85a01bdfe4047c9cab8b establish the five-model baseline and
+read-only cloud contracts. Older September runtime documents do not supersede
+those changes or Founder's correction. Current Cloudflare Worker runtime/security
+contracts passed151/151, zero skipped; this is synthetic contract evidence, not
+new paid inference or live model qualification. No cloud configuration changed.
+
+The immediate startup target remains the new empty local SQL database; initial
+migrations were not applied after the failed gate. Full repaired backend tests are
+now running without the retired model. Independent review is reconciling obsolete
+resource-dependent assertions with the canonical Cloudflare runtime. The migration
+guard remains enabled, and no full-suite-first exception has been inferred.
+
+The corrected no-model full run completed: 6,628 passed, 35 failed, 5 existing
+resource skips, 6,668 total in11m40s. Every remaining failure was a real retired
+controlled-serving case (22methods/35data rows), not an ordinary backend failure.
+Independent Astra approved explicitly opt-in retired-resource applicability, with
+model-free security/semantic assertions retained as ordinary tests. Five mixed
+concerns were extracted through shared helpers: native conflict/unknown escalation,
+homogeneous-certificate refusal, grounded ordinal correction, promoted-model
+Dormant isolation, and explicit-teacher attribution. Together with applicability
+regressions,11/11focused checks passed, zero skipped. Original legacy serving
+assertions remain unchanged under `LEGEND_LEGACY_CONTROLLED_FOUNDATION_ACCEPTANCE=true`;
+stale endpoint variables alone cannot activate that test runtime. No host starts
+automatically. Legacy unexecuted cases do not count as passing Cloudflare quality.
+
+The unchanged `scripts/db.sh apply` is now executing its full build/test/model/
+integrity/manual-review sequence using only the verified new loopback development
+database. No filter, skipped-security assertion, db.sh bypass or migration waiver
+was introduced. Result pending. Native source/migration diff confirms the candidate
+adds only AddCommerceBundleInventory beyond the original checkout's migration set.
+
+### Local migration blocker resolved — 2026-11-09 Mac
+
+The unchanged canonical `bash scripts/db.sh apply` completed its build and full
+backend gate: **6,639 passed, 0 failed, 27 skipped, 6,666 total**, duration11m52s.
+The 27 skips comprise22explicitly retired controlled-serving methods and5existing
+resource cases; none establishes live Cloudflare qualification. EF reported no
+model changes and migration artifacts valid. Procedure exited21 at its historical
+manual-operation review, explicitly directing reviewed application to a disposable
+local database. No required test gate was bypassed.
+
+Independent Astra accepted the full30-file source diff bound to parent
+3e8257d0cba364827405d8648f11d24b7e57061b and binary-diff SHA256
+c6fa1f42d790353164215e9a65fa5d3abfb0531dcea7c507827c3d184370fdf5
+after inspecting the passing canonical log. Reviewed SQL fingerprint remains
+02324ffc4dba1d58b7720380f532b097d8598d068c8ad40c156bc4667186532b.
+
+Immediately before application, Docker mapping was reverified as127.0.0.1:60058
+and SQL inventory confirmed LegendLocal_AdMeasurement_20261109 did not exist.
+The canonical manual command was `dotnet tool run dotnet-ef database update
+--project Infrastructure/Infrastructure.csproj --startup-project
+AgentPortal/AgentPortal.csproj --context MasterAppDbContext --no-build`, with
+Development and private local-only connection environment, isolated build root,
+and production-priority environment variables removed. Exit0: all235migrations
+applied, including AddReceptionistSetupGuide and AddCommerceBundleInventory.
+A fresh equivalent `migrations list` returned235entries, **zero pending**.
+No production database was accessed for mutation and no customer data was copied.
+
+Candidate startup command: `env
+MasterAppArtifactsRoot=/private/tmp/legend-ad-measurement-20261109-build
+DOTNET_PROCESSOR_COUNT=2 DOTNET_gcServer=0 dotnet run
+--project AgentPortal/AgentPortal.csproj --no-build`. Startup schema guard logged
+zero pending; app listened on https://localhost:6205 and http://localhost:6206.
+`/healthz` and `/readyz` each returned200 Healthy; home returned302(authentication).
+After stopping that owned process, the original checkout was started with
+`env DOTNET_PROCESSOR_COUNT=2 DOTNET_gcServer=0 dotnet run --no-build` from
+/Users/zacowen/MASTERAPP/AgentPortal. It also logged zero pending and returned200
+Healthy on both endpoints. Its branch and16unique commits remain untouched.
+
+Local profiles retain disabled delivery credentials/settings. Background Graph
+workers report intentionally absent local Graph credentials; these providers were
+not exercised. First candidate startup logged a concurrent Global-policy unique
+key collision; the process remained healthy. Rendered browser inspection could
+not start because the computer-use browser host was unavailable. These endpoint
+checks do not establish authenticated journeys, provider acceptance or UI quality.
+
+Sanitized operational evidence is retained in private local logs under
+/private/tmp/legend-local-startup-20261109 and
+/private/tmp/legend-full-suite-repair/db-current-apply.log. Migration completion
+is local only. Full requested Protect/Studio/Store viewport and journey acceptance,
+final committed revision artifact packaging, and deployment admission remain
+outstanding. No deployment, merge, Studio publication or campaign change occurred.
+## 2026-11-03 — Xcode distribution diagnosis and corrected iOS archive
+
+Founder requested investigation/correction of the Xcode Organizer PLA/signing error
+while preparing the latest native release. Continued the same mobile branch after
+mandatory preflight PASS against `aed1e50f6e4b964b29603f2df6e729bd4633b520`.
+No backend, Store worktree, production app, payment or authentication change.
+
+Read-only evidence: today's12:29archive is clean exactaed1e50f6 source, version1.0
+build25. Local keychain has development identities but no local distribution
+identity. Apple Developer account uses the correct MyLegnd, LLC teamZ8XL9RU485,
+shows the agreement accepted and permits certificate-resource access. Existing
+Distribution Managed certificate expires2027-07-30. Do not replace or revoke it.
+The earlier12:37automatic TestFlight-internal upload was rejected by Apple's PLA
+resource response and a missing-local-certificate fallback; its exact original
+server-state cause remains unknown. A fresh automatic Validate request passed those
+stages, selected Apple Distribution, and auto-managed the copied build number to35.
+It then failed Apple90062/90186: approved version1.0's prerelease train is CLOSED.
+The version rejection is directly proven; it is not proof of an application defect.
+
+Canonical correction: `cfe34b09ad98da5ad1dc622b536f0b10bd7068e3` changes only six
+values in Legend-ios/Legend.xcodeproj/project.pbxproj: all three configurations
+MARKETING_VERSION1.0->1.0.1 and CURRENT_PROJECT_VERSION25->35. Existing
+scripts/reserve-ios-build.py reserved35 against local archive inventory under its
+existing lock. App and both extensions inherit these project-owned version settings.
+No copied plist values, new versioning path, identity, signing override, entitlement,
+credential or certificate change. Independent review accepted the exact one-file
+SHA256 `d597c5f2eb115f940b87093a0c38c245105ab801f797c92e695bcfc8b503c575` before
+commit/archive. plutil lint, version consistency/inheritance and diff checks PASS.
+Prior compatible functional/native test evidence remains applicable to this metadata
+change; fresh Release archive/signature/provider validation is the affected proof.
+
+Fresh device archive: `/Users/zacowen/Library/Developer/Xcode/Archives/2026-11-03/Legend-1.0.1-build35-cfe34b09a.xcarchive`.
+xcodebuild Release archive succeeded using the existing task DerivedData/signing
+setup. Log `/private/tmp/legend-ios-archive-1.0.1-35.log`. Verified all three embedded
+bundles1.0.1(35), exactcfe34b09a provenance with hasLocalChanges=false, and
+codesign --verify --deep --strict PASS. Main executable SHA256
+`fb2d1f6f41852bdaa19df8889dbeb4b69a697028f0e2b0571df0af6373a8775b`.
+Organizer selected the new archive and initiated automatic App Store validation.
+Apple validation NOT CONFIRMED. Current attempt log:
+`/var/folders/hc/0s2s2g8s3t9fzhvjsrypdmsr0000gn/T/Legend_2026-11-03_12-54-40.260.xcdistributionlogs`.
+The corrected package reached UPLOAD_COMPLETE with no PLA/certificate/closed-train
+errors, then GET UPLOAD STATE returned401/auth issue and
+DVTITunesSoftwareServiceFoundation.AuthContextDelegateError.reauthenticationNotSupported.
+Cancelled this validation attempt through Organizer rather than blindly resubmitting.
+Existing manual profiles refreshed successfully in Xcode; App Store validation
+reauthentication remains unresolved. Automatic approval review rejected clicking
+Xcode Sign Out as not explicitly authorized and potentially disruptive to the
+existing signing setup. No sign-out or workaround was executed. A scoped Founder
+approval question for Xcode-only sign-out/sign-in is pending; password/2FA must be
+completed by Founder. Preserve current identities/certificates. Refreshing account
+session and retrying corrected-archive validation remain open; no Apple acceptance
+is claimed.
+
+No TestFlight build submission, App Store release, backend deployment or fast-track
+integration is claimed. The earlier Store/mobile integration hold remains unchanged.
+Source preservation is established only by mandatory session-finish exact remote
+readback, separately from Apple validation and later distribution.
+
+## Current consolidated Mac release source — 2026-11-09
+
+Founder authorized consolidation of ad-measurement and other work needing release
+onto one source path. This authorizes the bounded source merges below and checkout
+alignment; the no-deployment hold remains. Protected fast-track is not updated
+because its push workflow can publish. Existing release mechanisms remain unchanged.
+
+**Use /Users/zacowen/MASTERAPP for editing, localhost tests and future release
+preparation. Active branch: isolation/ad-measurement-canonical-20261109.**
+The existing Git setting legend.nativeTestingRef now points to that branch's origin
+ref, so native checks and the active web checkout share the same source authority.
+The former ad-measurement worktree is retained detached at implementation
+fe1cf850f74b29a925e0b24330e68238f38719c7, not an independently advancing release lane.
+No branch, commit, worktree, ignored configuration or recovery history was deleted.
+
+Consolidated ancestry, reviewed separately before each merge commit:
+- Original Mac bbeeb43b7d7f43c4f79d29939a65a23c2eeca144, including the local
+  build35 commit, through be313d818. Original branch remains intact.
+- Mobile20c28227f6a0169ff4703bd46de1173f1d1b664a through7a5e2d483. All three
+  canonical iOS configurations now1.0.1(35). The checkpoint conflict retained
+  the complete current record and appended the entire historical mobile record.
+  Apple validation/upload remains unverified; its historical archive is not a new
+  final-candidate artifact. plist syntax and version consistency passed.
+- Missing ClientApp OIDC recovery PR133 headbacdf6fad6ff13c6b38582b041ec0453aa8abe88
+  throughfe1cf850f74b29a925e0b24330e68238f38719c7, with original history preserved.
+  Current callback now restarts canonical login for unreadable/empty state, retaining
+  normalized local return URLs, transient-cookie cleanup, sign-out and fail-closed
+  handling of unrelated failures. Failed callbacks never authenticate.
+
+Analyzer-enabled .NET10 build and24focused tests passed,0failed,0skipped: eight
+actual ClientApp startup callback regressions and16existing redirect tests. Command:
+`env MasterAppArtifactsRoot=/private/tmp/legend-ad-measurement-20261109-build
+DOTNET_PROCESSOR_COUNT=2 DOTNET_gcServer=0 GITHUB_WORKSPACE="$PWD"
+dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj
+--filter 'FullyQualifiedName~ClientAppOidcStateRecoveryTests|FullyQualifiedName~ClientAppSubscriptionRedirectTests'
+-m:1 -nr:false -p:UseSharedCompilation=false -p:RunAnalyzers=true`.
+Final log: /private/tmp/legend-oidc-consolidation-isolated.log. Synthetic startup
+values restore in finally under the existing nonparallel environment collection;
+no host worker, SQL or external identity provider runs in those tests. Earlier
+fixture attempts failed compilation(two constructor errors), then8cases twice
+(wrong entry assembly, then early startup configuration); these were corrected,
+not counted as passing. Five existing compiler warnings remain unchanged.
+The prior6,639-pass backend gate belongs to5b8607b82; it is retained compatible
+evidence for unchanged backend source, not relabeled as a new full-suite run.
+Broader final release gates and rendered journeys remain outstanding.
+
+Source inventory evidence: Docs/releases/source-consolidation-inventory-20261109.json.
+410local/remote refs and762PR records were examined. Relative to5b8607b82,215tips
+were not ancestry-contained:57had patch-equivalent nonmerge changes,2had patches
+present in current files,10had exact-tip merged-PR ancestry;146required further
+applicability classification, including backups, closed proposals, old operational
+branches and draft work. These are evidence categories, not acceptance guarantees.
+The snapshot records exact identities and preserves unresolved scope. Do not merge
+all old branches or replay historical operations merely because ancestry differs.
+
+Priority applicability findings from independent review: release-history PR672 and
+Studio protection PR313 behavior already exists; the old Quick Find ordering in
+PR322 is superseded by the current subview design; PR305's Explore-close fix exists,
+with other portions still unclassified. PR293's live-provider verification is
+**genuinely outstanding**, not superseded: stored ChatGPT Ads connection timestamps
+are not proof of live provider acceptance. Hold its current-owner integration and
+provider qualification explicitly. Other unclassified proposals remain held in this
+same release record; this consolidation does not claim every historical proposal
+is implemented or ready. Cloud-workspace preparation is excluded from this direct
+Mac scope. No local-model restoration or paid inference was performed.
+
+The dirty historical Parfait checkpoint in the older follow-up worktree was left
+untouched; its added deployment note already exists in this canonical checkpoint.
+Root local launch settings are byte-identical across checkout alignment, including
+the removed empty AzureAd secret override and the verified loopback SQL database.
+The local VS Code run-on-save Git auto-commit command was paused to prevent a
+concurrent writer; its original private settings and launch profile were backed up
+under /private/tmp/legend-release-checkout-config-preservation. The explicit manual
+Git task is retained. No credentials entered Git or this evidence snapshot.
+
+Root AgentPortal compiled successfully using the installed .NET 10 SDK. An initial
+startup encountered the old local process occupying port 6205; after stopping that
+verified root-checkout process, the new build started on https://localhost:6205 and
+http://localhost:6206, reported zero pending migrations, and returned HTTP 200 from
+both /healthz and /readyz. A process-only empty AzureAd secret suppressed external
+directory activity during this smoke check; the saved launch profile was unchanged.
+The smoke-test process was stopped so normal dotnet run can use the existing Mac
+secret and free ports. Real login and rendered acceptance journeys remain unverified.
+Logs: /private/tmp/legend-consolidated-root-startup.log and
+/private/tmp/legend-consolidated-root-verified.log. Exact final checkpoint commit
+and remote preservation must be read from native Git session-finish output.
+No deployment artifacts, protected merge, production migration, Studio publication
+or campaign changes are claimed.
+
+
+## Direct Mac Azure release resume — 2026-11-09 Phoenix
+
+Founder authorizes all five affected web targets from the single active checkout
+`/Users/zacowen/MASTERAPP`, using Azure stop, verified upload, then restart.
+Implementation `04f6a9be8f6d016d0e5637ddf041c58600b2601d` includes the reviewed Parfait sign-in privacy correction,
+its actual-startup and Razor regression coverage, and the updated release request.
+Independent Codex review `/root/release_review` accepted exact file hashes; this is
+not Astra acceptance or deployment admission. Review and test receipts are retained
+locally under `AgentPortal/App_Data/release-resume-20261109/` (ignored).
+
+Analyzer-enabled focused tests: 31 passed, 0 failed, 0 skipped. The interrupted
+prior test run aborted when the sandbox denied its local socket; the rerun with
+approved local access passed. Existing 6,639-test evidence remains attributed to
+its original candidate. No new full-suite, rendered localhost or CI pass is claimed.
+
+Resume read-only Azure inventory confirmed portal, client, protect, parfait and
+website Running. No shutdown, upload, migration or restart was performed in this
+resume. Interrupted process 11870 was observed stopped (T), confirming the earlier
+pause command completed; no repeated signal was sent. Native continuity preflight
+confirmed local and remote d73fa8421f4c3752e4dda029abe5fd4fa081a582 with no divergence,
+then held on the now-reviewed dirty files. Fast-track remote readback was
+6eed2f4ab7adad92a07f999295582dcb00355181; synchronization remains pending.
+
+Outstanding admission: final candidate packages and digests; applicable localhost
+journeys and required security/release checks; independently reviewed extension of
+the existing native runner to this candidate and five targets; fresh provider
+journals, publisher exclusion, configuration and runtime baselines; migration and
+recovery admission. Saved schema inventory identifies pending migrations
+20261107153025_AddReceptionistSetupGuide and
+20261110000000_AddCommerceBundleInventory. This resume read their source but did
+not apply them. The saved direct-release request baseline receipts are historical,
+not current provider evidence. Existing native runners bind earlier candidates,
+checkouts and schema counts; do not execute them unchanged or fabricate PASS
+receipts. Preserve completed prior effects and recovery history. Stop production
+only after upload-ready packages and all required admission evidence exist.
+
+
+### Release classification correction and package preparation — 2026-11-10
+
+PR769 is the existing draft for this release. Candidate
+0f39f4369c6b79cd3150b73526dc65826006a5a3 is preserved remotely. Its approved-release-security
+run42769836356 passed, and validated-migration-probe in run42769836060 passed.
+Both Parfait build checks (runs42769736933 and42769836092) failed before application
+tests because the complete carry-diff contained unmapped paths. The canonical
+fast_track_scope now maps the exact iOS project file to native-only and the two
+shared analytics contracts (DrilldownDtos.cs, OpenAiMeasurementContracts.cs) to
+all four managed consumers. Unknown native/shared siblings still fail closed.
+Independent reviewer /root/release_review accepted the exact two-file correction.
+
+Validation: 17 impact tests and117 release-child tests passed. Full validation
+under repository-pinned Python3.12 ran765 tests:764 passed, one errored because
+Node was absent from the test container. That exact transport test then passed
+with the repository-pinned Node runtime mounted. Earlier Python3.13 historical
+fingerprint failures were runtime-version incompatibility, not waived tests.
+Logs remain /private/tmp/legend-ad-release-validation-python312.log,
+legend-ad-release-validation-transport.log and legend-ad-release-children-focused.log.
+New current-head CI is required after preservation of this correction.
+
+Canonical isolated packaging completed Website and Parfait for0f39f4369, under
+/private/tmp/legend-ad-release-packages-0f39-python313. Preserve their receipts;
+they are not relabeled as artifacts of the subsequent classification correction.
+Portal, Client and Protect packages remain unbuilt. Python3.13 is needed by the
+host packager; its isolated runtime remains the pinned toolchain.
+
+The loopback Parfait compiled-view fixture at http://127.0.0.1:15439 passed three
+HTTP privacy/retry checks. Native Chrome displayed the reference and retry link.
+Full viewport/journey acceptance is not complete: Browser host unavailable and
+native screenshot capture returned ScreenCaptureKit -3811. The fixture loads no
+production configuration, SQL or external identity provider. Source/test receipts
+are local in AgentPortal/App_Data/release-resume-20261109.
+
+Read-only independent migration review found both pending Up paths additive and
+consistent with model/snapshot: guide table/seed/index/check, plus two nullable
+commerce JSON columns. No production migration or rehearsal is claimed. Extend
+the existing five-target owner deploy-reviewed-parfait-native.py and existing
+apply-reviewed-parfait-migrations.py for exact new identities, current history
+(expected237 to239, subject to live verification), physical postconditions and
+preserved Work push cutoff. Retain transaction/no-replay, recovery, journal and
+publisher controls. Stop/start all five targets per Founder request; four remain
+SQL writers. Rehearse the exact wrapper and SQL before production mutation.
+Older commerce code is not automatically safe after new bundle orders exist;
+prefer forward repair and retain explicit recovery evidence. No shutdown, upload,
+restart or production database mutation has occurred in this resume.
+
+
+### Final native packaging preparation
+
+The subsequent PR build exposed an older negative test that still classified the
+now-reviewed exact Xcode project as unknown. Updated that fixture to an unknown
+sibling and added the exact project to its positive native-only coverage.
+All210 fast-track regressions passed; independent review accepted this correction.
+No application or release-authority implementation changed in this follow-up.
+
+At34f87a290 the isolated Website and Parfait packages completed. Portal/Client
+compilers exited137 under concurrent Docker memory pressure; Protect staging
+failed with a host filesystem PermissionError. Preserve these results separately;
+none is an upload receipt. Continue with the retained serial native Mac builder,
+updated only to the consolidated checkout and independently reviewed before use.
+Build final packages against the final clean source; do not relabel earlier ZIPs.
+
+Read-only Azure evidence reconfirmed all five apps Running, terminal deployment
+journals, the recorded live revisions, and configuration fingerprints. Production
+SQL history has exactly237 IDs and neither new schema object exists. SQL is in
+MasterApp-Data-RG; Azure reports Online with earliestRestoreDate
+2026-11-03T07:17:36.729703+00:00. This is restore availability, not a tested restore.
+Exact two-migration SQL was generated without inner transactions. Existing native
+runner/migration owner updates are staged in /private/tmp/legend-ad-release-migration
+for review and rehearsal, not installed/admitted. Disposable SQL rehearsal's first
+attempt failed localhost name resolution; it was interrupted and its owned test
+container removed. A bounded literal-loopback retry is prepared. No production
+mutation occurred. Full rendered local journeys and exact release admission remain
+outstanding; no CI, migration, deployment or live-success evidence is fabricated.
+
+
+### Migration fixture closure before deployment
+
+All five native packages for9436e3782 completed and retain their exact provenance.
+Current-head security and architecture passed, but the PR build's offline migration
+contract rejected the new bundle successor. The disposable fixture now recognizes
+only its exact two nullable columns, descriptor digest and ordered successor;
+unknown/reordered/altered operations remain rejected. The guide scenario includes
+only that known successor. The offline contract test and 57 Python migration-package
+regressions passed. No production
+append authority was broadened. Final independent review/preservation remains due.
+
+The exact native SQL wrapper passed success, mid-migration rollback, postcondition
+rollback and replay rejection. sqlcmd interactive stdin corrupted long seed lines;
+protected-file input (-i) passed the same checks. SQL digest remains
+ae5a3b769e5a8c4bf7593081a9d0cf62ff473b718bbf7523d39cd8bca25dde4d.
+Receipt: /private/tmp/legend-ad-release-migration/rehearsal-result.json. No production
+mutation has occurred. Founder explicitly requested deployment before remaining
+follow-up; record any deferred local visual acceptance honestly, never as PASS.
+
+
+### Full disposable migration gate closure
+
+The pending-migration filter also required the exact bundle descriptor to be
+recognized separately from its legacy mobile-only fallback. It now reuses the
+same exact bundle descriptor check as suffix validation. No unknown entry is
+admitted. The complete canonical migration-probe-package.py test-contract command
+passed locally, including every disposable SQL scenario, with marker
+LEGEND_PAYMENT_SQL_CONTRACT:PASS:synthetic-only:not-release-admission.
+Log: /private/tmp/legend-ad-release-full-schema-contract.log. This closes the
+observed CI initialize failure at RehearsalFixture.cs246; preserve current-head CI
+separately. Final operational owner and SQL wrapper are independently accepted,
+with Founder-deferred visual verification explicit and other gates retained.
+
+
+### Direct Mac Azure release completed — 2026-11-10
+
+Production source: `ea128c942b7d8bd4452b5ec6abc591ee624111fc`, prepared from the clean single active checkout `/Users/zacowen/MASTERAPP`. All required exact-head security, architecture, migration-probe and focused build/test checks passed. The architecture runner filesystem failure passed its bounded retry. All five packages were independently accepted; manifest SHA-256 `671d22c1b9de37150ee77339572df23bdd8bceb9ce2e502d0919ab4eb4c05c30`.
+
+Completed stop → exact two-migration transaction → five uploads → restart. Production history is 239, with ReceptionistSetupGuide and CommerceBundleInventory applied and independently read back; no SQL replay occurred. All five apps are Running and each serves the exact production source. Portal `/healthz` and the other four public roots return HTTP 200. Parfait `/internal/denied` does not render a supplied synthetic raw error. Live verification receipt SHA-256 `2972217d35d12267db8c687ac64b17ed7d47ee28a3b9577f16622bd2d29d9e2c`, observed 2026-11-10T09:25:45.352171+00:00.
+
+Successful Azure deployment IDs: `portal: a42aa3253ec7400781de7cc6a5942a60`, `client: 47f8ad1d05b44736b0a275682b67fd16`, `protect: 8155c8e9d66c4b8b8c96901246bfdff4`, `parfait: 121e84491bd345719adc634a0c6dbfbb`, `website: b810edcb4b3e49f1a540150bc479bd05`.
+
+Reconciliation supersedes the earlier no-upload statement: before this final release, Portal already had successful upload `a84b1cdfd2714214a38e0ad8b77a0b8c` of `9436e3782daa702e51369fe5fd17d5e8505f6f3a`, but startup was blocked by the two missing migrations. Exact installed identity was independently reviewed as degraded, never falsely marked healthy. The final release restored healthy Portal startup. Read-only Azure query failures interrupted stop/start tails; reviewed recovery continued only unattempted targets. Client and Protect remote uploads succeeded while their local CLI waits hung; exact deployed assembly hashes and terminal journals were reconciled, actual interrupted CLI exit 143 preserved, and neither upload replayed. Remaining uploads used async submission with mandatory terminal-success checks.
+
+Detailed local receipts remain under `AgentPortal/App_Data/release-resume-20261109/`. No application configuration, DNS or existing notification cutoff was changed. Rendered visual acceptance was explicitly deferred by Founder until after deployment; browser host remains unavailable, so visual acceptance and authenticated customer journeys are not claimed. Source synchronization into `Legend/fast-track-release` must use the existing source-integration-only request and preserve this deployed revision, without a second production publish.

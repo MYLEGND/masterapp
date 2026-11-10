@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
+using Infrastructure.Leads;
+using Infrastructure.WebsiteEditing;
+using Shared.Meta;
 using System.Threading.Tasks;
 using AgentPortal.Models.Analytics;
 using AgentPortal.Services.Analytics;
@@ -25,6 +29,201 @@ namespace AgentPortal.Tests;
 /// </summary>
 public class LeadSnapshotAttributionTests
 {
+    [Theory]
+    [InlineData("accepted", "provider_accepted")]
+    [InlineData("blocked_human_evidence", "blocked_human_evidence")]
+    [InlineData("transport", "transport_acknowledged")]
+    [InlineData("sent", "receipt_unverified")]
+    [InlineData("failed", "failed")]
+    [InlineData("pending", "pending")]
+    [InlineData("skipped_not_dispatch_eligible", "skipped_not_dispatch_eligible")]
+    [InlineData("skipped_not_configured", "skipped_not_configured")]
+    [InlineData("missing", "unknown")]
+    public async Task SnapshotUsesCanonicalMetaEvidenceWithoutLegacyMetadata(string outcome, string expected)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var (lead, source, receipt, pixel) = await SeedDeliveryAsync(db, outcome);
+        var query = BuildService(db);
+        var tracking = Assert.Single((await query.GetLeadsAsync(BuildRange(lead.CreatedUtc), ScopeContext.Global)).Leads).MetaTracking!;
+        Assert.Equal(expected, tracking.ServerCapiStatus);
+        Assert.Equal(outcome == "accepted", tracking.ServerCapiSent);
+        Assert.False(tracking.DedupReady);
+        Assert.Equal(CanonicalLeadEventIdentity.Resolve(lead), tracking.MetaLeadEventId);
+        Assert.Equal(pixel.PixelId, tracking.ResolvedMetaPixelId);
+        // The same source/receipt is projected by the existing published Event Map.
+        if (outcome != "missing")
+        {
+            var map = await new WebsiteEventMapQuery(db, new ConfigurationBuilder().Build())
+                .ReadAsync(ScopeContext.ForAgent(source.AgentTrackingProfileId!.Value));
+            Assert.Equal(expected, Assert.Single(map.Where(x => x.Element == "automatic:lead_created")).MetaStatus);
+        }
+    }
+
+    [Theory]
+    [InlineData("owner")]
+    [InlineData("site")]
+    [InlineData("version")]
+    [InlineData("source")]
+    [InlineData("event")]
+    [InlineData("pixel")]
+    public async Task SnapshotCannotBorrowAcceptanceFromOtherIdentityOrDestination(string mismatch)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var (lead, source, receipt, pixel) = await SeedDeliveryAsync(db, "accepted");
+        switch (mismatch)
+        {
+            case "owner": receipt.AgentTrackingProfileId = Guid.NewGuid(); break;
+            case "version": receipt.WebsiteContentVersionId = Guid.NewGuid(); break;
+            case "event": receipt.EventId = "foreign-event"; break;
+            default:
+                var metadata = JsonSerializer.Deserialize<Dictionary<string, object?>>(receipt.MetadataJson!)!;
+                metadata[mismatch == "site" ? "siteKey" : mismatch == "source" ? "sourceAnalyticsEventId" : "metaServerPixelId"] =
+                    mismatch == "site" ? "legend" : mismatch == "source" ? source.Id + 1000 : "foreign-pixel";
+                receipt.MetadataJson = JsonSerializer.Serialize(metadata);
+                break;
+        }
+        await db.SaveChangesAsync();
+        var tracking = Assert.Single((await BuildService(db).GetLeadsAsync(BuildRange(lead.CreatedUtc), ScopeContext.Global)).Leads).MetaTracking!;
+        Assert.False(tracking.ServerCapiSent);
+        Assert.False(tracking.DedupReady);
+        Assert.NotEqual("provider_accepted", tracking.ServerCapiStatus);
+    }
+
+    [Fact]
+    public async Task SnapshotKeepsProviderResultsSeparateAndLegacyBrowserDedupBoundToExactPixel()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var (lead, source, receipt, pixel) = await SeedDeliveryAsync(db, "blocked_human_evidence");
+        db.MarketingDestinationDeliveries.Add(new() { OwnerKey = pixel.OwnerKey, Provider = "openai", Channel = "server",
+            CanonicalSource = nameof(AnalyticsEvent), AnalyticsEventId = source.Id, AgentTrackingProfileId = source.AgentTrackingProfileId,
+            CanonicalEventId = receipt.EventId, Status = "sent", LastHttpStatusCode = 200 });
+        lead.MetadataJson = MetaLeadTrackingJson.Upsert(lead.MetadataJson, s => {
+            s.EventId = receipt.EventId; s.ResolvedMetaPixelId = pixel.PixelId;
+            s.ServerCapiStatus = "sent"; s.BrowserPixelStatus = "sent";
+        });
+        await db.SaveChangesAsync();
+        var query = BuildService(db);
+        async Task<MetaLeadTrackingDto> Read() => Assert.Single((await query.GetLeadsAsync(BuildRange(lead.CreatedUtc), ScopeContext.Global)).Leads).MetaTracking!;
+        var blocked = await Read();
+        Assert.Equal("blocked_human_evidence", blocked.ServerCapiStatus);
+        Assert.True(blocked.BrowserPixelSent); Assert.False(blocked.DedupReady);
+        receipt.MetaServerSent = true;
+        receipt.MetadataJson = JsonSerializer.Serialize(new { sourceAnalyticsEventId = source.Id, siteKey = "protect",
+            metaServerEventsReceived = 1, metaServerPixelId = pixel.PixelId });
+        await db.SaveChangesAsync();
+        Assert.True((await Read()).DedupReady);
+        lead.MetadataJson = MetaLeadTrackingJson.Upsert(lead.MetadataJson, s => s.ResolvedMetaPixelId = "old-pixel");
+        await db.SaveChangesAsync();
+        Assert.False((await Read()).DedupReady);
+        // Repeated reads do not enqueue conversions or create business facts.
+        Assert.Single(db.WebsiteLeads); Assert.Single(db.AnalyticsEvents);
+        Assert.Single(db.MetaSignalEvents); Assert.Single(db.MarketingDestinationDeliveries);
+    }
+
+    [Fact]
+    public async Task AcceptedDeliveryDoesNotTurnInternalQaIntoLearningReadiness()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var (lead, _, _, _) = await SeedDeliveryAsync(db, "accepted");
+        lead.IsInternal = true;
+        await db.SaveChangesAsync();
+        var row = Assert.Single((await BuildService(db).GetLeadsAsync(BuildRange(lead.CreatedUtc), ScopeContext.Global)).Leads);
+        Assert.Equal("provider_accepted", row.MetaTracking!.ServerCapiStatus);
+        Assert.True(row.Attribution!.ExcludedFromMetaLearningReadiness);
+    }
+
+    [Fact]
+    public async Task DisconnectedDestinationCannotClaimCurrentAcceptance()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var (lead, _, _, pixel) = await SeedDeliveryAsync(db, "accepted");
+        pixel.DisconnectedUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        var tracking = Assert.Single((await BuildService(db).GetLeadsAsync(BuildRange(lead.CreatedUtc), ScopeContext.Global)).Leads).MetaTracking!;
+        Assert.Equal("not_configured", tracking.ServerCapiStatus); Assert.False(tracking.ServerCapiSent);
+    }
+
+    [Fact]
+    public async Task UnstampedPreDispatchBlockCannotClaimBrowserDeliveryToCurrentPixel()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var (lead, source, receipt, _) = await SeedDeliveryAsync(db, "blocked_human_evidence");
+        receipt.MetaBrowserSent = true;
+        receipt.MetadataJson = JsonSerializer.Serialize(new { sourceAnalyticsEventId = source.Id, siteKey = "protect",
+            metaServerStatus = "blocked_human_evidence" });
+        await db.SaveChangesAsync();
+        var tracking = Assert.Single((await BuildService(db).GetLeadsAsync(BuildRange(lead.CreatedUtc), ScopeContext.Global)).Leads).MetaTracking!;
+        Assert.Equal("blocked_human_evidence", tracking.ServerCapiStatus);
+        Assert.False(tracking.BrowserPixelSent); Assert.False(tracking.DedupReady);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SnapshotKeepsUnknownAndReconciliationHonestDespiteOldSentMetadata(bool correction)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var (lead, source, receipt, pixel) = await SeedDeliveryAsync(db, "accepted");
+        if (correction)
+        {
+            var data = JsonSerializer.Deserialize<Dictionary<string, object?>>(source.MetadataJson!)!;
+            data["providerCorrectionStatus"] = "requires_reconciliation";
+            source.MetadataJson = JsonSerializer.Serialize(data);
+        }
+        else
+        {
+            db.MetaSignalEvents.Remove(receipt);
+            db.AnalyticsEvents.Remove(source);
+            lead.MetadataJson = MetaLeadTrackingJson.Upsert(lead.MetadataJson, s => {
+                s.EventId = receipt.EventId; s.ResolvedMetaPixelId = pixel.PixelId; s.ServerCapiStatus = "sent";
+            });
+        }
+        await db.SaveChangesAsync();
+        var tracking = Assert.Single((await BuildService(db).GetLeadsAsync(BuildRange(lead.CreatedUtc), ScopeContext.Global)).Leads).MetaTracking!;
+        Assert.Equal(correction ? "requires_reconciliation" : "receipt_unverified", tracking.ServerCapiStatus);
+        Assert.False(tracking.ServerCapiSent);
+    }
+
+    [Fact]
+    public async Task MetaStatusAggregationDoesNotHideMixedProviderReceipts()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var (_, _, accepted, _) = await SeedDeliveryAsync(db, "accepted");
+        var blocked = new MetaSignalEvent { MetadataJson = "{\"metaServerStatus\":\"blocked_human_evidence\"}" };
+        Assert.Equal("partial_delivery", MarketingDeliveryEvidencePolicy.MetaDeliveryStatus(new[] { accepted, blocked }));
+        Assert.Equal("mixed", MarketingDeliveryEvidencePolicy.MetaDeliveryStatus(new[] { blocked, new MetaSignalEvent() }));
+    }
+
+    private static async Task<(WebsiteLead, AnalyticsEvent, MetaSignalEvent, MarketingConnection)> SeedDeliveryAsync(MasterAppDbContext db, string outcome)
+    {
+        var now = DateTime.UtcNow.AddSeconds(-5);
+        var profile = new AgentTrackingProfile { AgentUserId = "snapshot-owner", AgentUpn = "snapshot@example.test", Slug = "snapshot" };
+        var state = new WebsiteContentState { OwnerKey = profile.AgentUserId, SiteKey = "protect" };
+        var version = new WebsiteContentVersion { StateId = state.Id, DocumentJson = "{}" };
+        state.PublishedVersionId = version.Id;
+        var lead = L(now); lead.AgentTrackingProfileId = profile.Id;
+        lead.MetadataJson = "{\"SiteKey\":\"protect\"}";
+        var source = new AnalyticsEvent { EventId = Guid.NewGuid(), EventType = "website_lead_submitted",
+            EventUtc = now, ReceivedUtc = now, Environment = "production", Host = "protect.mylegnd.com",
+            AgentTrackingProfileId = profile.Id, WebsiteContentVersionId = version.Id,
+            MetadataJson = JsonSerializer.Serialize(new { siteKey = "protect", canonicalOutcomeEventId = CanonicalLeadEventIdentity.Resolve(lead), LeadId = lead.LeadId }) };
+        var pixel = new MarketingConnection { OwnerKey = MarketingOwnerScope.Agent(profile.Id).Key, OwnerType = "agent",
+            AgentTrackingProfileId = profile.Id, PixelId = "synthetic-pixel", Provider = "meta" };
+        db.AddRange(profile, state, version, lead, source, pixel); await db.SaveChangesAsync();
+        var receipt = new MetaSignalEvent { EventId = CanonicalLeadEventIdentity.Resolve(lead), EventName = "Lead",
+            LeadId = lead.LeadId, AgentTrackingProfileId = profile.Id, WebsiteContentVersionId = version.Id,
+            CreatedUtc = now, MetaServerSent = outcome is "accepted" or "sent",
+            MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson("Lead", lead.LeadId, null,
+                new { sourceAnalyticsEventId = source.Id, siteKey = "protect", metaServerPixelId = pixel.PixelId,
+                    metaServerStatus = outcome is "accepted" or "transport" ? "sent_response" : outcome,
+                    metaServerAttempted = outcome is "accepted" or "sent" or "failed" or "transport",
+                    metaServerEventsReceived = outcome == "accepted" ? 1 : 0,
+                    metaServerHttpStatusCode = outcome == "transport" ? 200 : 0 },
+                false, true, true, true) };
+        if (outcome != "missing") { db.Add(receipt); await db.SaveChangesAsync(); }
+        return (lead, source, receipt, pixel);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private static AnalyticsQueryService BuildService(MasterAppDbContext db)

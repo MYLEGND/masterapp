@@ -679,7 +679,8 @@ public sealed partial class CommerceManagementController(
 
         // This endpoint receives the full editor. An empty collection means
         // the owner removed its rows, not a request to restore old discounts.
-        products.SaveProduct(store.CommerceBusinessId, product);
+        try { products.SaveProduct(store.CommerceBusinessId, product); }
+        catch (StoreInventoryException ex) { return BadRequest(new { error = "product_inventory_invalid", message = ex.Message }); }
         TempData["ProductStatus"] = product.IsActive ? "Product saved and visible." : "Product saved and hidden.";
         return ManagerRedirect(nameof(Products), new { ticket });
     }
@@ -692,7 +693,8 @@ public sealed partial class CommerceManagementController(
     {
         var store = await ResolveAsync(ticket, ct);
         if (store is null) return Unauthorized();
-        products.DeleteProduct(store.CommerceBusinessId, id);
+        try { products.DeleteProduct(store.CommerceBusinessId, id); }
+        catch (StoreInventoryException ex) { return BadRequest(new { error = "product_inventory_invalid", message = ex.Message }); }
         TempData["ProductStatus"] = "Product deleted.";
         return ManagerRedirect(nameof(Products), new { ticket });
     }

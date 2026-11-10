@@ -15,6 +15,11 @@ internal static partial class RehearsalFixture
     private const string ShippingMigration = "20261103174446_SharedCommerceShippingState";
     private const string MemberMigration = "20261104012500_ParfaitMemberPageRestrictions";
     private const string PromotionMigration = "20261104014500_TrainingPromotionMemberLimits";
+    internal const string BundleMigration = "20261110000000_AddCommerceBundleInventory";
+    private static bool HasBundleMigration(MasterAppDbContext db) => db.GetService<IMigrationsAssembly>().Migrations.ContainsKey(BundleMigration);
+    private static bool IsBundleFixture(CandidateContract.Entry entry) => entry.Id == BundleMigration &&
+        JsonSerializer.Serialize(entry, CandidateContract.Json) == JsonSerializer.Serialize(
+            CandidateContract.Describe(BundleMigration, ExpectedStandaloneOperations(BundleMigration)), CandidateContract.Json);
     private static readonly string[] ExpandedMigrations = [OwnerMigration, AutomationMigration, ShippingMigration, MemberMigration, PromotionMigration];
     private static readonly Guid ExpandedBusiness = Guid.Parse("b1000000-0000-0000-0000-000000000001");
     private static readonly Guid ExpandedAuthorization = Guid.Parse("b1000000-0000-0000-0000-000000000002");
@@ -60,6 +65,11 @@ internal static partial class RehearsalFixture
         var builder = new MigrationBuilder("Microsoft.EntityFrameworkCore.SqlServer");
         if (id == MemberMigration)
             builder.AddColumn<string>("ParfaitPageGrantsJson", "CommerceBusinessMembers", type: "nvarchar(max)", nullable: true);
+        else if (id == BundleMigration)
+        {
+            builder.AddColumn<string>("BundleComponentsJson", "CommerceProducts", type: "nvarchar(max)", nullable: true);
+            builder.AddColumn<string>("InventoryRequirementsJson", "CommerceOrderLines", type: "nvarchar(max)", nullable: true);
+        }
         else if (id == PromotionMigration)
         {
             builder.AddColumn<int>("UsageLimit", "CommerceProductDiscounts", type: "int", nullable: true);
@@ -89,13 +99,22 @@ internal static partial class RehearsalFixture
     {
         ValidateSetupGuideFixture(db, contract);
         var guide = HasSetupGuideMigration(db);
+        var bundle = HasBundleMigration(db);
         var rows = contract.Migrations.Where(m => ExpandedMigrations.Contains(m.Id)).ToArray();
-        if (rows.Length == 0 && !guide) return;
+        if (rows.Length == 0 && !guide && !bundle) return;
         var storeEnd = Array.FindIndex(contract.Migrations, m => m.Id == CandidateContract.StoreMigrations[^1]) + 1;
         var reviewedSuffix = guide ? ExpandedMigrations.Append(SetupGuideMigration) : ExpandedMigrations;
+        if (bundle) reviewedSuffix = reviewedSuffix.Append(BundleMigration);
         if (storeEnd == 0 || !contract.Migrations.Skip(storeEnd).Select(m => m.Id).SequenceEqual(reviewedSuffix)
             || rows.Any(m => !IsExpandedFixture(m))) throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
         var assembly = db.GetService<IMigrationsAssembly>();
+        if (bundle)
+        {
+            var operations = assembly.CreateMigration(assembly.Migrations[BundleMigration], db.Database.ProviderName!).UpOperations;
+            var entries = contract.Migrations.Where(m => m.Id == BundleMigration).ToArray();
+            if (!ExactStandaloneFixtureOperations(BundleMigration, operations) || entries.Length != 1 || !IsBundleFixture(entries[0]))
+                throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
+        }
         if (!ExactOwnerFixtureOperations(assembly.CreateMigration(assembly.Migrations[OwnerMigration], db.Database.ProviderName!).UpOperations))
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
         foreach (var id in new[] { MemberMigration, PromotionMigration })

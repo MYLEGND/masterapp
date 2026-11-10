@@ -73,7 +73,8 @@ public sealed class LegendConnectScheduleCertificatePropagationTests
         Assert.Empty(none);
     }
 
-    [Fact]
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     public async Task NativeChatBoundaryCarriesActualStepsAndProofPath()
     {
         // Only the native-service boundary is mocked; the certificate was

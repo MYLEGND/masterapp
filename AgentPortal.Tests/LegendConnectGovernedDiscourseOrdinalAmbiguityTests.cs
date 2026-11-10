@@ -147,11 +147,21 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
         }
     }
 
+    [LegacyControlledFoundationTheory]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
+    [InlineData("No, I meant the first option.", false)]
+    [InlineData("No, please use the first option instead.", true)]
+    public Task HeldOutCorrection_RequiresAGroundedFunctionBeforeAnsweringTheBoundOrdinalWithoutProviders(
+        string currentRequest, bool hasGroundedCorrection)
+        => VerifyGroundedCorrectionAsync(currentRequest, hasGroundedCorrection, includeServing: true);
+
     [Theory]
     [InlineData("No, I meant the first option.", false)]
     [InlineData("No, please use the first option instead.", true)]
-    public async Task HeldOutCorrection_RequiresAGroundedFunctionBeforeAnsweringTheBoundOrdinalWithoutProviders(
-        string currentRequest, bool hasGroundedCorrection)
+    public Task NativeOrdinalCorrection_RequiresGroundedFunction(string currentRequest, bool hasGroundedCorrection)
+        => VerifyGroundedCorrectionAsync(currentRequest, hasGroundedCorrection, includeServing: false);
+
+    private async Task VerifyGroundedCorrectionAsync(string currentRequest, bool hasGroundedCorrection, bool includeServing)
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var actor = Guid.NewGuid().ToString("D");
@@ -250,6 +260,7 @@ public sealed class LegendConnectGovernedDiscourseOrdinalAmbiguityTests
             else
                 Assert.Null(directNative.Answer);
 
+            if (!includeServing) return;
             var replyConversationId = Guid.NewGuid();
             foreach (var message in priorMessages)
             {

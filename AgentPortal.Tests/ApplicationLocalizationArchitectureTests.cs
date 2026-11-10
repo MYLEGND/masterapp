@@ -491,7 +491,10 @@ public sealed class ApplicationLocalizationArchitectureTests
 
         var first = await service.GetCatalogAsync(new MessagingActor("user-1", "Client"));
         Assert.InRange(provider.BatchOperations, 1, 2);
-        for (var attempt = 0; first.Entries.Any(entry => entry.FailureCode == "translation_pending") && attempt < 60; attempt++)
+        // The canonical manifest grows as UI copy is added; each continuation is
+        // still bounded by the production batch size, rather than a stale catalog count.
+        var maximumContinuations = (first.Entries.Count + 99) / 100;
+        for (var attempt = 0; first.Entries.Any(entry => entry.FailureCode == "translation_pending") && attempt < maximumContinuations; attempt++)
             first = await service.GetCatalogAsync(new MessagingActor("user-1", "Client"));
         Assert.DoesNotContain(first.Entries, entry => entry.FailureCode == "translation_pending");
         var second = await service.GetCatalogAsync(new MessagingActor("user-2", "Client"));

@@ -8,13 +8,14 @@ namespace Infrastructure.Analytics;
 public sealed class MarketingHealthReadSnapshot
 {
     internal MarketingHealthReadSnapshot(MarketingHealthDto health, TimeRangeRequest range, ScopeContext scope,
-        Guid[]? scopedAgentIds, List<AnalyticsEvent> events)
+        Guid[]? scopedAgentIds, List<AnalyticsEvent> events, int canonicalLeadCount = 0)
     {
         Health = health;
         Range = range;
         Scope = scope;
         ScopedAgentIds = scopedAgentIds?.ToArray();
         Events = events.AsReadOnly();
+        CanonicalLeadCount = canonicalLeadCount;
     }
 
     public MarketingHealthDto Health { get; }
@@ -22,6 +23,7 @@ public sealed class MarketingHealthReadSnapshot
     internal ScopeContext Scope { get; }
     internal Guid[]? ScopedAgentIds { get; }
     internal IReadOnlyList<AnalyticsEvent> Events { get; }
+    internal int CanonicalLeadCount { get; }
 }
 
 /// <summary>One health projection for dashboard and AI consumers; no independent health state.</summary>

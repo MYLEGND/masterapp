@@ -97,4 +97,34 @@ public sealed partial class ParfaitCanonicalPresentationPreservationTests
         Assert.Equal(authored, html.Contains("data-authored"));
     }
 
+    [Theory]
+    [InlineData("?message=%3Cscript%3Eprivate-provider-error%3C%2Fscript%3E", false)]
+    [InlineData("?reference=invalid-private-provider-error", false)]
+    [InlineData("?reference=11111111222243338444555555555555", true)]
+    public async Task DeniedViewNeverRendersProviderOrQueryErrorText(string query, bool retry)
+    {
+        using var host = await new HostBuilder().ConfigureWebHost(builder => builder
+            .UseEnvironment("Testing").UseTestServer()
+            .ConfigureServices(services => services.AddControllersWithViews()
+                .AddApplicationPart(Assembly.Load("ParfaitApp")))
+            .Configure(app => { })).StartAsync();
+        using var scope = host.Services.CreateScope();
+        var services = scope.ServiceProvider;
+        var http = new DefaultHttpContext { RequestServices = services };
+        http.Request.QueryString = new QueryString(query);
+        var context = new ActionContext(http, new RouteData(), new ActionDescriptor());
+        var found = services.GetRequiredService<IRazorViewEngine>()
+            .GetView(null, "~/Views/Internal/Denied.cshtml", false);
+        Assert.True(found.Success);
+        var data = new ViewDataDictionary(services.GetRequiredService<IModelMetadataProvider>(), new ModelStateDictionary());
+        using var writer = new StringWriter();
+        await found.View.RenderAsync(new ViewContext(context, found.View, data,
+            new TempDataDictionary(http, services.GetRequiredService<ITempDataProvider>()), writer, new HtmlHelperOptions()));
+        var html = writer.ToString();
+        Assert.DoesNotContain("private-provider-error", html);
+        Assert.Equal(retry, html.Contains("Retry Microsoft Sign-In"));
+        Assert.Equal(retry, html.Contains("11111111222243338444555555555555"));
+        Assert.Contains(retry ? "/internal/login" : "/internal", html);
+    }
+
 }

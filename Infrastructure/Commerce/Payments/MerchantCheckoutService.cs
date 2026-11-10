@@ -80,6 +80,8 @@ public sealed class MerchantCheckoutService(MasterAppDbContext db, MerchantConne
                 var current = await db.CommerceOrders.AsNoTracking().SingleAsync(x => x.Id == orderId && x.CommerceBusinessId == businessId, ct);
                 if (!PayableForNewAttempt(current) || current.TotalCents != attempt.AmountMinor
                     || current.CheckoutAttemptId != order.CheckoutAttemptId
+                    || (!current.IsPaymentProcessing && await db.CommerceOrderLines.AnyAsync(
+                        x => x.CommerceOrderId == orderId, ct))
                     || await db.SubscriptionPayments.AnyAsync(x => x.CommerceOrderId == orderId, ct))
                     throw new MerchantPaymentException("ORDER_NOT_PAYABLE");
                 order = current;
@@ -104,6 +106,13 @@ public sealed class MerchantCheckoutService(MasterAppDbContext db, MerchantConne
             var winner = await GetAttemptAsync(businessId, orderId, ct);
             if (winner is null) throw new MerchantPaymentException("PAYMENT_CLAIM_PENDING");
             return Evidence(winner);
+        }
+        catch
+        {
+            // A rolled-back insertion must not be flushed by later hold cleanup.
+            // An ambiguous committed claim remains authoritative in the database.
+            db.Entry(attempt).State = EntityState.Detached;
+            throw;
         }
         try
         {
@@ -133,7 +142,7 @@ public sealed class MerchantCheckoutService(MasterAppDbContext db, MerchantConne
         return false;
     }
 
-    private static bool PayableForNewAttempt(CommerceOrder order) =>
+    public static bool PayableForNewAttempt(CommerceOrder order) =>
         order.PaymentStatus == "Pending" && order.PaidUtc is null && order.TotalCents > 0 && order.RefundedCents == 0
         && string.IsNullOrWhiteSpace(order.PaymentReference) && string.IsNullOrWhiteSpace(order.SquarePaymentId)
         && order.FulfillmentStatus is not ("Cancelled" or "Returned") && order.ReturnStatus is "None" or "Closed";

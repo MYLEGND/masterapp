@@ -293,7 +293,11 @@
         }),true);
         const remove=button('Delete',()=>confirmAction('Delete draft',
           `Delete “${draft.name}”? The live website and current published version will remain unchanged.`,
-          async()=>{await request('/drafts/delete',{draftId:draft.id});await reload();drafts();status.textContent='Draft deleted.';}));
+          async()=>{
+            const result=await request('/drafts/delete',{draftId:draft.id});
+            state={...state,revision:result.revision,drafts:result.drafts};
+            drafts();status.textContent='Draft deleted.';
+          }));
         actions.append(edit,remove); row.append(meta,actions); list.append(row);
       }
       panel.append(list);

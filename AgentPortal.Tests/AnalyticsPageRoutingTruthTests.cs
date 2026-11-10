@@ -148,7 +148,7 @@ public sealed class AnalyticsPageRoutingTruthTests
         Assert.Contains("public static class MarketingDeliveryEvidencePolicy", evidence, StringComparison.Ordinal);
         Assert.Contains("MetaProviderAccepted", evidence, StringComparison.Ordinal);
         Assert.Contains("HttpTransportAccepted", evidence, StringComparison.Ordinal);
-        Assert.Contains("MarketingDeliveryEvidencePolicy.MetaProviderAccepted", eventMap, StringComparison.Ordinal);
+        Assert.Contains("MarketingDeliveryEvidencePolicy.MetaDeliveryStatus", eventMap, StringComparison.Ordinal);
         Assert.Contains("MarketingDeliveryEvidencePolicy.HttpTransportAccepted", eventMap, StringComparison.Ordinal);
         Assert.Contains("MarketingDeliveryEvidencePolicy.MetaProviderAccepted", studio, StringComparison.Ordinal);
         Assert.Contains("MarketingDeliveryEvidencePolicy", studio, StringComparison.Ordinal);

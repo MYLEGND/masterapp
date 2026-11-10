@@ -21,11 +21,13 @@ namespace AgentPortal.Tests;
 [Collection("LegendConnectFounderEnvironment")]
 public sealed class LegendConnectNamedValueLanguageEndToEndTests
 {
-    [Fact]
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     public Task UnseenNameAndOpaqueDate_PreserveExactSpellingInReplyAndConversationRecall() =>
         VerifyNameAndRecallAsync(combinedFoundation: false);
 
-    [Fact]
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     public Task CombinedFoundation_PreservesOriginalNamedValueAndRecallControl() =>
         VerifyNameAndRecallAsync(combinedFoundation: true);
 

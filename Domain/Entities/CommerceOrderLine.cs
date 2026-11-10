@@ -13,5 +13,6 @@ public sealed class CommerceOrderLine
     public int Quantity { get; set; }
     public int UnitPriceCents { get; set; }
     public int CompareAtPriceCents { get; set; }
+    public string? InventoryRequirementsJson { get; set; }
     public string? ImageUrl { get; set; }
 }

@@ -750,6 +750,7 @@
   }
 
   function renderSummaryUnavailable(data, message = null, pending = false) {
+    if (isStoreAnalytics) renderStoreSummary(null, 'Order evidence unavailable');
     state.cache.summary = null;
     state.scope.scopeLabel = data?.scopeLabel || state.scope.scopeLabel || 'Global';
     [
@@ -785,6 +786,17 @@
     updateFounderScopeUi();
   }
 
+  function renderStoreSummary(data, message) {
+    const count = value => Number.isInteger(value) && value >= 0 ? value.toLocaleString() : '—';
+    setText('store-paid-orders', count(data?.paidOrders));
+    setText('store-purchase-events', count(data?.purchases));
+    setText('store-paid-without-event', count(data?.paidOrdersWithoutPurchaseEvent));
+    setText('store-event-without-paid', count(data?.purchaseEventsWithoutPaidOrder));
+    setText('store-net-revenue', Number.isFinite(data?.revenueCents)
+      ? (data.revenueCents / 100).toLocaleString(undefined, { style: 'currency', currency: 'USD' }) : '—');
+    setText('store-summary-status', message || 'Selected date range and quality filter; not merchant settlement');
+  }
+
   function renderSummary(data) {
     if (data?.isAvailable === false) {
       renderSummaryUnavailable(data);
@@ -792,6 +804,7 @@
     }
 
     state.cache.summary = data;
+    if (isStoreAnalytics) renderStoreSummary(null, 'Loading scoped order evidence…');
     state.scope.scopeLabel = data.scopeLabel || state.scope.scopeLabel || 'Global';
     setText('kpi-pageviews', data.pageViews);
     setText('kpi-visitors', data.uniqueVisitors);
@@ -1826,6 +1839,18 @@
     `;
   }
 
+  function openAiDeliveryDetails(rows) {
+    if (!Array.isArray(rows)) return 'Delivery details unavailable';
+    if (!rows.length) return 'No delivery receipts in this owner window';
+    return rows.slice(0, 20).map(row => [
+      `Event ${row.canonicalEventId || 'unverified'} · ${row.status || 'unknown'}`,
+      `Source ${row.canonicalSource || 'unverified'} / ${row.analyticsEventId ?? 'unlinked'} · Receipt ${row.deliveryId || 'unknown'}`,
+      `Reason ${row.errorCode || 'not recorded'} · HTTP ${row.httpStatusCode ?? 'not attempted'} · Attempts ${row.attemptCount ?? 0}`,
+      `Last attempt ${row.lastAttemptUtc || 'none'} · Next retry ${row.nextAttemptUtc || 'not scheduled'} · Claim expires ${row.claimExpiresUtc || 'none'}`,
+      `Destination ${row.destinationBinding || 'unverified'} · Account ${row.advertiserAccountId || 'unbound'} · Source ${row.conversionDataSourceId || 'unbound'} · Pixel ${row.pixelId || 'unbound'}`
+    ].join('\n')).join('\n\n');
+  }
+
   function metaTrackingBadge(metaTracking) {
     if (!metaTracking) {
       return '<span class="text-muted">—</span>';
@@ -1834,30 +1859,33 @@
     const shortEventId = metaTracking.metaLeadEventId ? escapeHtml(String(metaTracking.metaLeadEventId).slice(0, 8)) : '—';
     const shortPixelId = metaTracking.resolvedMetaPixelId ? escapeHtml(String(metaTracking.resolvedMetaPixelId).slice(-6)) : '—';
     const pixelOwnerType = escapeHtml(metaTracking.pixelOwnerType || 'none');
+    const status = metaTracking.serverCapiStatus || 'unknown';
     let badgeClass = 'bg-secondary';
-    let label = 'Pending';
-
-    if (metaTracking.dedupReady) {
+    let label = 'Unverified';
+    if (status === 'provider_accepted') {
       badgeClass = 'bg-success';
-      label = 'Browser + Server';
-    } else if (metaTracking.browserPixelSent) {
-      badgeClass = 'bg-primary';
-      label = 'Browser Only';
-    } else if (metaTracking.serverCapiSent) {
-      badgeClass = 'bg-info text-dark';
-      label = 'Server Only';
-    } else if (metaTracking.serverCapiStatus === 'skipped_not_configured' || metaTracking.serverCapiStatus === 'skipped_agent_token_missing') {
-      badgeClass = 'bg-secondary';
-      label = 'Server Skipped';
-    } else if (metaTracking.serverCapiStatus === 'failed') {
-      badgeClass = 'bg-danger';
-      label = 'Server Failed';
-    } else if (metaTracking.browserPixelStatus === 'unavailable') {
+      label = 'Meta accepted';
+    } else if (status.startsWith('blocked_')) {
       badgeClass = 'bg-warning text-dark';
-      label = 'Browser Unavailable';
-    } else if (metaTracking.browserPixelStatus === 'error') {
+      label = 'Blocked';
+    } else if (['not_configured', 'skipped_not_configured', 'skipped_agent_token_missing'].includes(status)) {
+      label = 'Not configured';
+    } else if (status.startsWith('skipped_')) {
+      label = 'Not eligible';
+    } else if (status === 'pending' || status === 'retrying') {
+      badgeClass = 'bg-info text-dark';
+      label = status === 'pending' ? 'Pending' : 'Retrying';
+    } else if (status === 'failed' || status === 'permanent_failure') {
       badgeClass = 'bg-danger';
-      label = 'Browser Error';
+      label = 'Failed';
+    } else if (status === 'transport_acknowledged') {
+      label = 'Transport only · unverified';
+    } else if (status === 'partial_delivery' || status === 'mixed') {
+      badgeClass = 'bg-warning text-dark';
+      label = 'Mixed delivery';
+    } else if (status === 'requires_reconciliation') {
+      badgeClass = 'bg-warning text-dark';
+      label = 'Needs reconciliation';
     }
 
     const browserStatus = escapeHtml(metaTracking.browserPixelStatus || 'unknown');
@@ -3118,6 +3146,21 @@ function escapeHtml(value) {
         const data = await fetchJson('summary', endpoints.summary, params);
         if (!data || requestId !== summaryRequestId || scopeVersion !== analyticsScopeVersion) return false;
         renderSummary(data);
+        if (isStoreAnalytics && data.isAvailable !== false) {
+          try {
+            const commerce = await fetchJson('store-summary', analyticsEndpoint('/commerce'), params);
+            if (requestId !== summaryRequestId || scopeVersion !== analyticsScopeVersion) return false;
+            if (!Number.isInteger(commerce?.paidOrders) || !Number.isInteger(commerce?.purchases) || !Number.isFinite(commerce?.revenueCents)) {
+              renderStoreSummary(null, 'Order evidence unavailable. Refresh to retry.');
+              return false;
+            }
+            renderStoreSummary(commerce);
+          } catch (error) {
+            if (requestId !== summaryRequestId || scopeVersion !== analyticsScopeVersion) return false;
+            renderStoreSummary(null, 'Order evidence unavailable. Refresh to retry.');
+            return false;
+          }
+        }
         return data.isAvailable !== false;
       } catch (err) {
         if (requestId !== summaryRequestId || scopeVersion !== analyticsScopeVersion) return false;
@@ -3237,7 +3280,7 @@ function escapeHtml(value) {
       } else if (modalId === 'leadsModal') {
         html += table('Products', data.topProducts, [['Product', 'productName'], ['Views', 'productViews'], ['Units sold', 'unitsSold'], ['Recorded revenue', 'revenueCents', money]]);
       } else {
-        html += `<div class="row row-cols-1 row-cols-md-3 g-3"><div class="col"><h6>Recorded net order revenue</h6><strong>${money(data.revenueCents)}</strong></div><div class="col"><h6>Paid orders</h6><strong>${text(data.paidOrders)}</strong></div><div class="col"><h6>Average order value</h6><strong>${money(data.averageOrderValueCents)}</strong></div></div><p class="mt-3">Paid orders without purchase events: ${text(data.paidOrdersWithoutPurchaseEvent)} · Purchase events without paid orders: ${text(data.purchaseEventsWithoutPaidOrder)}. Order records and analytics events are separate evidence; these totals do not establish merchant settlement.</p>`;
+        html += `<div class="row row-cols-1 row-cols-md-3 g-3"><div class="col"><h6>Recorded net order revenue</h6><strong>${money(data.revenueCents)}</strong></div><div class="col"><h6>Paid orders (including refunded)</h6><strong>${text(data.paidOrders)}</strong></div><div class="col"><h6>Average order value</h6><strong>${money(data.averageOrderValueCents)}</strong></div></div><p class="mt-3">Paid orders without purchase events: ${text(data.paidOrdersWithoutPurchaseEvent)} · Purchase events without paid orders: ${text(data.purchaseEventsWithoutPaidOrder)}. Orders are selected by creation date; paid counts include subsequently refunded orders. Order records and analytics events are separate evidence; these totals do not establish merchant settlement.</p>`;
         html += table('Recent orders', data.orders, [['Order', 'orderNumber'], ['Created', 'createdUtc', value => text(new Date(value).toLocaleString())], ['Payment', 'paymentStatus'], ['Fulfillment', 'fulfillmentStatus'], ['Return', 'returnStatus'], ['Total', 'totalCents', money], ['Net revenue', 'netRevenueCents', money], ['Items', 'itemSummary']]);
         html += table('Recent Store events', data.events, [['When', 'eventUtc', value => text(new Date(value).toLocaleString())], ['Event', 'eventType'], ['Product', 'productName'], ['Quantity', 'quantity'], ['Order', 'orderNumber'], ['Source', 'source']]);
       }
@@ -4523,6 +4566,8 @@ function escapeHtml(value) {
       if (results[0].status === 'fulfilled' && results[0].value) {
         const time = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         setSummaryRefreshStatus(complete ? `Reports updated ${time}` : `Reports updated ${time} · Some reports are unavailable.`, !complete);
+      } else if (isStoreAnalytics && state.cache.summary?.isAvailable !== false && state.cache.summary) {
+        setSummaryRefreshStatus('Traffic updated · Store order evidence unavailable. Refresh to retry.', true);
       }
       return complete;
     })().finally(() => {
@@ -5811,7 +5856,7 @@ function escapeHtml(value) {
         attribution: item.attributionObserved ? 'Reference observed' : 'Not observed' };
       Object.entries(values).forEach(([key, value]) => { const cell = row?.querySelector(`[data-evidence="${key}"]`); if (cell) cell.textContent = value; });
       const detail = document.getElementById(`marketing-setup-${provider}-receipt-evidence`);
-      if (detail) detail.textContent = (provider === 'openai' ? `Transport acknowledged: ${Number(item.transportAcknowledged || 0).toLocaleString()} · Provider acceptance unverified · ` : '') + `Receipt evidence: ${item.acceptanceEvidence || 'unavailable'} · Pending ${item.pending || 0} · Retrying ${item.retrying || 0} · Failed ${item.failed || 0}`;
+      if (detail) detail.textContent = (provider === 'openai' ? `Transport acknowledged: ${Number(item.transportAcknowledged || 0).toLocaleString()} · Provider acceptance unverified · ` : '') + `Receipt evidence: ${item.acceptanceEvidence || 'unavailable'} · Pending ${item.pending || 0} · Blocked ${item.blocked || 0} · Retrying ${item.retrying || 0} · Failed ${item.failed || 0}`;
     }
     renderEvidence('meta', marketing.metaAdsConnected, !!marketing.metaPixelId && marketing.metaCapiConfiguredSecurely);
     renderEvidence('openai', openAi.connected, openAi.pixelConfigured && openAi.conversionsApiConfigured && !!openAi.conversionDataSourceId);
@@ -5837,7 +5882,7 @@ function escapeHtml(value) {
           openAi.reviewStatus === 'rejected' || Number(openAiHealth.failed || 0) > 0) return 'critical';
       if (openAi.reviewStatus === 'in_review' || openAi.accountStatus !== 'active' ||
           openAiHealth.status === 'retrying' || !openAi.pixelConfigured || !openAi.conversionsApiConfigured ||
-          Number(openAiHealth.retrying || 0) > 0 || Number(openAiHealth.pending || 0) > 0) return 'warn';
+          Number(openAiHealth.retrying || 0) > 0 || Number(openAiHealth.pending || 0) > 0 || Number(openAiHealth.blocked || 0) > 0) return 'warn';
       return Number(payload.evidence?.openAi?.transportAcknowledged || 0) > 0 ? 'good' : 'neutral';
     };
     const openAiStatus = document.getElementById('marketing-setup-openai-account');
@@ -5873,8 +5918,10 @@ function escapeHtml(value) {
       : 'Not configured');
     setOpenAiText('marketing-setup-openai-health', (openAiHealth.status || 'unknown').replaceAll('_', ' ') +
       (openAiHealth.otherDestinationReceipts > 0 ? `; ${openAiHealth.otherDestinationReceipts} receipts for previous destinations (${openAiHealth.otherDestinationUnresolved || 0} unresolved)` : ''));
-    setOpenAiText('marketing-setup-openai-last-send', openAiHealth.lastSentUtc ? `Last sent ${new Date(openAiHealth.lastSentUtc).toLocaleString()}` : 'No successful delivery yet');
+    setOpenAiText('marketing-setup-openai-last-send', openAiHealth.lastSentUtc ? `Last transport acknowledgment ${new Date(openAiHealth.lastSentUtc).toLocaleString()}` : 'No transport acknowledgment verified');
     setOpenAiText('marketing-setup-openai-pending', Number(openAiHealth.pending || 0).toLocaleString());
+    setOpenAiText('marketing-setup-openai-blocked', Number(openAiHealth.blocked || 0).toLocaleString());
+    setOpenAiText('marketing-setup-openai-delivery-details', openAiDeliveryDetails(openAiHealth.recentDeliveries));
     setOpenAiText('marketing-setup-openai-retrying', Number(openAiHealth.retrying || 0).toLocaleString());
     setOpenAiText('marketing-setup-openai-failed', Number(openAiHealth.failed || 0).toLocaleString());
     setOpenAiText('marketing-setup-openai-sent', Number(openAiHealth.sent || 0).toLocaleString());
@@ -5891,6 +5938,7 @@ function escapeHtml(value) {
       openAi.conversionsApiConfigured ? 'good' : openAi.connected ? 'warn' : 'neutral');
     applySeverity(document.getElementById('marketing-setup-openai-health')?.closest('.marketing-setup-detail'), severityForOpenAi());
     applySeverity(document.getElementById('marketing-setup-openai-pending')?.parentElement, Number(openAiHealth.pending || 0) > 0 ? 'warn' : 'neutral');
+    applySeverity(document.getElementById('marketing-setup-openai-blocked')?.parentElement, Number(openAiHealth.blocked || 0) > 0 ? 'warn' : 'neutral');
     applySeverity(document.getElementById('marketing-setup-openai-retrying')?.parentElement, Number(openAiHealth.retrying || 0) > 0 ? 'warn' : 'neutral');
     applySeverity(document.getElementById('marketing-setup-openai-failed')?.parentElement, Number(openAiHealth.failed || 0) > 0 ? 'critical' : 'neutral');
     applySeverity(document.getElementById('marketing-setup-openai-sent')?.parentElement, Number(openAiHealth.sent || 0) > 0 ? 'good' : 'neutral');
@@ -5910,6 +5958,7 @@ function escapeHtml(value) {
         : openAi.measurementCapabilityStatus === 'provider_unavailable' ? 'Moderate · OpenAI measurement provisioning temporarily unavailable'
         : !openAi.pixelConfigured || !openAi.conversionsApiConfigured ? 'Moderate · measurement setup incomplete'
         : Number(openAiHealth.failed || 0) > 0 ? 'Critical · delivery failures'
+        : Number(openAiHealth.blocked || 0) > 0 ? 'Delivery blocked · inspect recorded reason'
         : Number(openAiHealth.retrying || 0) > 0 ? 'Moderate · retrying delivery'
         : Number(evidence.openAi?.transportAcknowledged || 0) > 0 ? 'Transport acknowledged · provider acceptance and downstream attribution unverified'
         : 'Configured connection · awaiting delivery evidence';
@@ -6054,7 +6103,7 @@ function escapeHtml(value) {
               ? { canonicalEventName, providerEventName: canonicalEventName, destinationId: value }
               : { canonicalEventName, providerEventName: value, destinationId: null };
           }).filter(Boolean);
-        if (!mappings.length) throw new Error('Map at least one canonical revenue outcome before saving.');
+        if (!mappings.length) throw new Error('Map at least one canonical event before saving.');
         const body = {
           provider,
           eventSourceId: provider === 'tiktok'

@@ -204,6 +204,10 @@
                                         <div>
                                             <strong>@item.Name</strong>
                                             <span>Size @item.Size · Qty @item.Quantity · @Money(item.UnitPriceCents) each</span>
+                                            @foreach (var piece in item.BundlePickList)
+                                            {
+                                                <small>Pick @(piece.Units * item.Quantity) × @piece.ProductName · @piece.Size</small>
+                                            }
                                         </div>
                                         <b>@Money(item.LineTotalCents)</b>
                                     </article>

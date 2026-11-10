@@ -645,3 +645,32 @@ test('startup status timeout retains publication recovery but removes operationa
     await f.click('Close');
   }finally{f.dom.window.close();}
 });
+
+
+test('Protect draft deletion uses its committed metadata response without reparsing the working website',async()=>{
+  const f=await fixture({scope:'protect'});
+  try{
+    f.state.drafts=[{id:'draft-a',name:'Variant A',updatedUtc:'2026-09-23T10:00:00Z'},
+      {id:'draft-b',name:'Variant B',updatedUtc:'2026-09-23T10:00:00Z'}];
+    f.document.querySelector('dialog').close();
+    f.document.querySelector('[data-website-manage]').click();await flush();
+    await f.click('Drafts');
+    const originalFetch=f.window.fetch;let deletes=0;
+    f.window.fetch=async(url,options={})=>{
+      if(new URL(url).pathname.endsWith('/drafts/delete')){
+        const body=JSON.parse(options.body);
+        assert.equal(body.expectedRevision,7+deletes);
+        deletes++;
+        return {ok:true,status:200,json:async()=>({revision:7+deletes,drafts:deletes===1?[f.state.drafts[1]]:[]})};
+      }
+      throw new Error('No working-document reload after committed deletion');
+    };
+    await f.click('Delete');
+    assert.equal(f.document.querySelectorAll('.wm-draft-list .wm-list-row').length,1);
+    assert.match(f.document.querySelector('[role="status"]').textContent,/Draft deleted/);
+    await f.click('Delete');
+    assert.equal(deletes,2);
+    assert.equal(f.document.querySelectorAll('.wm-draft-list .wm-list-row').length,0);
+    f.window.fetch=originalFetch;
+  }finally{f.dom.window.close();}
+});

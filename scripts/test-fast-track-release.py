@@ -137,6 +137,7 @@ class UniversalFastTrackAdmissionTests(unittest.TestCase):
 
     def test_reviewed_native_sources_select_no_server_packages(self):
         paths = ['Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/LegendActivityProjection.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/MobileContracts.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/navigation/LegendNotificationNavigation.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/network/LegendApi.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/push/LegendFirebaseMessagingService.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/data/LegendRepositories.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/feature/LegendFeatureViewModels.kt', 'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/ui/LegendApp.kt', 'Legend-Android/app/src/test/java/com/mylegnd/legend/registered/WorkNotificationsContractTest.kt', 'Legend-ios/Legend/App/LegendPushNotificationDelegate.swift', 'Legend-ios/Legend/Features/Home/LegendApplicationShell.swift', 'Legend-ios/Legend/Features/Home/LegendDailyActivity.swift', 'Legend-ios/Legend/Features/Home/MobileHomeModels.swift', 'Legend-ios/Legend/Features/Messaging/MessagingModels.swift', 'Legend-ios/Legend/Features/Notifications/MobileNotificationStore.swift', 'Legend-ios/Legend/Features/Root/LegendApplicationBootstrapCoordinator.swift', 'Legend-ios/Legend/Features/Social/LegendSocialHomeSection.swift', 'Legend-ios/LegendTests/LegendTests.swift', 'Legend-ios/LegendTests/MobileNativeContractTests.swift']
+        paths.append('Legend-ios/Legend.xcodeproj/project.pbxproj')
         scope = authority.fast_track_scope(paths)
         self.assertEqual([], scope['matrix']['include'])
         self.assertFalse(scope['schema'])
@@ -149,7 +150,7 @@ class UniversalFastTrackAdmissionTests(unittest.TestCase):
                      'Infrastructure/Notifications/UnreviewedEngine.cs',
                      'Legend-ios/Legend/Features/Home/Unreviewed.swift',
                      'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/ui/Unreviewed.kt',
-                     'Legend-ios/Legend.xcodeproj/project.pbxproj',
+            'Legend-ios/Unreviewed.xcodeproj/project.pbxproj',
                      'Legend-Android/app/build.gradle.kts']:
             with self.subTest(path=path), self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
                 authority.fast_track_scope([path])

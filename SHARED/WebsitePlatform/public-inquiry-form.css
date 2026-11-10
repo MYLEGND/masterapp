@@ -5,6 +5,7 @@
    Do not add per-view geometry or !important presentation overrides. */
 :root{
   --web-form-max-width:900px;
+  --web-form-compact-panel-padding:16px;--web-form-compact-step-gap:16px;--web-form-compact-field-gap:12px;--web-form-compact-label-gap:6px;--web-form-compact-control-min-height:48px;--web-form-compact-control-padding-block:10px;--web-form-compact-control-padding-inline:12px;
   --web-form-panel-padding:24px;
   --web-form-step-gap:24px;
   --web-form-field-gap:20px;
@@ -14,9 +15,9 @@
   --web-form-control-padding-inline:14px
 }
 .public-form,.legend-native-experience,form[data-form-key],.pcq-form-shell{
-  --legend-form-panel:var(--web-surface-elevated,#fff);
-  --legend-form-label:var(--web-ink,#152638);
-  --legend-form-help:var(--web-muted,#667785);
+  --legend-form-panel:var(--web-form-panel-color,var(--web-surface-elevated,#fff));
+  --legend-form-label:var(--web-form-text-color,var(--web-ink,#152638));
+  --legend-form-help:var(--web-form-help-color,var(--web-muted,#667785));
   --legend-form-border:var(--web-border-color,#d8dee5);
   width:100%;max-width:var(--web-form-max-width);min-width:0;margin-inline:auto;
   font-family:var(--web-font,inherit);font-size:var(--web-body-size,1rem);
@@ -25,9 +26,9 @@
 /* Existing runtime forms use the dark panel role, with the same geometry and
    semantic theme tokens as light inquiry/native-experience panels. */
 form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry]),.pcq-form-shell{
-  --legend-form-panel:linear-gradient(180deg,var(--web-navy,#102b62),var(--web-navy-deep,#081a36));
-  --legend-form-label:var(--web-surface,#f8fafc);
-  --legend-form-help:color-mix(in srgb,var(--web-surface,#f8fafc) 80%,transparent);
+  --legend-form-panel:var(--web-form-panel-color,linear-gradient(180deg,var(--web-navy,#102b62),var(--web-navy-deep,#081a36)));
+  --legend-form-label:var(--web-form-text-color,var(--web-surface,#f8fafc));
+  --legend-form-help:var(--web-form-help-color,color-mix(in srgb,var(--web-surface,#f8fafc) 80%,transparent));
   --legend-form-border:color-mix(in srgb,var(--web-gold,#c9a55d) 45%,transparent)
 }
 .public-form fieldset,.legend-native-experience,
@@ -82,8 +83,8 @@ form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inq
   box-sizing:border-box;width:100%;min-width:0;min-height:var(--web-form-control-min-height);height:auto;max-height:none;
   margin:0;padding:var(--web-form-control-padding-block) var(--web-form-control-padding-inline);
   border:var(--web-border-width,1px) solid var(--web-border-color,#d8dee5);
-  border-radius:var(--web-input-radius,14px);background:var(--web-surface-elevated,#fff);
-  color:var(--web-ink,#152638);box-shadow:none;font-family:var(--web-font,inherit);font-size:var(--web-body-size,1rem);font-weight:400;line-height:1.5;letter-spacing:normal;
+  border-radius:var(--web-input-radius,14px);background:var(--web-form-control-color,var(--web-surface-elevated,#fff));
+  color:var(--web-form-control-text-color,var(--web-ink,#152638));box-shadow:none;font-family:var(--web-font,inherit);font-size:var(--web-body-size,1rem);font-weight:400;line-height:1.5;letter-spacing:normal;
   transition:border-color .16s ease,box-shadow .16s ease,background .16s ease
 }
 .public-form select,.legend-experience-field>select,:where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) select:is(.form-control,.form-select){
@@ -194,9 +195,20 @@ form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inq
 .legend-experience-result strong{color:var(--legend-form-label);overflow-wrap:anywhere}
 .legend-experience-status{min-height:1.25em;margin:var(--web-form-label-gap) 0 0;color:var(--legend-form-help);font-size:var(--web-small-size,.85rem)}
 @media(max-width:767px){
+  :root{--web-form-panel-padding:var(--web-form-compact-panel-padding);--web-form-step-gap:var(--web-form-compact-step-gap);--web-form-field-gap:var(--web-form-compact-field-gap);--web-form-label-gap:var(--web-form-compact-label-gap);--web-form-control-min-height:var(--web-form-compact-control-min-height);--web-form-control-padding-block:var(--web-form-compact-control-padding-block);--web-form-control-padding-inline:var(--web-form-compact-control-padding-inline)}
+  :where(form[data-form-key]:not(.public-form,.legend-native-experience,[data-website-inquiry])) :is(.lq-field-row,.lq-contact-grid){grid-template-columns:minmax(0,1fr)}
+  .public-form :is(input,select,textarea),.legend-experience-field>:is(input,select,textarea),:where(form[data-form-key]) :is(.form-control,.form-select,textarea){font-size:max(16px,var(--web-body-size,1rem))}
+
   .public-form-grid,.legend-experience-grid,.legend-experience-options{grid-template-columns:minmax(0,1fr)}
   .public-form-grid>label{grid-column:1/-1}
   .public-form .btn.primary{width:100%}
+}
+/* The native quote canvas is also the Studio responsive preview boundary. */
+@container protect-quote (max-width:767px){
+  :where(form[data-form-key]) .lq-card.lq-card-rich{grid-template-columns:auto minmax(0,1fr);align-items:center;justify-items:start;text-align:start;min-height:56px}
+  :where(form[data-form-key]) .lq-card.lq-card-rich.no-visual{grid-template-columns:minmax(0,1fr)}
+  :where(form[data-form-key]) .lq-card-rich .lq-card-visual{width:36px;height:36px}
+  :where(form[data-form-key]) .lq-card-rich .lq-card-copy{min-width:0;padding-inline-end:12px}
 }
 @media(prefers-reduced-motion:reduce){
   .public-form input,.public-form textarea,.public-form .btn.primary{transition:none}

@@ -3130,6 +3130,9 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.CommerceOrderLine", b =>
                 {
+                    b.Property<string>("InventoryRequirementsJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
@@ -3424,6 +3427,9 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.CommerceProduct", b =>
                 {
+                    b.Property<string>("BundleComponentsJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");

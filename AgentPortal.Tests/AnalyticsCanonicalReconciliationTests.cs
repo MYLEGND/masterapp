@@ -20,6 +20,59 @@ namespace AgentPortal.Tests;
 
 public sealed class AnalyticsCanonicalReconciliationTests
 {
+    [Theory]
+    [InlineData("protect", TrafficQualityMode.AllTraffic, 2)]
+    [InlineData("legend", TrafficQualityMode.AllTraffic, 1)]
+    [InlineData(null, TrafficQualityMode.AllTraffic, 3)]
+    [InlineData("protect", TrafficQualityMode.RealHumanTraffic, 1)]
+    [InlineData(null, TrafficQualityMode.RealHumanTraffic, 2)]
+    public async Task FounderDiagnosticsReconcileCanonicalSiteQualityEnvironmentAndAliasPopulation(
+        string? site, TrafficQualityMode quality, int expected)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        var founder = new AgentTrackingProfile { AgentUserId = "scope-founder", AgentUpn = "founder@example.test", Slug = "scope-founder" };
+        var alias = new AgentTrackingProfile { AgentUserId = "scope-alias", AgentUpn = founder.AgentUpn, Slug = "scope-alias" };
+        var foreign = new AgentTrackingProfile { AgentUserId = "scope-foreign", AgentUpn = "foreign@example.test", Slug = "scope-foreign" };
+        db.AddRange(founder, alias, foreign);
+        void Lead(string key, Guid? profile, bool human, string environment = "production", bool deleted = false)
+        {
+            var session = Guid.NewGuid().ToString("N");
+            db.WebsiteLeads.Add(new() { LeadId = Guid.NewGuid(), AgentTrackingProfileId = profile,
+                CreatedUtc = now.AddMinutes(-5), Email = "scope@example.test", FirstName = "Synthetic", Environment = environment,
+                MetadataJson = JsonSerializer.Serialize(new { SiteKey = key, ReportingOwner = "founder" }),
+                SessionId = session, VisitorId = session, Host = "synthetic.example.test", IsDeleted = deleted });
+            // Human evidence outside the selected window must still promote the exact acquisition session.
+            if (human) db.AnalyticsEvents.Add(new() { EventId = Guid.NewGuid(), EventType = "page_view",
+                AgentTrackingProfileId = profile, EventUtc = now.AddHours(-2), ReceivedUtc = now.AddHours(-2),
+                Environment = environment, Host = "synthetic.example.test", SessionId = session, VisitorId = session,
+                MetadataJson = JsonSerializer.Serialize(new { siteKey = key, reportingOwner = "founder" }),
+                UserAgent = "Mozilla/5.0", HumanInteractionCount = 3, EngagedMilliseconds = 15000, ScrollPercent = 50 });
+        }
+        Lead("protect", alias.Id, true);
+        Lead("protect", founder.Id, false);
+        Lead("legend", null, true);
+        Lead("protect", foreign.Id, true);
+        Lead("protect", founder.Id, true, "development");
+        Lead("protect", founder.Id, true, deleted: true);
+        await db.SaveChangesAsync();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
+            ["Analytics:EnvironmentFilter"] = "production", ["Founder:Upn"] = founder.AgentUpn }).Build();
+        var analytics = new AnalyticsQueryService(db, config);
+        var meta = new MetaSignalAnalyticsService(db, analytics);
+        var range = new TimeRangeRequest { FromUtc = now.AddHours(-1), ToUtc = now, QualityMode = quality };
+        var scope = new ScopeContext { ScopeType = ScopeType.Founder, AgentTrackingProfileId = founder.Id,
+            SiteKey = site, ReportingOwner = "founder" };
+        var leads = await analytics.GetLeadsAsync(range, scope);
+        Assert.Equal(expected, leads.Total);
+        Assert.Equal(leads.Total, (await meta.GetHealthDashboardAsync(range, scope)).PipelineHealth.WebsiteLeadsLast24Hours);
+        var snapshot = await analytics.GetMarketingHealthSnapshotAsync(range, scope, TrafficType.PaidAds);
+        Assert.Equal(leads.Total, (await meta.GetHealthDashboardAsync(snapshot)).PipelineHealth.WebsiteLeadsLast24Hours);
+        var store = scope.ForStore(Guid.NewGuid());
+        Assert.Equal(0, (await analytics.GetLeadsAsync(range, store)).Total);
+        Assert.Equal(0, (await meta.GetHealthDashboardAsync(range, store)).PipelineHealth.WebsiteLeadsLast24Hours);
+    }
+
     [Fact]
     public async Task AdversarialCrossBusinessSessionCollisionsCannotContaminateCounts()
     {
@@ -388,10 +441,10 @@ public sealed class AnalyticsCanonicalReconciliationTests
         Assert.Equal(healthAttempts, snapshot.Health.WorkstationCaptureAttempts);
         Assert.Equal(metaEvents, sharedMeta.PipelineHealth.AnalyticsEventsLast24Hours);
         Assert.Equal(metaEvents, sharedMeta.PipelineHealth.MetaSignalEventsLast24Hours);
-        Assert.Equal(1, sharedMeta.PipelineHealth.WebsiteLeadsLast24Hours);
+        Assert.Equal(mode == TrafficQualityMode.RealHumanTraffic ? 0 : 1, sharedMeta.PipelineHealth.WebsiteLeadsLast24Hours);
         Assert.Equal(JsonSerializer.Serialize(baselineHealth), JsonSerializer.Serialize(snapshot.Health));
         Assert.Equal(StableMeta(baselineMeta), StableMeta(sharedMeta));
-        AssertHealthReadCounts(fixture.Reads, mode == TrafficQualityMode.AllTraffic ? 4 : 5);
+        AssertHealthReadCounts(fixture.Reads, mode == TrafficQualityMode.AllTraffic ? 3 : 4);
         using var serialized = JsonDocument.Parse(JsonSerializer.Serialize(snapshot));
         Assert.Equal(new[] { "Health" }, serialized.RootElement.EnumerateObject().Select(p => p.Name));
     }
@@ -412,9 +465,9 @@ public sealed class AnalyticsCanonicalReconciliationTests
         Assert.Equal(0, snapshot.Health.WorkstationCaptureAttempts);
         Assert.Equal(metaEvents, shared.PipelineHealth.AnalyticsEventsLast24Hours);
         Assert.Equal(metaEvents, shared.PipelineHealth.MetaSignalEventsLast24Hours);
-        Assert.Equal(1, shared.PipelineHealth.WebsiteLeadsLast24Hours);
+        Assert.Equal(0, shared.PipelineHealth.WebsiteLeadsLast24Hours);
         Assert.Equal(StableMeta(baseline), StableMeta(shared));
-        AssertHealthReadCounts(fixture.Reads, 5);
+        AssertHealthReadCounts(fixture.Reads, 4);
         var sql = Assert.Single(fixture.Reads.Commands.Where(s => s.Contains("ForEventSession", StringComparison.Ordinal)));
         var projection = sql[..sql.IndexOf("FROM ", StringComparison.OrdinalIgnoreCase)];
         Assert.Contains(" IN ", projection, StringComparison.OrdinalIgnoreCase);
@@ -438,7 +491,7 @@ public sealed class AnalyticsCanonicalReconciliationTests
         Assert.Equal(1, shared.PipelineHealth.MetaSignalEventsLast24Hours);
         Assert.Equal(0, shared.PipelineHealth.WebsiteLeadsLast24Hours);
         Assert.Equal(StableMeta(baseline), StableMeta(shared));
-        Assert.Equal(7, fixture.Reads.Commands.Count);
+        Assert.Equal(6, fixture.Reads.Commands.Count);
         Assert.Equal(2, fixture.Reads.Commands.Count(s => s.Contains("FROM \"AgentTrackingProfiles\"", StringComparison.Ordinal)));
         Assert.Same(fixture.Scope, snapshot.Scope);
         Assert.Same(fixture.Range, snapshot.Range);
@@ -447,7 +500,7 @@ public sealed class AnalyticsCanonicalReconciliationTests
 
     public static IEnumerable<object[]> CanceledAnalyticsReadStages()
     {
-        foreach (var (operation, count) in new[] { ("summary", 6), ("health", 3), ("projection", 5), ("attributed", 2) })
+        foreach (var (operation, count) in new[] { ("summary", 6), ("health", 3), ("projection", 4), ("attributed", 2) })
         {
             for (var stage = 1; stage <= count; stage++)
                 yield return new object[] { operation, false, stage };
@@ -489,8 +542,8 @@ public sealed class AnalyticsCanonicalReconciliationTests
     private static void AssertHealthReadCounts(AnalyticsReadRecorder reads, int expected)
     {
         Assert.Equal(expected, reads.Commands.Count);
-        Assert.Equal(expected == 4 ? 1 : 2, reads.Commands.Count(s => s.Contains("FROM \"AnalyticsEvents\"", StringComparison.Ordinal)));
-        Assert.Equal(2, reads.Commands.Count(s => s.Contains("FROM \"WebsiteLeads\"", StringComparison.Ordinal)));
+        Assert.Equal(expected == 3 ? 1 : 2, reads.Commands.Count(s => s.Contains("FROM \"AnalyticsEvents\"", StringComparison.Ordinal)));
+        Assert.Equal(1, reads.Commands.Count(s => s.Contains("FROM \"WebsiteLeads\"", StringComparison.Ordinal)));
         Assert.Equal(1, reads.Commands.Count(s => s.Contains("FROM \"MetaSignalEvents\"", StringComparison.Ordinal)));
     }
 

@@ -1,5 +1,8 @@
 @{
     var storeAnalytics = ViewData["AnalyticsMode"] as string == "store";
+    var conversionMappings = Shared.Analytics.MarketingConversionDestinationCatalog.Definitions
+        .Where(definition => Shared.Analytics.AnalyticsEventCatalog.RequiresServerAuthority(definition.CanonicalEventName))
+        .ToArray();
     if (ViewData["AnalyticsLayout"] is string analyticsLayout) Layout = analyticsLayout;
     ViewData["Title"] = storeAnalytics ? "Store Analytics" : "Website Analytics";
     var analyticsBase = ViewData["AnalyticsBase"] as string ?? "/WebsiteAnalytics";
@@ -162,10 +165,14 @@
 
                         <div class="marketing-setup-delivery-grid" aria-label="ChatGPT Ads delivery diagnostics">
                             <div><span>Pending</span><strong id="marketing-setup-openai-pending">0</strong></div>
+                            <div><span>Blocked</span><strong id="marketing-setup-openai-blocked">0</strong></div>
                             <div><span>Retrying</span><strong id="marketing-setup-openai-retrying">0</strong></div>
                             <div><span>Failed</span><strong id="marketing-setup-openai-failed">0</strong></div>
-                            <div><span>Sent</span><strong id="marketing-setup-openai-sent">0</strong></div>
+                            <div><span>Transport acknowledged</span><strong id="marketing-setup-openai-sent">0</strong></div>
                         </div>
+                        <details><summary>Recent delivery details (owner scope, all sites; up to 20)</summary>
+                            <pre id="marketing-setup-openai-delivery-details" style="white-space:pre-wrap;overflow-wrap:anywhere">Not loaded</pre>
+                        </details>
 
                         <div class="marketing-setup-secure-row">
                             <div>
@@ -206,11 +213,12 @@
                                 </div>
                                 <div class="marketing-setup-connect-controls w-100" id="marketing-setup-google-measurement" hidden>
                                     <div class="marketing-setup-help"><strong id="marketing-setup-google-measurement-status">Optimization mapping required</strong><br/>Paste only conversion actions from the selected Google Ads customer. Unmapped outcomes remain first-party truth but are not uploaded.</div>
-                                    <label class="marketing-setup-field"><span>Qualified lead conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="QualifiedLead" placeholder="customers/1234567890/conversionActions/123" /></label>
-                                    <label class="marketing-setup-field"><span>Appointment conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="AppointmentBooked" placeholder="customers/1234567890/conversionActions/123" /></label>
-                                    <label class="marketing-setup-field"><span>Application conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="ApplicationSubmitted" placeholder="customers/1234567890/conversionActions/123" /></label>
-                                    <label class="marketing-setup-field"><span>Issued conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="PolicyIssued" placeholder="customers/1234567890/conversionActions/123" /></label>
-                                    <label class="marketing-setup-field"><span>Paid/revenue conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="PolicyPaid" placeholder="customers/1234567890/conversionActions/123" /></label>
+                                    @foreach (var mapping in conversionMappings)
+                                    {
+                                        var label = Shared.Analytics.AnalyticsEventCatalog.TryGetBehavior(mapping.CanonicalEventName, out var behavior)
+                                            ? behavior.DisplayLabel : mapping.CanonicalEventName;
+                                        <label class="marketing-setup-field"><span>@label conversion action</span><input class="form-control" data-external-mapping-provider="google" data-canonical-event="@mapping.CanonicalEventName" placeholder="customers/1234567890/conversionActions/123" /></label>
+                                    }
                                     <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-google-save-measurement">Save Google optimization mapping</button>
                                 </div>
                             </div>
@@ -234,11 +242,12 @@
                                     <label class="marketing-setup-field"><span>Event source type</span><select id="marketing-setup-tiktok-event-source-type" class="form-select"><option value="crm">CRM</option><option value="web">Web</option><option value="offline">Offline</option></select></label>
                                     <label class="marketing-setup-field"><span>Event source ID</span><input id="marketing-setup-tiktok-event-source-id" class="form-control" placeholder="TikTok Event Source ID" /></label>
                                     <label class="marketing-setup-field"><span>Events API access token</span><input type="password" id="marketing-setup-tiktok-events-token" class="form-control" autocomplete="new-password" placeholder="Events Manager access token" /></label>
-                                    <label class="marketing-setup-field"><span>Qualified lead event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="QualifiedLead" placeholder="Exact TikTok event name" /></label>
-                                    <label class="marketing-setup-field"><span>Appointment event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="AppointmentBooked" placeholder="Exact TikTok event name" /></label>
-                                    <label class="marketing-setup-field"><span>Application event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="ApplicationSubmitted" placeholder="Exact TikTok event name" /></label>
-                                    <label class="marketing-setup-field"><span>Issued event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="PolicyIssued" placeholder="Exact TikTok event name" /></label>
-                                    <label class="marketing-setup-field"><span>Paid/revenue event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="PolicyPaid" placeholder="Exact TikTok event name" /></label>
+                                    @foreach (var mapping in conversionMappings)
+                                    {
+                                        var label = Shared.Analytics.AnalyticsEventCatalog.TryGetBehavior(mapping.CanonicalEventName, out var behavior)
+                                            ? behavior.DisplayLabel : mapping.CanonicalEventName;
+                                        <label class="marketing-setup-field"><span>@label event</span><input class="form-control" data-external-mapping-provider="tiktok" data-canonical-event="@mapping.CanonicalEventName" placeholder="Exact TikTok event name" /></label>
+                                    }
                                     <button type="button" class="btn btn-sm btn-gold" id="marketing-setup-tiktok-save-measurement">Save TikTok optimization mapping</button>
                                 </div>
                             </div>
@@ -850,12 +859,23 @@
                     </div>
                 </div>
                 <div>
+                    @if (storeAnalytics)
+                    {
+                        <button type="button" class="kpi-card kpi-card-primary" data-bs-toggle="modal" data-bs-target="#convModal" aria-label="Paid orders — view Orders & Events">
+                            <div class="fa-kpi-title">Paid orders <span class="kpi-card-drill-hint">↗</span></div>
+                            <div class="fa-kpi-value" id="store-paid-orders">—</div>
+                            <div class="fa-kpi-sub">Orders created in range; includes subsequently refunded orders</div>
+                        </button>
+                    }
+                    else
+                    {
                     <div class="kpi-card kpi-card-primary kpi-card-clickable" data-kpi-card data-metric="leads" role="button" tabindex="0" aria-label="Leads — click to view detail" title="Click to view Leads detail">
                         <div class="fa-kpi-title">Leads <span class="kpi-card-drill-hint">↗</span></div>
                         <div class="fa-kpi-value" id="kpi-leads">0</div>
                         <div class="fa-kpi-delta" id="kpi-leads-delta"></div>
                         <div class="fa-spark" id="kpi-leads-spark"></div>
                     </div>
+                    }
                 </div>
             </div>
         </div>
@@ -865,6 +885,13 @@
                 <div class="wa-kpi-band-label">Conversion + Context</div>
             </div>
             <div class="fa-kpi-grid fa-kpi-grid-secondary">
+                @if (storeAnalytics)
+                {
+                    <div class="kpi-card kpi-card-secondary"><div class="fa-kpi-title">Purchase events</div><div class="fa-kpi-value" id="store-purchase-events">—</div><div class="fa-kpi-sub">Canonical events; reconciled separately from orders</div></div>
+                    <div class="kpi-card kpi-card-secondary"><div class="fa-kpi-title">Recorded net order revenue</div><div class="fa-kpi-value" id="store-net-revenue">—</div><div class="fa-kpi-sub" id="store-summary-status">Selected date range and quality filter; not merchant settlement</div></div>
+                }
+                else
+                {
                 <div>
                     <div class="kpi-card kpi-card-secondary kpi-card-conversion">
                         <div class="fa-kpi-title">Intent Conversion</div>
@@ -881,6 +908,7 @@
                         <div class="fa-kpi-warning" id="kpi-session-warning"></div>
                     </div>
                 </div>
+                }
                 <div>
                     <div class="kpi-card kpi-card-secondary kpi-card-context">
                         <div class="fa-kpi-title">Top Page</div>
@@ -1059,6 +1087,13 @@
                 <div class="fa-kpi-value" id="mh-client-errors">0</div>
                 <div class="fa-kpi-sub">Browser diagnostic events in range</div>
             </div>
+            @if (storeAnalytics)
+            {
+                <div class="kpi-card kpi-card-secondary wa-health-metric"><div class="fa-kpi-title">Paid orders without purchase events</div><div class="fa-kpi-value" id="store-paid-without-event">—</div><div class="fa-kpi-sub">Selected order records missing matching event evidence</div></div>
+                <div class="kpi-card kpi-card-secondary wa-health-metric"><div class="fa-kpi-title">Purchase events without paid orders</div><div class="fa-kpi-value" id="store-event-without-paid">—</div><div class="fa-kpi-sub">Selected events missing matching paid-order evidence</div></div>
+            }
+            else
+            {
             <div class="kpi-card kpi-card-secondary wa-health-metric is-funnel">
                 <div class="wa-health-metric-kicker">Funnel Continuity</div>
                 <div class="fa-kpi-title">Inferred Starts</div>
@@ -1089,6 +1124,7 @@
                 <div class="fa-kpi-value" id="mh-unknown-attribution">0</div>
                 <div class="fa-kpi-sub">Leads still missing a trustworthy source</div>
             </div>
+            }
         </div>
         <div class="wa-health-lower">
             <div class="wa-health-warnings">

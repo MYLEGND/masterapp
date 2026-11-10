@@ -140,3 +140,20 @@ test('DVH narrow Studio canvas cannot inherit the desktop fixed-width Back butto
   assert.match(source,/@@media \(prefers-reduced-motion: reduce\)/,'accessibility preference remains viewport-independent');
   assert.match(read('SHARED/WebsitePlatform/public-inquiry-form.css'),/main:has\(> \[data-protect-form-shell\]\)[^{]*\{[^}]*container:protect-quote \/ inline-size/);
 });
+
+
+test('both Life variants show the existing computed estimate before contact capture without changing submit identity',()=>{
+  const life=read('Protect-Website/Views/Quote/Life.cshtml');
+  const variants=life.split('<div id="lifeContactCaptureWrap">').slice(1);
+  assert.equal(variants.length,2);
+  for(const variant of variants){
+    const slot=variant.indexOf('id="lifeStep2EstimateSlot"');
+    const contact=variant.indexOf('name="FirstName"');
+    assert.ok(slot>=0 && slot<contact);
+  }
+  assert.equal((life.match(/ id="lifeStep2EstimateSlot"/g)||[]).length,2);
+  assert.match(life,/Preliminary estimate, not a carrier quote/);
+  assert.ok(!life.includes('#lifeWizardForm label.lq-card {'));
+  assert.match(life,/@@media \(max-width: 480px\) \{[\s\S]*?body:not\(\.landing-mode\) \.navbar/);
+  assert.match(life,/@@container protect-quote \(max-width: 767/);
+});

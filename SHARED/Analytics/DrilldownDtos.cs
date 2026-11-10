@@ -259,6 +259,7 @@ public sealed class LeadSnapshotDto
 
 public sealed class MetaLeadTrackingDto
 {
+    public string EvidenceSource { get; set; } = "not_observed";
     public string? MetaLeadEventId { get; set; }
     public string? ResolvedMetaPixelId { get; set; }
     public string? PixelOwnerType { get; set; }

@@ -25,9 +25,25 @@ using Xunit;
 namespace AgentPortal.Tests;
 
 [Collection("LegendConnectFounderEnvironment")]
-public sealed partial class MessagingServiceTests
+public sealed partial class MessagingServiceTests : IDisposable
 {
     private const string FounderTestObjectId = "b13065c4-2e0b-4dc7-8546-76f664ce1edf";
+    private readonly string? _previousFounderOid = Environment.GetEnvironmentVariable("FOUNDER_OID");
+    private readonly string? _previousFounderAlias = Environment.GetEnvironmentVariable("FounderOid");
+
+    public MessagingServiceTests()
+    {
+        // These tests supply their own authority configuration. Host-level identity
+        // must not override synthetic principals; the collection excludes concurrency.
+        Environment.SetEnvironmentVariable("FOUNDER_OID", null);
+        Environment.SetEnvironmentVariable("FounderOid", null);
+    }
+
+    public void Dispose()
+    {
+        Environment.SetEnvironmentVariable("FOUNDER_OID", _previousFounderOid);
+        Environment.SetEnvironmentVariable("FounderOid", _previousFounderAlias);
+    }
 
     [Fact]
     public async Task ReadReceipts_DefaultOnAndRespectGlobalAndConversationPrivacyWithoutChangingUnreadAccounting()
@@ -1768,10 +1784,12 @@ public sealed partial class MessagingServiceTests
         Assert.Equal(original, Assert.Single(await db.MobileActivityNotifications.ToListAsync()).Detail);
 
         var recipient = await service.GetConversationAsync(client, started.Conversation!.Id);
-        Assert.False(recipient.Succeeded);
-        Assert.Equal(MessagingTranslationPresentation.UnavailableCode, recipient.ErrorCode);
-        Assert.Equal(MessagingTranslationPresentation.UnavailableMessage, recipient.ErrorMessage);
-        Assert.Null(recipient.Conversation);
+        Assert.True(recipient.Succeeded);
+        var untranslated = Assert.Single(recipient.Conversation!.Messages);
+        Assert.Equal(original, untranslated.Body);
+        Assert.Equal(MessagingTranslationPresentation.UnavailableMessage, untranslated.TranslationNotice);
+        Assert.Null(untranslated.Translation);
+        Assert.Null(untranslated.OriginalBody);
         Assert.Equal(original, (await db.InternalMessages.SingleAsync()).Body);
         Assert.Null(source.OriginalLanguage);
         Assert.Empty(await db.MessageTranslations.ToListAsync());
@@ -1779,8 +1797,8 @@ public sealed partial class MessagingServiceTests
             row.ConversationId == started.Conversation.Id && row.UserId == client.UserId);
         Assert.Null(participant.LastReadMessageId);
 
-        // A transient provider failure withholds the entire page. Once the provider
-        // recovers, the same durable original is presented and only that success is cached.
+        // Detection failure preserves the original with an explicit pending notice.
+        // Recovery replaces that presentation, and only successful translation is cached.
         var recoveredTranslator = new DeferredTranslationProbe();
         var recoveredService = CreateService(db, recoveredTranslator);
         var recovered = await recoveredService.GetConversationAsync(client, started.Conversation.Id);

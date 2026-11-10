@@ -128,6 +128,7 @@ internal static partial class RehearsalFixture
         var contract = CandidateContract.Current(db);
         ValidateExpandedFixture(db, contract);
         var guideSuccessor = HasSetupGuideMigration(db) ? 1 : 0;
+        var additionalSuccessors = guideSuccessor + (HasBundleMigration(db) ? 1 : 0);
         var requestedCount = Environment.GetEnvironmentVariable("LEGEND_REHEARSAL_PENDING_COUNT");
         if (requestedCount is "store-all" or "store-crm-provisioning-membership" or "store-provisioning-membership" or "store-membership" or "crm-store" ||
             requestedCount?.EndsWith("-crm-store", StringComparison.Ordinal) == true)
@@ -145,15 +146,16 @@ internal static partial class RehearsalFixture
                 "management-browser-diagnostics-crm-store" => "8", "training-management-browser-diagnostics-crm-store" => "9",
                 "canonical-payment-training-management-browser-diagnostics-crm-store" => "10",
                 _ => throw new ProbeObservationFailure("INPUT_UNAVAILABLE") };
-            requestedCount = (int.Parse(requestedCount) + contract.Migrations.Count(m => ExpandedMigrations.Contains(m.Id)) + guideSuccessor).ToString();
+            requestedCount = (int.Parse(requestedCount) + contract.Migrations.Count(m => ExpandedMigrations.Contains(m.Id)) + additionalSuccessors).ToString();
         }
-        if (requestedCount == "expanded-store-only") requestedCount = (ExpandedMigrations.Length + guideSuccessor).ToString();
-        if (requestedCount == "standalone-reconciliation-only") requestedCount = (2 + guideSuccessor).ToString();
+        if (requestedCount == "expanded-store-only") requestedCount = (ExpandedMigrations.Length + additionalSuccessors).ToString();
+        if (requestedCount == "standalone-reconciliation-only") requestedCount = (2 + additionalSuccessors).ToString();
         if (requestedCount == "receptionist-guide-only")
         {
-            if (guideSuccessor != 1 || contract.Migrations[^1].Id != SetupGuideMigration)
+            var expected = HasBundleMigration(db) ? new[] { SetupGuideMigration, BundleMigration } : new[] { SetupGuideMigration };
+            if (guideSuccessor != 1 || !contract.Migrations.TakeLast(expected.Length).Select(m => m.Id).SequenceEqual(expected))
                 throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
-            requestedCount = "1";
+            requestedCount = expected.Length.ToString();
         }
         if (requestedCount == "payment-and-successors")
             requestedCount = contract.Migrations.SkipWhile(m => m.Id != "20261011064911_AddBusinessScopedMerchantPayments").Count().ToString();
@@ -226,6 +228,7 @@ internal static partial class RehearsalFixture
         if (pending.Length != count || pending.Any(m => (!m.Supported && !IsExpandedFixture(m) && !IsSetupGuideFixture(m)) ||
             (ExpandedMigrations.Contains(m.Id) && !IsExpandedFixture(m)) ||
             (m.Id == SetupGuideMigration && !IsSetupGuideFixture(m)) ||
+            (m.Id == BundleMigration && !IsBundleFixture(m)) ||
             (m.Id == retentionMigration && (m.Columns.Length != 1 || m.Tables.Length != 0 ||
                 m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 || m.Columns[0] is not {
                     Schema: "dbo", Table: "WebsiteContentVersion", Name: "SnapshotRetiredUtc",
@@ -238,7 +241,7 @@ internal static partial class RehearsalFixture
             (m.Id == ManagementMigration && !IsManagementFixture(m)) ||
             (m.Id == CanonicalPaymentMigration && !IsCanonicalPaymentFixture(m)) ||
             (m.Id == CandidateContract.TrainingMigration && !IsTrainingFixture(m)) ||
-            (!ExpandedMigrations.Contains(m.Id) && m.Id != SetupGuideMigration && !CandidateContract.IsStoreMigration(m.Id) && m.Id != CandidateContract.CrmMigration && m.Id != CandidateContract.DiagnosticsMigration && m.Id != CandidateContract.BrowserMigration && m.Id != ManagementMigration && m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration && m.Id != CandidateContract.TrainingMigration &&
+            (!ExpandedMigrations.Contains(m.Id) && m.Id != SetupGuideMigration && m.Id != BundleMigration && !CandidateContract.IsStoreMigration(m.Id) && m.Id != CandidateContract.CrmMigration && m.Id != CandidateContract.DiagnosticsMigration && m.Id != CandidateContract.BrowserMigration && m.Id != ManagementMigration && m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration && m.Id != CandidateContract.TrainingMigration &&
             (m.Tables.Length != 0 || m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 ||
             m.Columns.Any(c => c.Schema != "dbo" || c.Table != "MobileProfileSettings")))))
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");

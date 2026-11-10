@@ -680,6 +680,8 @@ public abstract class BusinessAnalyticsControllerBase(BusinessWorkspaceService? 
                 {
                     status = openAiHealth.Status,
                     pending = openAiHealth.PendingDeliveries,
+                    blocked = openAiHealth.BlockedDeliveries,
+                    recentDeliveries = openAiHealth.RecentDeliveries,
                     retrying = openAiHealth.RetryableDeliveries,
                     failed = openAiHealth.FailedDeliveries,
                     sent = openAiHealth.SentDeliveries,

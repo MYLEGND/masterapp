@@ -20,6 +20,7 @@ public sealed class OpenAiMeasurementEvidenceTests
     [InlineData("sent", 500, false, 0)]
     [InlineData("retryable", 200, false, 0)]
     [InlineData("sent", 200, true, 0)]
+    [InlineData("blocked_human_evidence", 0, false, 0)]
     public async Task HttpReceiptsOnlyProveTransportForTheirCurrentDestination(string status, int httpStatus, bool foreignPixel, int expected)
     {
         using var db = ControllerTestHelpers.BuildDb();
@@ -61,6 +62,11 @@ public sealed class OpenAiMeasurementEvidenceTests
         using var http = new HttpClient(new UnavailableHandler());
         var health = await new OpenAiMeasurementHealthService(db, connections, http).GetAsync(owner);
         Assert.NotEqual("provider_accepted", health.Status);
+        Assert.Equal(expected, health.SentDeliveries);
+        Assert.Equal(status == "pending" && !foreignPixel ? 1 : 0, health.PendingDeliveries);
+        Assert.Equal(status == "pending" && !foreignPixel ? 1 : 0, snapshot.OpenAi.Pending);
+        Assert.Equal(status.StartsWith("blocked_") && !foreignPixel ? 1 : 0, health.BlockedDeliveries);
+        Assert.Equal(status.StartsWith("blocked_") && !foreignPixel ? 1 : 0, snapshot.OpenAi.Blocked);
         if (expected > 0) Assert.Equal("transport_acknowledged", health.Status);
     }
 

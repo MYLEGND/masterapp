@@ -24,6 +24,7 @@ using Xunit;
 namespace AgentPortal.Tests;
 
 /// <summary>Actual inquiry/CRM writers and fenced action authority, with synthetic provider receipts and no network transport.</summary>
+[Collection("LegendConnectFounderEnvironment")]
 public sealed partial class ReceptionistInquiryTests
 {
     [Fact]

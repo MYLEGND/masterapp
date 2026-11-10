@@ -9,7 +9,7 @@ using Shared.Analytics;
 namespace Infrastructure.Analytics;
 
 public sealed record ProviderMeasurementEvidence(int Attempted, int Accepted, int Pending, int Retrying,
-    int Failed, bool AttributionObserved, DateTime? LastSentUtc, string AcceptanceEvidence, int TransportAcknowledged = 0);
+    int Failed, bool AttributionObserved, DateTime? LastSentUtc, string AcceptanceEvidence, int TransportAcknowledged = 0, int Blocked = 0);
 public sealed record MarketingMeasurementEvidenceSnapshot(
     string OwnerKey,
     DateTime WindowFromUtc,
@@ -37,6 +37,51 @@ public static class MarketingDeliveryEvidencePolicy
     public static bool MetaProviderAccepted(MetaSignalEvent row) =>
         row.MetaServerSent &&
         CanonicalAdvertisingEventProjection.ReadInt64(row.MetadataJson, "metaServerEventsReceived") > 0;
+
+    public static bool MetaMatchesSource(MetaSignalEvent row, AnalyticsEvent source) =>
+        CanonicalAdvertisingEventProjection.ReadInt64(row.MetadataJson, "sourceAnalyticsEventId") == source.Id &&
+        (row.EventId == CanonicalAdvertisingEventProjection.ResolveEventId(source) ||
+         (source.ClientEventId == source.EventId && CanonicalAdvertisingEventProjection.ReadBoolean(source.MetadataJson, "isBrowserSignal") == true &&
+          row.EventId == source.EventId.ToString("D"))) &&
+        row.AgentTrackingProfileId == source.AgentTrackingProfileId && row.CommerceBusinessId == source.CommerceBusinessId &&
+        row.WebsiteContentVersionId == source.WebsiteContentVersionId &&
+        string.Equals(CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "siteKey"),
+            CanonicalAdvertisingEventProjection.ReadString(source.MetadataJson, "siteKey"), StringComparison.OrdinalIgnoreCase);
+
+    public static bool MetaMatchesDestination(MetaSignalEvent row, string? pixelId)
+    {
+        if (string.IsNullOrWhiteSpace(pixelId)) return false;
+        var stampedPixel = CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "metaServerPixelId");
+        // A pre-dispatch block can precede pixel resolution. Any attempted/sent claim
+        // must bind the exact destination; an explicit foreign stamp never qualifies.
+        return stampedPixel == pixelId ||
+            (string.IsNullOrWhiteSpace(stampedPixel) && !row.MetaServerSent && !MetaAttempted(row));
+    }
+
+    public static string MetaDeliveryStatus(MetaSignalEvent row)
+    {
+        if (MetaProviderAccepted(row)) return "provider_accepted";
+        var status = CanonicalAdvertisingEventProjection.ReadString(row.MetadataJson, "metaServerStatus");
+        if (status?.StartsWith("blocked_", StringComparison.Ordinal) == true ||
+            status?.StartsWith("skipped_", StringComparison.Ordinal) == true) return status;
+        if (row.MetaServerSent || status == "sent") return "receipt_unverified";
+        if (CanonicalAdvertisingEventProjection.ReadInt64(row.MetadataJson, "metaServerHttpStatusCode") is >= 200 and < 300)
+            return "transport_acknowledged";
+        if (MetaRetryable(row) && MetaAttempted(row)) return "retrying";
+        if (MetaAttempted(row) || status is "failed" or "permanent_failure" or "retryable_failure") return "failed";
+        return MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(row.EventName, row.MetadataJson) ? "pending" : "unknown";
+    }
+
+    public static string MetaDeliveryStatus(IEnumerable<MetaSignalEvent> rows)
+    {
+        var statuses = rows.Select(MetaDeliveryStatus).Distinct(StringComparer.Ordinal).ToArray();
+        return statuses.Length switch
+        {
+            0 => "unknown",
+            1 => statuses[0],
+            _ => statuses.Contains("provider_accepted") ? "partial_delivery" : "mixed"
+        };
+    }
 
     public static bool MetaRetryable(MetaSignalEvent row) =>
         CanonicalAdvertisingEventProjection.ReadBoolean(row.MetadataJson, "metaServerRetryable") == true;
@@ -88,6 +133,11 @@ public static class MarketingDeliveryEvidencePolicy
             !(error.ValueKind == JsonValueKind.Object && !error.EnumerateObject().Any());
     }
 
+    public static bool IsBlocked(MarketingDestinationDelivery row) =>
+        row.Status.StartsWith("blocked_", StringComparison.Ordinal);
+
+    public static bool IsPending(MarketingDestinationDelivery row) => row.Status == "pending";
+
     public static bool HttpTransportAccepted(MarketingDestinationDelivery row) =>
         row.Status == "sent" && row.LastHttpStatusCode is >= 200 and < 300;
 }
@@ -111,11 +161,7 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
             CanonicalAdvertisingEventProjection.ReadInt64(m.MetadataJson, "sourceAnalyticsEventId") is { } id &&
             sourceById.TryGetValue(id, out var source) && source.AgentTrackingProfileId == m.AgentTrackingProfileId &&
             source.CommerceBusinessId == m.CommerceBusinessId && currentMeta is { DisconnectedUtc: null } &&
-            !string.IsNullOrWhiteSpace(currentMeta.PixelId) &&
-            // Unattempted pending rows need no destination stamp yet. A sent
-            // claim must match the current pixel even when its attempted flag is missing.
-            ((!m.MetaServerSent && !MarketingDeliveryEvidencePolicy.MetaAttempted(m)) ||
-             CanonicalAdvertisingEventProjection.ReadString(m.MetadataJson, "metaServerPixelId") == currentMeta.PixelId)).ToArray();
+            MarketingDeliveryEvidencePolicy.MetaMatchesDestination(m, currentMeta.PixelId)).ToArray();
         var deliveries = await db.Set<MarketingDestinationDelivery>().AsNoTracking()
             .Where(r => r.OwnerKey == owner.Key &&
                 (r.Provider == MarketingDestinationKeys.OpenAi ||
@@ -141,23 +187,23 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
         var tiktokAccepted = tiktok.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted);
         return new(owner.Key, from, sources.Count > 0, sources.Select(e => (DateTime?)e.ReceivedUtc).Max(),
             new(meta.Count(MarketingDeliveryEvidencePolicy.MetaAttempted), metaAccepted,
-                meta.Count(m => !MarketingDeliveryEvidencePolicy.MetaAttempted(m) &&
-                    MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(m.EventName, m.MetadataJson)),
+                meta.Count(m => MarketingDeliveryEvidencePolicy.MetaDeliveryStatus(m) == "pending"),
                 meta.Count(MarketingDeliveryEvidencePolicy.MetaRetryable),
                 meta.Count(m => MarketingDeliveryEvidencePolicy.MetaAttempted(m) &&
                     !m.MetaServerSent && !MarketingDeliveryEvidencePolicy.MetaRetryable(m)),
                 sources.Any(e => !string.IsNullOrWhiteSpace(e.Fbclid) || !string.IsNullOrWhiteSpace(e.MetaCampaignId)),
                 meta.Where(MarketingDeliveryEvidencePolicy.MetaProviderAccepted)
                     .Select(MarketingDeliveryEvidencePolicy.MetaDispatchedUtc).Max(),
-                metaAccepted > 0 ? MarketingDeliveryEvidencePolicy.MetaAcceptanceEvidence : "not_observed"),
+                metaAccepted > 0 ? MarketingDeliveryEvidencePolicy.MetaAcceptanceEvidence : "not_observed",
+                Blocked: meta.Count(m => MarketingDeliveryEvidencePolicy.MetaDeliveryStatus(m).StartsWith("blocked_", StringComparison.Ordinal))),
             // No verified provider-acceptance contract is available; HTTP evidence remains transport-only.
             new(openAi.Count(r => r.AttemptCount > 0), 0,
-                openAi.Count(r => r.Status == "pending" || r.Status.StartsWith("blocked_", StringComparison.Ordinal)),
+                openAi.Count(MarketingDeliveryEvidencePolicy.IsPending),
                 openAi.Count(r => r.Status == "retryable"), openAi.Count(r => r.Status == "permanent_failure"),
                 sources.Any(e => OpenAiClickReference.Normalize(e.Oppref) is not null),
                 openAi.Where(MarketingDeliveryEvidencePolicy.HttpTransportAccepted).Select(r => r.SentUtc).Max(),
                 openAiTransportAcknowledged > 0 ? MarketingDeliveryEvidencePolicy.OpenAiAcceptanceEvidence : "not_observed",
-                TransportAcknowledged: openAiTransportAcknowledged),
+                TransportAcknowledged: openAiTransportAcknowledged, Blocked: openAi.Count(MarketingDeliveryEvidencePolicy.IsBlocked)),
             EvidenceForExternal(
                 google,
                 googleAccepted,
@@ -213,8 +259,7 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
         new(
             receipts.Count(row => row.AttemptCount > 0),
             accepted,
-            receipts.Count(row => row.Status == "pending" ||
-                row.Status.StartsWith("blocked_", StringComparison.Ordinal)),
+            receipts.Count(MarketingDeliveryEvidencePolicy.IsPending),
             receipts.Count(row => row.Status == "retryable"),
             receipts.Count(row => row.Status == "permanent_failure"),
             attributionObserved,
@@ -222,6 +267,7 @@ public sealed class MarketingMeasurementEvidenceService(MasterAppDbContext db, I
                 .Select(row => row.SentUtc).Max(),
             accepted > 0 ? acceptanceEvidence :
                 mappingReady ? "not_observed" : "conversion_mapping_not_ready",
-            TransportAcknowledged: receipts.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted));
+            TransportAcknowledged: receipts.Count(MarketingDeliveryEvidencePolicy.HttpTransportAccepted),
+            Blocked: receipts.Count(MarketingDeliveryEvidencePolicy.IsBlocked));
 
 }

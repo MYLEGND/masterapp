@@ -22,7 +22,8 @@ namespace AgentPortal.Tests;
 [Collection("LegendConnectFounderEnvironment")]
 public sealed class LegendConnectComputedLanguageEndToEndContractTests
 {
-    [Theory]
+    [LegacyControlledFoundationTheory]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     [InlineData("integer", "83", "35", "48")]
     [InlineData("integer", "72", "29", "43")]
     [InlineData("rational", "10/3", "1/4", "37/12")]
@@ -30,7 +31,8 @@ public sealed class LegendConnectComputedLanguageEndToEndContractTests
         string teachingKind, string left, string right, string expected) =>
         VerifyResponseAsync(teachingKind, left, right, expected, requireUnseenOperands: false);
 
-    [Theory]
+    [LegacyControlledFoundationTheory]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     [InlineData("integer", "147", "26", "121")]
     [InlineData("integer", "-19", "26", "-45")]
     [InlineData("rational", "21/2", "7/3", "49/6")]
@@ -143,11 +145,13 @@ public sealed class LegendConnectComputedLanguageEndToEndContractTests
         });
     }
 
-    [Fact]
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     public Task CombinedFoundation_PreservesOriginalNumericRecombinationControl() =>
         VerifyResponseAsync("integer", "83", "35", "48", requireUnseenOperands: false, combinedFoundation: true);
 
-    [Fact]
+    [LegacyControlledFoundationFact]
+    [Trait("Category", "LegacyControlledFoundationAcceptance")]
     public Task OmittedSourceLanguage_IdentifiesAndComputesThroughNativeFounderReply() =>
         VerifyResponseAsync("integer", "147", "26", "121", requireUnseenOperands: true,
             sourceLanguageCode: null);

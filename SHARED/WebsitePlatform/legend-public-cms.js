@@ -1510,6 +1510,8 @@
     const strings = {
       navy:'--web-navy', navyDeep:'--web-navy-deep', gold:'--web-gold', goldStrong:'--web-gold-strong',
       surface:'--web-surface', text:'--web-ink', muted:'--web-muted', fontFamily:'--web-font',
+      formPanelColor:'--web-form-panel-color', formTextColor:'--web-form-text-color', formHelpColor:'--web-form-help-color',
+      formControlColor:'--web-form-control-color', formControlTextColor:'--web-form-control-text-color',
       surfaceElevated:'--web-surface-elevated', surfaceMuted:'--web-surface-muted',
       borderColor:'--web-border-color', shadowSoft:'--web-shadow-soft', shadowStrong:'--web-shadow-strong'
     };
@@ -1552,6 +1554,19 @@
       if(Number.isFinite(value) && value>=0) root.style.setProperty(cssVar,`${value}px`);
       else root.style.removeProperty(cssVar);
     });
+    // Mobile theme values reuse the same form tokens and persistence authority.
+    // Unset mobile values retain an explicit site-wide choice; otherwise CSS defaults apply.
+    if (responsiveViewportWidth() < 768) {
+      for (const [key, cssVar] of Object.entries(pixels)) {
+        if (!key.startsWith('form') || key==='formMaxWidth') continue;
+        const value=numberValue('formMobile'+key.slice(4));
+        if(Number.isFinite(value) && value>=0) root.style.setProperty(cssVar,`${value}px`);
+        else if(editorMode && !Number.isFinite(numberValue(key))) {
+          const compact=computedTheme?.getPropertyValue(cssVar.replace('--web-form-','--web-form-compact-'))?.trim();
+          if(compact) root.style.setProperty(cssVar,compact);
+        }
+      }
+    }
     // Existing supported formMaxWidth is also the opted-in Protect OUTER width.
     // An unset value leaves the shared 75% CSS default; no second theme/control.
     const formWidth=numberValue('formMaxWidth');
@@ -4944,6 +4959,7 @@
   }
 
   function refreshResponsiveComposition() {
+    applyTheme(documentState.theme);
     restoreNativeFormFrames(true);
     restoreFormStepPreview();
     if(legacyMigration){
@@ -10432,6 +10448,19 @@
           <label>Minimum control height (px)<input data-theme-key="formControlMinHeight" type="number" min="24" max="120" step="any" placeholder="Shared default"></label>
           <label>Control vertical padding (px)<input data-theme-key="formControlPaddingBlock" type="number" min="0" max="60" step="any" placeholder="Shared default"></label>
           <label>Control horizontal padding (px)<input data-theme-key="formControlPaddingInline" type="number" min="0" max="120" step="any" placeholder="Shared default"></label>
+          <p>Mobile forms (below 768px). Blank inherits your site setting or the compact shared default.</p>
+          <label>Mobile panel padding (px)<input data-theme-key="formMobilePanelPadding" type="number" min="0" max="120" step="any" placeholder="Inherit"></label>
+          <label>Mobile step gap (px)<input data-theme-key="formMobileStepGap" type="number" min="0" max="120" step="any" placeholder="Inherit"></label>
+          <label>Mobile field gap (px)<input data-theme-key="formMobileFieldGap" type="number" min="0" max="120" step="any" placeholder="Inherit"></label>
+          <label>Mobile label gap (px)<input data-theme-key="formMobileLabelGap" type="number" min="0" max="48" step="any" placeholder="Inherit"></label>
+          <label>Mobile control min height (px)<input data-theme-key="formMobileControlMinHeight" type="number" min="44" max="120" step="any" placeholder="Inherit"></label>
+          <label>Mobile control padding block (px)<input data-theme-key="formMobileControlPaddingBlock" type="number" min="0" max="60" step="any" placeholder="Inherit"></label>
+          <label>Mobile control padding inline (px)<input data-theme-key="formMobileControlPaddingInline" type="number" min="0" max="120" step="any" placeholder="Inherit"></label>
+          <label>Form panel color<input data-theme-key="formPanelColor" type="text" placeholder="Inherit site colors"></label>
+          <label>Form text color<input data-theme-key="formTextColor" type="text" placeholder="Inherit site colors"></label>
+          <label>Form help color<input data-theme-key="formHelpColor" type="text" placeholder="Inherit site colors"></label>
+          <label>Form control color<input data-theme-key="formControlColor" type="text" placeholder="Inherit site colors"></label>
+          <label>Form control text color<input data-theme-key="formControlTextColor" type="text" placeholder="Inherit site colors"></label>
         </div>
       </div>
     `;
@@ -10867,6 +10896,7 @@
   // The same canonical model drives the editor and the immutable public DOM.
   // Re-evaluate at the real visitor width without ever remounting the page.
   function refreshCompiledResponsivePresentation() {
+    applyTheme(documentState.theme);
     // A request-owned native main is not compiler output. Preserve its original
     // declarations and use the existing native responsive authority on resize.
     const nativeSlot = SITE_KEY==='protect' && renderInput?.protectNativeSlot;

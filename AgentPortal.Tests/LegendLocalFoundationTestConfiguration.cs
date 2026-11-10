@@ -20,7 +20,11 @@ internal static class LegendLocalFoundationTestConfiguration
 {
     internal static IConfigurationBuilder AddControlledFoundation(this IConfigurationBuilder builder)
     {
-        var endpoint = Environment.GetEnvironmentVariable("LEGEND_CONTROLLED_FOUNDATION_ENDPOINT");
+        var legacyOptIn = LegacyControlledFoundationAcceptance.SkipReason(
+            Environment.GetEnvironmentVariable(LegacyControlledFoundationAcceptance.OptInVariable)) is null;
+        var endpoint = legacyOptIn
+            ? Environment.GetEnvironmentVariable("LEGEND_CONTROLLED_FOUNDATION_ENDPOINT")
+            : null;
         var resourceId = Environment.GetEnvironmentVariable("LEGEND_CONTROLLED_FOUNDATION_AZURE_RESOURCE_ID");
         var hostKind = Setting("HOST_KIND") ?? "AzureVm";
         var macHostId = Setting("MAC_HOST_ID");
@@ -158,4 +162,47 @@ internal static class LegendLocalFoundationTestConfiguration
             return await base.SendAsync(request, cancellationToken);
         }
     }
+}
+
+
+// The Founder retired Mac model serving in favor of the five-model Cloudflare
+// baseline. These retained acceptance cases require deliberate legacy-resource
+// execution; ordinary backend and Cloudflare contracts must not start that host.
+internal static class LegacyControlledFoundationAcceptance
+{
+    internal const string OptInVariable = "LEGEND_LEGACY_CONTROLLED_FOUNDATION_ACCEPTANCE";
+    internal static string? SkipReason(string? optIn) =>
+        string.Equals(optIn, "true", StringComparison.OrdinalIgnoreCase) ? null :
+        "NOT_EXECUTED: retired controlled-model acceptance requires explicit " + OptInVariable +
+        "=true and verified legacy serving configuration. This is not Cloudflare qualification.";
+}
+
+public sealed class LegacyControlledFoundationFactAttribute : Xunit.FactAttribute
+{
+    public LegacyControlledFoundationFactAttribute() =>
+        Skip = LegacyControlledFoundationAcceptance.SkipReason(
+            Environment.GetEnvironmentVariable(LegacyControlledFoundationAcceptance.OptInVariable));
+}
+
+public sealed class LegacyControlledFoundationTheoryAttribute : Xunit.TheoryAttribute
+{
+    public LegacyControlledFoundationTheoryAttribute() =>
+        Skip = LegacyControlledFoundationAcceptance.SkipReason(
+            Environment.GetEnvironmentVariable(LegacyControlledFoundationAcceptance.OptInVariable));
+}
+
+public sealed class LegacyControlledFoundationApplicabilityTests
+{
+    [Xunit.Theory]
+    [Xunit.InlineData(null)]
+    [Xunit.InlineData("")]
+    [Xunit.InlineData("false")]
+    public void MissingExplicitOptInDoesNotClaimLegacyAcceptance(string? optIn) =>
+        Xunit.Assert.Contains("NOT_EXECUTED", LegacyControlledFoundationAcceptance.SkipReason(optIn));
+
+    [Xunit.Theory]
+    [Xunit.InlineData("true")]
+    [Xunit.InlineData("TRUE")]
+    public void ExplicitOptInRunsOriginalAssertions(string optIn) =>
+        Xunit.Assert.Null(LegacyControlledFoundationAcceptance.SkipReason(optIn));
 }

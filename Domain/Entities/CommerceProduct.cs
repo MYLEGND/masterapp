@@ -15,6 +15,8 @@ public sealed class CommerceProduct
 
     public string BillingKind { get; set; } = Domain.Billing.ClientSubscriptionScope.OneTimeProduct;
 
+    public string? BundleComponentsJson { get; set; }
+
     public int PriceCents { get; set; }
     public int CompareAtPriceCents { get; set; }
     public bool IsFeatured { get; set; }

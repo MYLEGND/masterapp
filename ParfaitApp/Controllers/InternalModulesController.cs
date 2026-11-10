@@ -102,7 +102,8 @@ public sealed partial class InternalModulesController : BusinessAnalyticsControl
             return BadRequest(new { error = "product_invalid", message = "Check the product fields and enter valid numbers before saving." });
         }
 
-        _products.SaveProduct(product);
+        try { _products.SaveProduct(product); }
+        catch (StoreInventoryException ex) { return BadRequest(new { error = "product_inventory_invalid", message = ex.Message }); }
         TempData["ProductStatus"] = product.IsActive
             ? "Product saved and visible."
             : "Product saved and hidden.";
@@ -125,7 +126,8 @@ public sealed partial class InternalModulesController : BusinessAnalyticsControl
     [ValidateAntiForgeryToken]
     public IActionResult DeleteProduct(string id)
     {
-        _products.DeleteProduct(id);
+        try { _products.DeleteProduct(id); }
+        catch (StoreInventoryException ex) { return BadRequest(new { error = "product_inventory_invalid", message = ex.Message }); }
         TempData["ProductStatus"] = "Product deleted.";
         return RedirectToAction(nameof(Products));
     }
