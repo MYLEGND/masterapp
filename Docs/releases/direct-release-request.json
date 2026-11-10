@@ -2,7 +2,7 @@
   "requestedBy": "Founder",
   "authorization": "Founder authorized one canonical Mac checkout and persistent synthetic local testing. Integrate the reviewed cleanup source only; no production migration, configuration change or deployment is authorized by this request.",
   "purpose": "Synchronize canonical Mac source intake and persistent local test database safeguards without production publishing.",
-  "requestId": "source-integration-canonical-mac-local-testing-20261110-v1",
+  "requestId": "source-integration-canonical-mac-local-testing-20261110-v2",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -79,6 +79,6 @@
   "sourceIntegration": {
     "schemaVersion": 1,
     "baseRevision": "8a024d55d6c3eaa7836b17732b78da06e3250225",
-    "sourceRevision": "f284925cb26e29ea96d6b898e8c352abf349e3f8"
+    "sourceRevision": "19d51b9edcc80e275c29a183888ab7edd16eac21"
   }
 }
