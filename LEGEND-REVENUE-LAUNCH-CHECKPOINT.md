@@ -4584,3 +4584,92 @@ No TestFlight build submission, App Store release, backend deployment or fast-tr
 integration is claimed. The earlier Store/mobile integration hold remains unchanged.
 Source preservation is established only by mandatory session-finish exact remote
 readback, separately from Apple validation and later distribution.
+
+## Current consolidated Mac release source — 2026-11-09
+
+Founder authorized consolidation of ad-measurement and other work needing release
+onto one source path. This authorizes the bounded source merges below and checkout
+alignment; the no-deployment hold remains. Protected fast-track is not updated
+because its push workflow can publish. Existing release mechanisms remain unchanged.
+
+**Use /Users/zacowen/MASTERAPP for editing, localhost tests and future release
+preparation. Active branch: isolation/ad-measurement-canonical-20261109.**
+The existing Git setting legend.nativeTestingRef now points to that branch's origin
+ref, so native checks and the active web checkout share the same source authority.
+The former ad-measurement worktree is retained detached at implementation
+fe1cf850f74b29a925e0b24330e68238f38719c7, not an independently advancing release lane.
+No branch, commit, worktree, ignored configuration or recovery history was deleted.
+
+Consolidated ancestry, reviewed separately before each merge commit:
+- Original Mac bbeeb43b7d7f43c4f79d29939a65a23c2eeca144, including the local
+  build35 commit, through be313d818. Original branch remains intact.
+- Mobile20c28227f6a0169ff4703bd46de1173f1d1b664a through7a5e2d483. All three
+  canonical iOS configurations now1.0.1(35). The checkpoint conflict retained
+  the complete current record and appended the entire historical mobile record.
+  Apple validation/upload remains unverified; its historical archive is not a new
+  final-candidate artifact. plist syntax and version consistency passed.
+- Missing ClientApp OIDC recovery PR133 headbacdf6fad6ff13c6b38582b041ec0453aa8abe88
+  throughfe1cf850f74b29a925e0b24330e68238f38719c7, with original history preserved.
+  Current callback now restarts canonical login for unreadable/empty state, retaining
+  normalized local return URLs, transient-cookie cleanup, sign-out and fail-closed
+  handling of unrelated failures. Failed callbacks never authenticate.
+
+Analyzer-enabled .NET10 build and24focused tests passed,0failed,0skipped: eight
+actual ClientApp startup callback regressions and16existing redirect tests. Command:
+`env MasterAppArtifactsRoot=/private/tmp/legend-ad-measurement-20261109-build
+DOTNET_PROCESSOR_COUNT=2 DOTNET_gcServer=0 GITHUB_WORKSPACE="$PWD"
+dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj
+--filter 'FullyQualifiedName~ClientAppOidcStateRecoveryTests|FullyQualifiedName~ClientAppSubscriptionRedirectTests'
+-m:1 -nr:false -p:UseSharedCompilation=false -p:RunAnalyzers=true`.
+Final log: /private/tmp/legend-oidc-consolidation-isolated.log. Synthetic startup
+values restore in finally under the existing nonparallel environment collection;
+no host worker, SQL or external identity provider runs in those tests. Earlier
+fixture attempts failed compilation(two constructor errors), then8cases twice
+(wrong entry assembly, then early startup configuration); these were corrected,
+not counted as passing. Five existing compiler warnings remain unchanged.
+The prior6,639-pass backend gate belongs to5b8607b82; it is retained compatible
+evidence for unchanged backend source, not relabeled as a new full-suite run.
+Broader final release gates and rendered journeys remain outstanding.
+
+Source inventory evidence: Docs/releases/source-consolidation-inventory-20261109.json.
+410local/remote refs and762PR records were examined. Relative to5b8607b82,215tips
+were not ancestry-contained:57had patch-equivalent nonmerge changes,2had patches
+present in current files,10had exact-tip merged-PR ancestry;146required further
+applicability classification, including backups, closed proposals, old operational
+branches and draft work. These are evidence categories, not acceptance guarantees.
+The snapshot records exact identities and preserves unresolved scope. Do not merge
+all old branches or replay historical operations merely because ancestry differs.
+
+Priority applicability findings from independent review: release-history PR672 and
+Studio protection PR313 behavior already exists; the old Quick Find ordering in
+PR322 is superseded by the current subview design; PR305's Explore-close fix exists,
+with other portions still unclassified. PR293's live-provider verification is
+**genuinely outstanding**, not superseded: stored ChatGPT Ads connection timestamps
+are not proof of live provider acceptance. Hold its current-owner integration and
+provider qualification explicitly. Other unclassified proposals remain held in this
+same release record; this consolidation does not claim every historical proposal
+is implemented or ready. Cloud-workspace preparation is excluded from this direct
+Mac scope. No local-model restoration or paid inference was performed.
+
+The dirty historical Parfait checkpoint in the older follow-up worktree was left
+untouched; its added deployment note already exists in this canonical checkpoint.
+Root local launch settings are byte-identical across checkout alignment, including
+the removed empty AzureAd secret override and the verified loopback SQL database.
+The local VS Code run-on-save Git auto-commit command was paused to prevent a
+concurrent writer; its original private settings and launch profile were backed up
+under /private/tmp/legend-release-checkout-config-preservation. The explicit manual
+Git task is retained. No credentials entered Git or this evidence snapshot.
+
+Root AgentPortal compiled successfully using the installed .NET 10 SDK. An initial
+startup encountered the old local process occupying port 6205; after stopping that
+verified root-checkout process, the new build started on https://localhost:6205 and
+http://localhost:6206, reported zero pending migrations, and returned HTTP 200 from
+both /healthz and /readyz. A process-only empty AzureAd secret suppressed external
+directory activity during this smoke check; the saved launch profile was unchanged.
+The smoke-test process was stopped so normal dotnet run can use the existing Mac
+secret and free ports. Real login and rendered acceptance journeys remain unverified.
+Logs: /private/tmp/legend-consolidated-root-startup.log and
+/private/tmp/legend-consolidated-root-verified.log. Exact final checkpoint commit
+and remote preservation must be read from native Git session-finish output.
+No deployment artifacts, protected merge, production migration, Studio publication
+or campaign changes are claimed.
