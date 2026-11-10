@@ -17,6 +17,7 @@ using Infrastructure.Businesses;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+Infrastructure.Diagnostics.LocalTestingHost.Configure(builder);
 Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
 
 builder.Services.AddControllersWithViews()
@@ -121,6 +122,7 @@ static string? ResolveMasterDb(IConfiguration config)
 }
 
 var configuredDb = ResolveMasterDb(builder.Configuration);
+Infrastructure.Data.LocalDevelopmentDatabase.ValidateTarget(builder.Environment, configuredDb);
 
 builder.Services.AddDbContext<MasterAppDbContext>(options =>
 {
@@ -128,7 +130,7 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
         throw new InvalidOperationException("Missing MasterAppDb connection string for Parfait analytics.");
 
     if (configuredDb.TrimStart().StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
-        options.UseSqlite(configuredDb);
+        options.UseSqlite(Infrastructure.Data.LocalDevelopmentDatabase.ExistingSqliteConnection(configuredDb));
     else
         options.UseSqlServer(configuredDb);
 });
@@ -300,6 +302,7 @@ builder.Services.AddSession(options =>
 
 builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
 
+Infrastructure.Diagnostics.LocalTestingHost.Prepare(builder);
 var app = builder.Build();
 
 {
@@ -314,11 +317,13 @@ var app = builder.Build();
         .CreateLogger("ParfaitStartup");
 
     var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+    if (app.Environment.IsDevelopment())
+        await Infrastructure.Data.LocalDevelopmentDatabase.RequireReadyAsync(db, app.Lifetime.ApplicationStopping);
 
     if (db.Database.IsSqlite())
     {
-        await MasterAppSqliteSchemaBootstrapper.InitializeAsync(db, startupLogger, app.Lifetime.ApplicationStopping);
-        startupLogger.LogInformation("Parfait SQLite startup schema bootstrap completed successfully.");
+        await Infrastructure.Data.LocalDevelopmentDatabase.RequireReadyAsync(db, app.Lifetime.ApplicationStopping);
+        startupLogger.LogInformation("Existing Parfait database verified; startup schema creation is disabled.");
     }
     else
     {

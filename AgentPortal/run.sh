@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-cd "$(dirname "$0")"
-python3 ../scripts/sync-published-checkout.py --sync-workspace
-dotnet run --project AgentPortal.csproj -c Debug
+cd "$(dirname "$0")/.."
+exec bash scripts/db.sh local run portal

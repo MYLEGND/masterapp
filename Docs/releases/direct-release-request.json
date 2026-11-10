@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized completion of the direct Mac Azure release and source synchronization. All five apps are deployed and live-verified at ea128c942b7d8bd4452b5ec6abc591ee624111fc. Integrate the preserved source and deployment checkpoint only; no production mutation or repeat deployment is authorized by this request.",
-  "purpose": "Synchronize the completed five-app Mac release and verified deployment checkpoint into Legend/fast-track-release without publishing again.",
-  "requestId": "source-integration-mac-azure-completed-20261110-v1",
+  "authorization": "Founder authorized one canonical Mac checkout and persistent synthetic local testing. Integrate the reviewed cleanup source only; no production migration, configuration change or deployment is authorized by this request.",
+  "purpose": "Synchronize canonical Mac source intake and persistent local test database safeguards without production publishing.",
+  "requestId": "source-integration-canonical-mac-local-testing-20261110-v2",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -78,7 +78,7 @@
   },
   "sourceIntegration": {
     "schemaVersion": 1,
-    "baseRevision": "6eed2f4ab7adad92a07f999295582dcb00355181",
-    "sourceRevision": "0128319aa26c495682e65ab69d07d997d50f738c"
+    "baseRevision": "8a024d55d6c3eaa7836b17732b78da06e3250225",
+    "sourceRevision": "19d51b9edcc80e275c29a183888ab7edd16eac21"
   }
 }

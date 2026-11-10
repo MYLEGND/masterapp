@@ -1,77 +1,85 @@
-# Local workspace synchronization
+# One Mac checkout and persistent local testing
 
-`scripts/sync-published-checkout.py` remains the single pull-only synchronization
-authority. It fetches the selected GitHub branch and permits only a fast-forward
-of the existing checkout. It never pushes, deploys, switches branches, resets,
-rebases, cleans, or stashes work. Even a user's `merge.autoStash=true` setting is
-overridden with `--no-autostash`.
+Zac's active Mac checkout is `/Users/zacowen/MASTERAPP`. Its host-local Git setting
+`legend.canonicalCheckout` pins that path. The existing
+`scripts/sync-published-checkout.py` owner refuses alternate linked worktrees when
+that pin is present. Other machines retain their own authorized continuity flow.
+Do not create a fresh checkout or database to resume existing work.
 
-The existing `AgentPortal/run.sh` and `ClientApp/run.sh` launchers invoke
-`--sync-workspace` before starting the application. That mode uses the explicit
-`legend.nativeTestingRef` setting when present; without a setting it preserves the
-original production-only behavior. An empty or invalid explicit setting is an
-error, never permission to fall back to a different branch.
+## Bring source into the Mac
 
-## Existing automatic schedule
-
-The user's existing macOS LaunchAgent,
-`~/Library/LaunchAgents/com.mylegnd.native-checkout-sync.plist`, invokes this same
-helper with `--sync-native --strict` at login and every 60 seconds. There is no
-second daemon, synchronization implementation, or scheduler to install. The
-September 18 read-only inspection found this job loaded with `RunAtLoad=true`,
-`StartInterval=60`, and output directed to `/dev/null`; its last recorded exit was
-1. That exit alone does not identify a particular skip reason.
-
-Automatic native synchronization requires both:
-
-- `legend.nativeTestingRef` is a full `refs/remotes/origin/<branch>` reference.
-- The current local branch already tracks that exact origin branch.
-
-The helper keeps that target and local branch pinned across the fetch. If either
-changes during synchronization, it refuses to update source. It does not infer
-that a newly deployed release is the user's intended test branch. Choosing a new
-upstream or checking out a new branch remains an explicit setup action, separate
-from this automatic helper. Preserve any unique historical/local branch before
-changing the workspace's branch; do not reset it to make synchronization pass.
-
-## Preservation and idle requirements
-
-Xcode, Android Studio, native compiler/build processes, and running .NET builds or
-apps block native synchronization before fetching and are checked again before
-merging. Idle Java/Gradle daemons do not block; active Gradle wrappers do. An open
-Code/Codex application alone is not a blocker. Process-inspection failure blocks
-synchronization instead of guessing that the workspace is idle.
-
-Native mode permits nonconflicting local tracked/untracked edits and leaves them
-in place. Git refuses incoming changes that conflict with local work, including
-ignored configuration collisions. Production-only mode requires a completely
-clean tracked/untracked checkout. In-progress Git operations, changing HEAD,
-local commits ahead of/divergent from the remote, and concurrent sync attempts
-also prevent updates. The existing per-checkout lock coordinates helper runs;
-it does not lock arbitrary external editors or Git commands.
-
-When a run skips, the periodic job can retry at the next interval. The startup
-launchers print the reason and continue using existing local files; `--strict`
-makes skipped synchronization return a failing exit code. Closing the protected
-native IDE/build and reconciling conflicting work allows a later automatic run.
-A source update does not restart apps or install native binaries.
-
-## Read-only readiness
-
-From the intended checkout:
+Finish and preserve the current task before importing source. From the canonical
+checkout, stop app/build processes and use:
 
 ```sh
-python3 -B scripts/sync-published-checkout.py --sync-workspace --status
+python3 -B scripts/sync-published-checkout.py --import-source Legend/fast-track-release --expected-source FULL_REVIEWED_SHA
 ```
 
-This reports whether local preconditions permit synchronization. It performs no
-fetch, merge, source write, lock-file write, or Git configuration change. Its
-`remoteFreshness: not_checked` field is intentional: local readiness cannot prove
-that the checkout matches current GitHub. Add `--strict` for a nonzero exit when
-blocked. The native Xcode/Gradle build checks remain read-only and do not fetch.
+For another authorized GitHub branch, pass its exact branch name and reviewed full
+SHA to the same command. Codespaces must first preserve original commits on the
+canonical GitHub repository, then use this intake. Offline recovery retains the
+existing verified bundle session modes; a temporary bundle is not durable recovery.
+Never copy a Codespace database, user secrets or environment file into the Mac.
 
-Validation: `python3 -B scripts/test-sync-published-checkout.py` uses disposable
-real Git repositories to cover fast-forward/current states, local work and
-ignored-file preservation, configured autostash refusal, branch/target changes
-during fetch, divergence, missing upstreams, blocked processes, and read-only
-status. It also retains the build-provenance and native-checkout tests.
+Intake checks canonical origin, clean source, expected remote head, ancestry and
+active processes. It fast-forwards the current `isolation/` branch without switching
+branches, resetting, stashing, deploying or touching the database. Divergence stops
+with the existing work retained; reconcile reviewed commits explicitly. Normal
+session preflight/finish, independent review and protected fast-track integration
+still apply. Launching an app never pulls Git changes.
+
+The former every-minute `com.mylegnd.native-checkout-sync` LaunchAgent and automatic
+Azure SQL firewall updater were retired on this Mac on 2026-11-10. Their verified
+backups are under `~/.codex/legend-mac/retired-automatic-jobs-20261110/`. Do not
+reinstall them as a workaround for a dirty checkout or a denied production read.
+
+## Persistent local test database
+
+All four managed app launchers use the existing database owner:
+
+```sh
+bash scripts/db.sh local status
+bash scripts/db.sh local run portal
+# Other app names: client, protect, parfait
+```
+
+The shared local SQL Server database is `MasterAppLocalTest`, in Docker's named
+volume `legend-masterapp-local-test`, exposed only at `127.0.0.1:14339`. Its private
+identity and generated local credentials live outside Git under
+`~/.local/share/legend/masterapp-local-test/`. Source intake, app launches and app
+restarts preserve that database. Startup checks identity and schema readiness;
+it never recreates a missing database or silently falls back to SQLite/production.
+
+`local start` and `local stop` retain the volume. `local migrate` explicitly invokes
+the existing local migration owner against this database. Review schema changes
+and retain recovery before applying destructive migrations. `local init` is a
+one-time explicit operation only; it refuses an existing configuration, container
+or volume. It generates the current EF model from source, initializes migration
+metadata and a unique identity, and imports no customer data. This initial model
+bootstrap is **not** proof that the production migration chain has been rehearsed;
+the existing isolated migration release gate remains required when applicable.
+
+Normal Development startup rejects remote SQL targets. Local testing launchers
+strip inherited provider credentials; local testing host configuration removes
+operator user secrets and application background workers. This protects database
+separation but does not prove every external integration is sandboxed. Exercise
+payment, messaging and provider journeys only with their explicit test configuration;
+do not load production credentials or copy customer records into local testing.
+Use synthetic test accounts and retain useful synthetic scenarios across releases.
+
+Explicit isolated read-only website capture fixtures remain separate test tools;
+they are not the normal app launch path or a replacement persistent database.
+
+## Release continuity
+
+The canonical release state is `LEGEND-REVENUE-LAUNCH-CHECKPOINT.md`, with actual
+GitHub heads and provider receipts. Incoming source is tested on the Mac before
+an authorized production release. Use the existing admitted release, mutex and
+receipt owners; stop affected apps only when upload-ready accepted packages exist,
+then deploy, restart and verify. Source-only fast-track integration must not replay
+successful production uploads. Archived worktrees and dated release artifacts are
+recovery evidence, never active checkout instructions.
+
+Focused checks: `python3 -B scripts/test-sync-published-checkout.py`,
+`python3 -B scripts/test-local-test-database.py`, and
+`LocalDevelopmentDatabaseTests` in `AgentPortal.Tests`.

@@ -26,6 +26,7 @@ using Shared.Diagnostics;
 using Shared.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
+Infrastructure.Diagnostics.LocalTestingHost.Configure(builder);
 builder.Services.AddScoped<Infrastructure.Analytics.IAnalyticsQueryService, Infrastructure.Analytics.AnalyticsQueryService>();
 Infrastructure.Analytics.MarketingServiceRegistration.AddMarketingConnections(builder.Services);
 builder.Services.AddScoped<Infrastructure.Businesses.BusinessWorkspaceService>();
@@ -143,6 +144,7 @@ static bool IsSqlServerConn(string? cs)
 // MasterAppDb is SQL Server only. ClientApp must never create, select,
 // or fall back to a local SQLite database.
 var configuredDb = builder.Configuration.GetConnectionString("MasterAppDb");
+Infrastructure.Data.LocalDevelopmentDatabase.ValidateTarget(builder.Environment, configuredDb);
 
 if (!IsSqlServerConn(configuredDb))
 {
@@ -410,6 +412,7 @@ Task CompleteClientSignInAsync(TokenValidatedContext context) =>
 
 builder.Services.AddRuntimeDiagnostics(builder.Configuration, builder.Environment);
 
+Infrastructure.Diagnostics.LocalTestingHost.Prepare(builder);
 var app = builder.Build();
 
 // ------------------------------------------------------------
@@ -470,32 +473,13 @@ app.Use(async (context, next) =>
 });
 
 // ------------------------------------------------------------
-// STARTUP CHECKS (DON'T KILL SITE)
-// ------------------------------------------------------------
+// Read-only local readiness: a launch must never create or migrate a database.
+// Production readiness remains owned by the deployment admission.
+if (app.Environment.IsDevelopment())
 {
-    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("StartupChecks");
-
-    try
-    {
-        using var scope = app.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
-
-        // ✅ IMPORTANT: Do NOT auto-run migrations in production for ClientApp.
-        // Migrations should be applied by you (CI/CD or manual) to Azure SQL.
-        if (app.Environment.IsDevelopment())
-        {
-            db.Database.Migrate();
-            logger.LogInformation("DEV: DB migration completed OK.");
-        }
-        else
-        {
-            logger.LogWarning("PROD: Skipping db.Database.Migrate() in ClientApp (by design).");
-        }
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "DB migration check failed.");
-    }
+    using var scope = app.Services.CreateScope();
+    await Infrastructure.Data.LocalDevelopmentDatabase.RequireReadyAsync(
+        scope.ServiceProvider.GetRequiredService<MasterAppDbContext>(), app.Lifetime.ApplicationStopping);
 }
 
 // ✅ MVC endpoints

@@ -33,7 +33,52 @@ class PublishedCheckoutSyncTests(unittest.TestCase):
         self.git(self.root, 'clone', '-b', 'Legend/fast-track-release', str(self.remote), str(self.local))
         self.identity(self.local)
 
+    def pin_intake(self):
+        self.git(self.local, 'branch', '-m', 'isolation/local-test')
+        self.git(self.local, 'config', 'legend.canonicalCheckout', str(self.local))
+
+    def test_pinned_source_intake_keeps_branch_and_ignored_database(self):
+        self.pin_intake()
+        (self.local / '.git/info/exclude').write_text('persistent.db\n')
+        (self.local / 'persistent.db').write_bytes(b'existing local data')
+        self.publish()
+        expected = self.git(self.publisher, 'rev-parse', 'HEAD')
+        with patch.object(sync, 'CANONICAL_REMOTES', {str(self.remote)}), patch.object(sync, 'active_build_or_app', return_value=False):
+            sync.import_source(self.local, 'Legend/fast-track-release', expected)
+        self.assertEqual(self.git(self.local, 'branch', '--show-current'), 'isolation/local-test')
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), expected)
+        self.assertEqual((self.local / 'persistent.db').read_bytes(), b'existing local data')
+
+    def test_source_intake_refuses_divergence_without_switch_or_reset(self):
+        self.pin_intake()
+        self.commit(self.local, 'local.txt', 'preserve local work')
+        head = self.git(self.local, 'rev-parse', 'HEAD')
+        self.publish()
+        with patch.object(sync, 'CANONICAL_REMOTES', {str(self.remote)}):
+            with self.assertRaisesRegex(sync.SyncSkipped, 'diverges'):
+                sync.import_source(self.local, 'Legend/fast-track-release')
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), head)
+        self.assertEqual((self.local / 'local.txt').read_text(), 'preserve local work')
+
+    def test_source_intake_rejects_wrong_expected_head(self):
+        self.pin_intake()
+        self.publish()
+        head = self.git(self.local, 'rev-parse', 'HEAD')
+        with patch.object(sync, 'CANONICAL_REMOTES', {str(self.remote)}):
+            with self.assertRaisesRegex(sync.SyncSkipped, 'expected incoming'):
+                sync.import_source(self.local, 'Legend/fast-track-release', head)
+        self.assertEqual(self.git(self.local, 'rev-parse', 'HEAD'), head)
+
+    def test_alternate_checkout_cannot_sync_when_canonical_pin_exists(self):
+        self.git(self.local, 'config', 'legend.canonicalCheckout', str(self.publisher))
+        with self.assertRaisesRegex(sync.SyncSkipped, 'Retired/alternate'):
+            sync.sync_checkout(self.local, process_probe=lambda: False)
+
     def use_legacy_native_checkout(self):
+        # Pack the mixed-case namespace before creating legacy refs on macOS.
+        self.git(self.remote, 'pack-refs', '--all', '--prune')
+        self.git(self.publisher, 'pack-refs', '--all', '--prune')
+        self.git(self.local, 'pack-refs', '--all', '--prune')
         self.git(self.publisher, 'branch', '-m', 'legend/approved-changes')
         self.git(self.publisher, 'push', '-u', 'origin', 'legend/approved-changes')
         self.git(self.local, 'fetch', 'origin')

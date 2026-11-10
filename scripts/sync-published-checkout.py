@@ -86,6 +86,18 @@ def native_target(repo):
     return target
 
 
+def assert_canonical_checkout(repo, required=False):
+    """A host-local pin is shared by linked worktrees, never copied through Git."""
+    configured = git(repo, 'config', '--get', 'legend.canonicalCheckout', missing_ok=True)
+    if configured is None and not required:
+        return
+    if not configured or not Path(configured).is_absolute():
+        raise SyncSkipped('Configure legend.canonicalCheckout for the existing Mac checkout before local app use.')
+    actual = Path(git(repo, 'rev-parse', '--show-toplevel')).resolve()
+    if actual != Path(configured).resolve():
+        raise SyncSkipped('Retired/alternate checkout: use the configured canonical Mac checkout. No source or database changed.')
+
+
 def native_editor_or_build_active():
     result = subprocess.run(['ps', '-axo', 'comm='], text=True, capture_output=True, timeout=10)
     if result.returncode:
@@ -112,6 +124,7 @@ def native_editor_or_build_active():
 
 def assert_ready(repo, expected_head=None, process_probe=active_build_or_app, native=False,
                  expected_target=None, expected_branch=None):
+    assert_canonical_checkout(repo)
     target = native_target(repo) if native else 'refs/remotes/origin/Legend/fast-track-release'
     branch = git(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD')
     if expected_target is not None and target != expected_target:
@@ -164,6 +177,7 @@ def sync_checkout(repo, process_probe=None, native=False):
 
 
 def check_native_checkout(repo, provenance_output=None):
+    assert_canonical_checkout(repo)
     """Verify the build source against the existing locally known testing ref.
 
     This never fetches, updates the index, modifies source, or rejects current
@@ -264,6 +278,7 @@ CANONICAL_REMOTES = {
 
 
 def session_identity(repo, branch):
+    assert_canonical_checkout(repo)
     git(repo, 'check-ref-format', 'refs/heads/' + branch)
     if not branch.startswith('isolation/'):
         raise SyncSkipped('Session continuity requires an explicitly authorized isolation branch.')
@@ -549,6 +564,37 @@ def session_fast_forward(repo, branch, expected, target):
         raise SyncSkipped('Checkout changed during recovery; inspect exact identities before proceeding.')
 
 
+def import_source(repo, source_branch, expected_source=None):
+    """Bring published original commits into the pinned checkout; never launch apps or touch a database."""
+    assert_canonical_checkout(repo, required=True)
+    branch = git(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD')
+    session_identity(repo, branch)
+    git(repo, 'check-ref-format', 'refs/heads/' + source_branch)
+    directory = Path(git(repo, 'rev-parse', '--absolute-git-dir'))
+    with (directory / 'legend-published-sync.lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise SyncSkipped('Another continuity/sync operation is running.') from error
+        if git(repo, 'status', '--porcelain=v1', '--untracked-files=all'):
+            raise SyncSkipped('Preserve and commit current work before source intake; no stash/reset is performed.')
+        head = git(repo, 'rev-parse', 'HEAD')
+        incoming = remote_head(repo, source_branch)
+        if expected_source is not None and incoming != expected_source:
+            raise SyncSkipped('Published source differs from the expected incoming commit.')
+        git(repo, 'fetch', '--no-tags', '--no-recurse-submodules', 'origin',
+            'refs/heads/' + source_branch + ':refs/remotes/origin/' + source_branch)
+        if remote_head(repo, source_branch) != incoming or git(repo, 'rev-parse', 'FETCH_HEAD') != incoming:
+            raise SyncSkipped('Incoming source moved during inspection; no checkout update attempted.')
+        if not ancestor(repo, head, incoming):
+            raise SyncSkipped('Incoming source diverges from current work. Preserve both and integrate on this checkout; never replace it or start from an older branch.')
+        if head != incoming:
+            session_fast_forward(repo, branch, head, incoming)
+        print(json.dumps(dict(status='SOURCE_IMPORTED' if head != incoming else 'CURRENT',
+                              checkout=str(Path(repo).resolve()), branch=branch, sourceBranch=source_branch,
+                              head=incoming, databaseAction='NONE', appLaunch='NONE', push='NONE')))
+
+
 def validate_completion(repo, args):
     if not args.review_accepted or not args.authorize_push:
         raise SyncSkipped('Completion requires independent acceptance and explicit push authorization; never infer either from tests.')
@@ -616,7 +662,8 @@ def cloud_restore_archive(path, digest, branch, base, head):
     if bundle_digest(path) != digest:
         raise SyncSkipped('Cloud archive SHA-256 mismatch; restoration refused.')
     with tempfile.TemporaryDirectory(prefix='legend-cloud-restore-') as directory:
-        root = Path(directory)
+        # macOS /var is a host symlink, not an archive-controlled path.
+        root = Path(directory).resolve()
         with zipfile.ZipFile(path) as archive:
             names = archive.namelist()
             if len(names) != len(set(names)) or any(x not in {'LEGEND.bundle','state.json'} and not re.fullmatch(r'lfs/[0-9a-f]{64}',x) for x in names):
@@ -947,10 +994,23 @@ def main(argv=None):
     modes.add_argument('--sync-native', action='store_true', help='Synchronize the configured native tracking checkout when editors/builds are closed; preserve conflicting work.')
     modes.add_argument('--sync-workspace', action='store_true', help='Use the explicit native testing ref when configured; otherwise synchronize the clean Legend/fast-track-release checkout.')
     modes.add_argument('--check-native', action='store_true', help='Fail if this checkout lacks the configured locally known native testing revision; never fetch or mutate source.')
+    modes.add_argument('--import-source', metavar='ORIGIN_BRANCH', help='Explicit fast-forward intake from fast-track or a published Codespaces/GitHub branch into the same pinned Mac checkout; never touches databases.')
+    parser.add_argument('--expected-source', help='Optional exact published source SHA for explicit intake.')
     parser.add_argument('--status', action='store_true', help='Report local readiness only; do not fetch, merge, or write a lock/artifact.')
     parser.add_argument('--strict', action='store_true', help='Return a failing exit status if synchronization is skipped.')
     parser.add_argument('--native-provenance-output', type=Path, help='With --check-native, write verified checkout metadata to a generated build artifact outside source/Git.')
     args = parser.parse_args(argv)
+    if args.expected_source is not None and not args.import_source:
+        parser.error('--expected-source requires --import-source')
+    if args.import_source:
+        if args.status or args.native_provenance_output is not None:
+            parser.error('Source intake cannot be combined with status/provenance modes')
+        try:
+            import_source(Path(__file__).resolve().parent.parent, args.import_source, args.expected_source)
+            return 0
+        except (SyncSkipped, OSError, subprocess.TimeoutExpired) as error:
+            print('SOURCE INTAKE BLOCKED: ' + str(error), file=sys.stderr)
+            return 1
     if args.status and (args.check_native or args.native_provenance_output is not None):
         parser.error('--status is read-only and cannot emit build provenance')
     if args.native_provenance_output is not None and not args.check_native:
