@@ -4807,3 +4807,17 @@ ae5a3b769e5a8c4bf7593081a9d0cf62ff473b718bbf7523d39cd8bca25dde4d.
 Receipt: /private/tmp/legend-ad-release-migration/rehearsal-result.json. No production
 mutation has occurred. Founder explicitly requested deployment before remaining
 follow-up; record any deferred local visual acceptance honestly, never as PASS.
+
+
+### Full disposable migration gate closure
+
+The pending-migration filter also required the exact bundle descriptor to be
+recognized separately from its legacy mobile-only fallback. It now reuses the
+same exact bundle descriptor check as suffix validation. No unknown entry is
+admitted. The complete canonical migration-probe-package.py test-contract command
+passed locally, including every disposable SQL scenario, with marker
+LEGEND_PAYMENT_SQL_CONTRACT:PASS:synthetic-only:not-release-admission.
+Log: /private/tmp/legend-ad-release-full-schema-contract.log. This closes the
+observed CI initialize failure at RehearsalFixture.cs246; preserve current-head CI
+separately. Final operational owner and SQL wrapper are independently accepted,
+with Founder-deferred visual verification explicit and other gates retained.

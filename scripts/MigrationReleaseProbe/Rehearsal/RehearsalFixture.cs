@@ -228,6 +228,7 @@ internal static partial class RehearsalFixture
         if (pending.Length != count || pending.Any(m => (!m.Supported && !IsExpandedFixture(m) && !IsSetupGuideFixture(m)) ||
             (ExpandedMigrations.Contains(m.Id) && !IsExpandedFixture(m)) ||
             (m.Id == SetupGuideMigration && !IsSetupGuideFixture(m)) ||
+            (m.Id == BundleMigration && !IsBundleFixture(m)) ||
             (m.Id == retentionMigration && (m.Columns.Length != 1 || m.Tables.Length != 0 ||
                 m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 || m.Columns[0] is not {
                     Schema: "dbo", Table: "WebsiteContentVersion", Name: "SnapshotRetiredUtc",
@@ -240,7 +241,7 @@ internal static partial class RehearsalFixture
             (m.Id == ManagementMigration && !IsManagementFixture(m)) ||
             (m.Id == CanonicalPaymentMigration && !IsCanonicalPaymentFixture(m)) ||
             (m.Id == CandidateContract.TrainingMigration && !IsTrainingFixture(m)) ||
-            (!ExpandedMigrations.Contains(m.Id) && m.Id != SetupGuideMigration && !CandidateContract.IsStoreMigration(m.Id) && m.Id != CandidateContract.CrmMigration && m.Id != CandidateContract.DiagnosticsMigration && m.Id != CandidateContract.BrowserMigration && m.Id != ManagementMigration && m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration && m.Id != CandidateContract.TrainingMigration &&
+            (!ExpandedMigrations.Contains(m.Id) && m.Id != SetupGuideMigration && m.Id != BundleMigration && !CandidateContract.IsStoreMigration(m.Id) && m.Id != CandidateContract.CrmMigration && m.Id != CandidateContract.DiagnosticsMigration && m.Id != CandidateContract.BrowserMigration && m.Id != ManagementMigration && m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration && m.Id != CandidateContract.TrainingMigration &&
             (m.Tables.Length != 0 || m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 ||
             m.Columns.Any(c => c.Schema != "dbo" || c.Table != "MobileProfileSettings")))))
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");

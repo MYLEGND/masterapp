@@ -17,6 +17,9 @@ internal static partial class RehearsalFixture
     private const string PromotionMigration = "20261104014500_TrainingPromotionMemberLimits";
     internal const string BundleMigration = "20261110000000_AddCommerceBundleInventory";
     private static bool HasBundleMigration(MasterAppDbContext db) => db.GetService<IMigrationsAssembly>().Migrations.ContainsKey(BundleMigration);
+    private static bool IsBundleFixture(CandidateContract.Entry entry) => entry.Id == BundleMigration &&
+        JsonSerializer.Serialize(entry, CandidateContract.Json) == JsonSerializer.Serialize(
+            CandidateContract.Describe(BundleMigration, ExpectedStandaloneOperations(BundleMigration)), CandidateContract.Json);
     private static readonly string[] ExpandedMigrations = [OwnerMigration, AutomationMigration, ShippingMigration, MemberMigration, PromotionMigration];
     private static readonly Guid ExpandedBusiness = Guid.Parse("b1000000-0000-0000-0000-000000000001");
     private static readonly Guid ExpandedAuthorization = Guid.Parse("b1000000-0000-0000-0000-000000000002");
@@ -109,9 +112,7 @@ internal static partial class RehearsalFixture
         {
             var operations = assembly.CreateMigration(assembly.Migrations[BundleMigration], db.Database.ProviderName!).UpOperations;
             var entries = contract.Migrations.Where(m => m.Id == BundleMigration).ToArray();
-            if (!ExactStandaloneFixtureOperations(BundleMigration, operations) || entries.Length != 1 ||
-                JsonSerializer.Serialize(entries[0], CandidateContract.Json) != JsonSerializer.Serialize(
-                    CandidateContract.Describe(BundleMigration, ExpectedStandaloneOperations(BundleMigration)), CandidateContract.Json))
+            if (!ExactStandaloneFixtureOperations(BundleMigration, operations) || entries.Length != 1 || !IsBundleFixture(entries[0]))
                 throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
         }
         if (!ExactOwnerFixtureOperations(assembly.CreateMigration(assembly.Migrations[OwnerMigration], db.Database.ProviderName!).UpOperations))
