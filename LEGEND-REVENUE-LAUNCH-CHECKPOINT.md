@@ -4673,3 +4673,40 @@ Logs: /private/tmp/legend-consolidated-root-startup.log and
 and remote preservation must be read from native Git session-finish output.
 No deployment artifacts, protected merge, production migration, Studio publication
 or campaign changes are claimed.
+
+
+## Direct Mac Azure release resume — 2026-11-09 Phoenix
+
+Founder authorizes all five affected web targets from the single active checkout
+`/Users/zacowen/MASTERAPP`, using Azure stop, verified upload, then restart.
+Implementation `04f6a9be8f6d016d0e5637ddf041c58600b2601d` includes the reviewed Parfait sign-in privacy correction,
+its actual-startup and Razor regression coverage, and the updated release request.
+Independent Codex review `/root/release_review` accepted exact file hashes; this is
+not Astra acceptance or deployment admission. Review and test receipts are retained
+locally under `AgentPortal/App_Data/release-resume-20261109/` (ignored).
+
+Analyzer-enabled focused tests: 31 passed, 0 failed, 0 skipped. The interrupted
+prior test run aborted when the sandbox denied its local socket; the rerun with
+approved local access passed. Existing 6,639-test evidence remains attributed to
+its original candidate. No new full-suite, rendered localhost or CI pass is claimed.
+
+Resume read-only Azure inventory confirmed portal, client, protect, parfait and
+website Running. No shutdown, upload, migration or restart was performed in this
+resume. Interrupted process 11870 was observed stopped (T), confirming the earlier
+pause command completed; no repeated signal was sent. Native continuity preflight
+confirmed local and remote d73fa8421f4c3752e4dda029abe5fd4fa081a582 with no divergence,
+then held on the now-reviewed dirty files. Fast-track remote readback was
+6eed2f4ab7adad92a07f999295582dcb00355181; synchronization remains pending.
+
+Outstanding admission: final candidate packages and digests; applicable localhost
+journeys and required security/release checks; independently reviewed extension of
+the existing native runner to this candidate and five targets; fresh provider
+journals, publisher exclusion, configuration and runtime baselines; migration and
+recovery admission. Saved schema inventory identifies pending migrations
+20261107153025_AddReceptionistSetupGuide and
+20261110000000_AddCommerceBundleInventory. This resume read their source but did
+not apply them. The saved direct-release request baseline receipts are historical,
+not current provider evidence. Existing native runners bind earlier candidates,
+checkouts and schema counts; do not execute them unchanged or fabricate PASS
+receipts. Preserve completed prior effects and recovery history. Stop production
+only after upload-ready packages and all required admission evidence exist.
