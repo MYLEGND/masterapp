@@ -5062,6 +5062,8 @@ def fast_track_scope(paths):
             return {'protect'}
         if path.startswith('Domain/Entities/Commerce') or path in {
             'Infrastructure/Data/MasterAppDbContext.cs',
+            'Infrastructure/Data/LocalDevelopmentDatabase.cs',
+            'Infrastructure/Diagnostics/LocalTestingHost.cs',
             'Infrastructure/Data/Configurations/CommercePaymentModel.cs',
             'Infrastructure/Businesses/BusinessWorkspaceAccess.cs'} or path.startswith('Infrastructure/Migrations/'):
             return set(dotnet)
@@ -5115,6 +5117,9 @@ def fast_track_scope(paths):
             # Local operator tooling and tests are not application package inputs.
             'scripts/sync-local-azure-sql-firewall.sh',
             'scripts/test-local-azure-sql-firewall.py',
+            'scripts/db.sh',
+            'scripts/local-test-database.py',
+            'scripts/test-local-test-database.py',
             'scripts/test-linked-web-assets.py',
             'MASTERAPP.sln', 'MasterApp.slnx', 'scripts/test-migration-probe-package.py',
             'scripts/test-parfait-readonly-workflow.py'}:

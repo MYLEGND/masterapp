@@ -4884,3 +4884,16 @@ will be stopped before final preservation. Database remains persistent.
 Updated existing sync documentation, root operating contract and host workspace map.
 Independent final acceptance, exact cleanup commit preservation and protected
 source-only fast-track incorporation remain pending at this checkpoint.
+
+Cleanup source and request were independently reviewed and preserved remotely at
+`f284925cb26e29ea96d6b898e8c352abf349e3f8` and
+`20dafe6703f2e9abe508d4bf965565063a09c647`; PR770 is the sole integration PR.
+Its required build contract detected missing exact ownership entries for the new
+shared runtime guards/local tooling. The existing impact map now names both guard
+files as inputs to all four managed apps and the three local database scripts as
+operator tooling. The117 release-child regressions passed using installed Python3.13;
+system Python3.9 lacks the historical contract's hashlib.file_digest API and is not
+suitable for that suite. No check protection was removed. Final current-head CI and
+source-only integration remain required. All owned localhost app processes stopped;
+persistent SQL remains ready. Native checkout provenance passes against the published
+Mac task branch, while source intake remains explicitly selected.
