@@ -83,7 +83,7 @@ public sealed class ClientAppDeploymentWorkflowTests
     {
         var workflow = SecurityValidation();
         Assert.Contains("name: LEGEND approved release security validation", workflow, StringComparison.Ordinal);
-        Assert.Contains("branches: [legend/approved-changes]", workflow, StringComparison.Ordinal);
+        Assert.Contains("branches: [legend/approved-changes, Legend/fast-track-release]", workflow, StringComparison.Ordinal);
         Assert.Contains("Validate database migration artifacts", workflow, StringComparison.Ordinal);
         Assert.Contains("Audit dependency vulnerabilities", workflow, StringComparison.Ordinal);
         Assert.Contains("Scan committed configuration for secrets", workflow, StringComparison.Ordinal);

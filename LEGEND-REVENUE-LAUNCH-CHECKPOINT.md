@@ -4290,3 +4290,56 @@ git diff --check
 Mac: use the existing non-destructive branch sync instructions above with this follow-up's final verified SHA. Preserve all earlier bundle/analytics commits. No new migration in this follow-up; the prior bundle migration requirement still applies. Before direct deploy, run normal analyzer-enabled/release checks and localhost acceptance at 390px, 430px, tablet and desktop: native Life/product quote paths, Studio Mobile preview, mobile/global setting save/reload and reset, untouched scoped site's isolation, estimate-before-contact, required/consent/error/success states, modal exit/back/focus, two successive draft deletions with unchanged current/live document, one canonical CRM record and deduplicated correlated event/provider reporting. Keep existing drafts and history unless intentionally selecting a disposable local draft. No live lead or production conversion was manufactured. Retain branch through deployment and acceptance; Layla receiver ACK remains UNKNOWN / RETURN PENDING.
 
 Final compiled verification after the shell/container correction: **181 passed, 0 failed, 0 skipped**, studio-forms-reviewed.trx. Final source diff SHA-256 excluding this checkpoint: `9ae60a170bf67d284970f08cc81b51404ee9ec9e8cb32092ae4ae3f511d4befd`. Final reviewed commit/remote identity is recorded in the completion receipt.
+
+## Mac local startup investigation — November 9, 2026
+
+Fetched branch HEAD exactly matched `af4b71dd5aaf497757e8cf8c126335eb1113d889`.
+Existing main checkout remains on `isolation/local-static-assets-parity-20261101`
+at `bbeeb43b7d7f43c4f79d29939a65a23c2eeca144`, retaining its 16 local-only commits.
+The candidate worktree is `.worktrees/ad-measurement-canonical-20261109`.
+Native session preflight passed with the preserved candidate as base. No merge or deployment.
+
+Mac .NET 10.0.101 analyzer-enabled Release build of AgentPortal.Tests and references
+passed (0 errors, 12 warnings) using `RunAnalyzers=true`, `UseSharedCompilation=false`,
+`-m:1 -nr:false` and isolated `MasterAppArtifactsRoot`. NuGet vulnerability lookup
+warnings remain; this is not successful security admission.
+
+The reported `dotnet run` came from the original checkout. Its Development profile
+inherited a production SQL connection from shared user secrets. No production
+migration was attempted. Ignored local launch profiles in both checkouts now
+explicitly select a new loopback development database and blank AzureAd/Graph/OpenAI
+secrets, disable billing reconciliation/notifications and MetaAds, and use localhost
+Protect links. Shared user secrets remain unchanged. These local-only changes are
+not represented by the source commit and do not establish authenticated runtime acceptance.
+
+The fresh local database inventory reports 235 pending migrations, including
+`20261107153025_AddReceptionistSetupGuide` and
+`20261110000000_AddCommerceBundleInventory`. The existing `scripts/db.sh apply`
+was invoked with a private `MASTERAPP_LOCAL_DB_CONNECTION` restricted to loopback
+and isolated build output. Its build succeeded, but its full backend suite returned
+**6,583 passed, 62 failed, 5 skipped, 6,650 total** (10m59s). Procedure exit 30:
+BUILD OR TEST FAILURE. It stopped before creating/migrating the local database.
+Do not bypass this gate or describe local startup as repaired.
+
+Three demonstrated stale assertions were corrected in two existing test files:
+security validation covers both historical approved-changes and fast-track branches;
+the Founder client uses the canonical shared brand title instead of a literal label.
+Workflow/runtime behavior and all security/provenance/no-deployment assertions remain
+unchanged. Astra low independently accepted only this three-line correction.
+The focused corrected run passed **3/3, 0 failures, 0 skips**, with analyzers retained.
+An initial sandboxed VSTest attempt aborted on its communication socket; the approved
+local-socket retry executed the tests. Full-suite failures are not thereby cleared.
+
+Private evidence and the original launch-profile backup are retained under
+`AgentPortal/App_Data/local-startup-20261109/` in the candidate worktree (ignored,
+not a remote backup). Full log: `db-apply.log`; focused log:
+`focused-corrections-network.log`; receipt: `local-startup-contracts.trx`.
+Temporary execution evidence also remains under `/private/tmp/legend-local-startup-20261109`.
+
+Outstanding: classify and correct remaining full-suite failures before local migrations,
+verify startup and all requested localhost journeys, and complete release checks/artifacts.
+Independent review of the preserved candidate also found merchant pre-provider failures
+can leave inventory holds active without a payment attempt; full-candidate acceptance
+remains withheld until a race-safe canonical correction and regression evidence.
+No localhost journey, live provider acceptance, production migration, source merge,
+deployment, Studio publication or campaign change is claimed.

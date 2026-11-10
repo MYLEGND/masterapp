@@ -220,7 +220,7 @@ public sealed class LegendFounderAiContractTests
         Assert.Contains("sourceLanguageCode: null", script, StringComparison.Ordinal);
         Assert.DoesNotContain("result.responseAuthority ||", script, StringComparison.Ordinal);
         Assert.Contains("item.authorKind !== 'Human' && !item.responseProvenance", script, StringComparison.Ordinal);
-        Assert.Contains("'Legend® Ai'", script, StringComparison.Ordinal);
+        Assert.Contains("`${window.LEGEND_BRAND?.registeredTitle ?? \"\"} Ai`", script, StringComparison.Ordinal);
         Assert.DoesNotContain("Verified native LEGEND · OpenAI responder not used", script, StringComparison.Ordinal);
         Assert.DoesNotContain("OpenAI Teacher · ${stage || 'provider response'}", script, StringComparison.Ordinal);
         Assert.Contains("All external providers are blocked for this clean conversation.", script, StringComparison.Ordinal);
@@ -1368,7 +1368,7 @@ public sealed class LegendFounderAiContractTests
         var release = File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "all-intentional-direct-release-20260918.yml"));
 
-        Assert.Contains("branches: [legend/approved-changes]", security, StringComparison.Ordinal);
+        Assert.Contains("branches: [legend/approved-changes, Legend/fast-track-release]", security, StringComparison.Ordinal);
         Assert.Contains("Audit dependency vulnerabilities", security, StringComparison.Ordinal);
         Assert.Contains("Scan committed configuration for secrets", security, StringComparison.Ordinal);
         Assert.Contains("Verify shared composition authorities", security, StringComparison.Ordinal);
