@@ -139,7 +139,8 @@ public sealed partial class ParfaitProductService : Legend.Commerce.ICommerceCat
             }
 
             var requirements = InventoryFor(product, selectedSize);
-            var available = requirements.Count == 0 ? 0 : requirements.Min(part => remaining.GetValueOrDefault(part.InventoryItemId) / part.Units);
+            var available = requirements.Count == 0 ? 0 : Math.Min(selectedSize.StockQuantity,
+                requirements.Min(part => remaining.GetValueOrDefault(part.InventoryItemId) / part.Units));
             var effectiveQuantity = requestedQuantity;
             var issue = "";
             var isAvailable = true;
@@ -347,6 +348,7 @@ public sealed partial class ParfaitProductService : Legend.Commerce.ICommerceCat
                 .SingleOrDefault(x => x.CommerceBusinessId == businessId && x.ExternalProductKey == product.Id);
 
             var components = ValidateBundle(businessId, product, existing);
+            product.BundleComponents = components;
 
             var existingImages = existing is null
                 ? []
@@ -841,7 +843,7 @@ public sealed partial class ParfaitProductService : Legend.Commerce.ICommerceCat
 
     private void SyncInventory(CommerceProduct entity, List<ParfaitProductSizeInventoryEditorViewModel> inventory)
     {
-        var normalized = NormalizeInventory(inventory);
+        var normalized = NormalizeInventory(inventory, entity.BundleComponentsJson == null);
         foreach (var removed in entity.InventoryItems.Where(row => !normalized.Any(item => item.Id == row.ExternalInventoryKey)).ToList())
             _db.Remove(removed);
 
@@ -1012,6 +1014,8 @@ public sealed partial class ParfaitProductService : Legend.Commerce.ICommerceCat
             Id = string.IsNullOrWhiteSpace(product.Id) ? Guid.NewGuid().ToString("N") : product.Id,
             BillingKind = product.BillingKind,
             BundleComponents = product.BundleComponents,
+            LinkedProductIds = product.LinkedProductIds,
+            BundleMessages = product.BundleMessages,
             Name = product.Name.Trim(),
             Slug = slug,
             Description = product.Description.Trim(),
@@ -1023,7 +1027,7 @@ public sealed partial class ParfaitProductService : Legend.Commerce.ICommerceCat
             IsActive = product.IsActive,
             DisplayOrder = product.DisplayOrder,
             Images = NormalizeImages(existingImages ?? product.Images, product.Name),
-            InventoryBySize = NormalizeInventory(product.InventoryBySize),
+            InventoryBySize = NormalizeInventory(product.InventoryBySize, product.BundleComponents.Count == 0),
             DiscountCodes = NormalizeDiscountCodes(product.DiscountCodes)
         };
     }
@@ -1052,7 +1056,7 @@ public sealed partial class ParfaitProductService : Legend.Commerce.ICommerceCat
         return wrapper.Images;
     }
 
-    private static List<ParfaitProductSizeInventoryEditorViewModel> NormalizeInventory(List<ParfaitProductSizeInventoryEditorViewModel>? inventory)
+    private static List<ParfaitProductSizeInventoryEditorViewModel> NormalizeInventory(List<ParfaitProductSizeInventoryEditorViewModel>? inventory, bool addDefaults = true)
     {
         var incoming = (inventory ?? [])
             .Select(size => new ParfaitProductSizeInventoryEditorViewModel
@@ -1070,6 +1074,8 @@ public sealed partial class ParfaitProductService : Legend.Commerce.ICommerceCat
             .GroupBy(size => size.Size, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.OrderBy(size => size.DisplayOrder).First())
             .ToList();
+
+        if (!addDefaults) return incoming.OrderBy(size => size.DisplayOrder).ToList();
 
         var normalized = new List<ParfaitProductSizeInventoryEditorViewModel>();
 

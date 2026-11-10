@@ -266,7 +266,9 @@
                     </div>
                 </details>
 
-                <details class="pf-product-accordion" data-pf-accordion>
+                @await Html.PartialAsync("~/Views/InternalModules/_LinkedProducts.cshtml", new ParfaitApp.Models.ParfaitLinkedProductsEditorViewModel(newProduct, Model.Products))
+
+<details class="pf-product-accordion" data-pf-accordion>
                     <summary>
                         <div class="pf-product-accordion-copy">
                             <strong>Size Inventory</strong>
@@ -279,10 +281,6 @@
                                 <span class="pf-command-badge is-info">Auto tracked</span>
                                 <button type="button" class="pf-secondary-action pf-mini-action" data-pf-add-row="inventory" data-pf-target="createInventoryRows">Add Size</button>
                             </div>
-
-                            <input type="hidden" name="BundleComponentsJson" value="@System.Text.Json.JsonSerializer.Serialize(newProduct.BundleComponents)" data-pf-bundle-recipe />
-                            <button type="button" class="pf-secondary-action pf-mini-action" data-pf-bundle-open>Link bundle pieces</button>
-                            <p data-pf-bundle-summary></p>
 
                             <div class="pf-variant-list" id="createInventoryRows" data-pf-collection="InventoryBySize">
                                 @for (var index = 0; index < newProduct.InventoryBySize.Count; index++)
@@ -602,7 +600,9 @@
                                     </div>
                                 </details>
 
-                                <details class="pf-product-accordion" data-pf-accordion>
+                                @await Html.PartialAsync("~/Views/InternalModules/_LinkedProducts.cshtml", new ParfaitApp.Models.ParfaitLinkedProductsEditorViewModel(product, Model.Products))
+
+<details class="pf-product-accordion" data-pf-accordion>
                                     <summary>
                                         <div class="pf-product-accordion-copy">
                                             <strong>Size Inventory</strong>
@@ -615,10 +615,6 @@
                                                 <span class="pf-command-badge is-info">@product.InventoryLabel</span>
                                                 <button type="button" class="pf-secondary-action pf-mini-action" data-pf-add-row="inventory" data-pf-target="@inventoryTargetId">Add Size</button>
                                             </div>
-
-                                            <input type="hidden" name="BundleComponentsJson" value="@System.Text.Json.JsonSerializer.Serialize(product.BundleComponents)" data-pf-bundle-recipe />
-                                            <button type="button" class="pf-secondary-action pf-mini-action" data-pf-bundle-open>Link bundle pieces</button>
-                                            <p data-pf-bundle-summary></p>
 
                                             <div class="pf-variant-list" id="@inventoryTargetId" data-pf-collection="InventoryBySize">
                                                 @for (var index = 0; index < product.InventoryBySize.Count; index++)
@@ -772,32 +768,7 @@
     </div>
 }
 
-<dialog id="pfBundlePicker" class="pf-modal-content p-4 w-100" aria-labelledby="pfBundlePickerTitle" style="max-width: 44rem; max-height: 90vh; overflow: auto;">
-    <h2 id="pfBundlePickerTitle">Link bundle pieces</h2>
-    <p>Choose the exact piece and size for each bundle size. Bundle availability is calculated from those pieces. Applying links replaces the bundle’s manual stock count when the product is saved.</p>
-    <div class="d-flex flex-wrap gap-2 align-items-end">
-        <label>Bundle size <select class="form-control" data-bundle-size></select></label>
-        <label>Product and size
-            <select class="form-control" data-bundle-piece>
-                @foreach (var piece in Model.Products.Where(item => item.BundleComponents.Count == 0 && item.BillingKind == Domain.Billing.ClientSubscriptionScope.OneTimeProduct))
-                {
-                    @foreach (var variant in piece.InventoryBySize.Where(size => size.IsEnabled && size.InventoryItemId != Guid.Empty))
-                    {
-                        <option value="@variant.InventoryItemId" data-product="@piece.Id" data-stock="@(piece.IsActive ? variant.AvailableStockQuantity : 0)">@piece.Name · @variant.Size @(piece.IsActive ? "" : "(hidden)")</option>
-                    }
-                }
-            </select>
-        </label>
-        <label>Units per bundle <input class="form-control" type="number" min="1" max="99" value="1" data-bundle-units /></label>
-        <button type="button" class="pf-secondary-action" data-bundle-add>Add piece</button>
-    </div>
-    <p role="status" data-bundle-message></p>
-    <ul data-bundle-list></ul>
-    <div class="d-flex gap-2">
-        <button type="button" class="pf-secondary-action" data-bundle-cancel>Cancel</button>
-        <button type="button" class="pf-action" data-bundle-apply>Apply links</button>
-    </div>
-</dialog>
+
 
 <template id="pfInventoryRowTemplate">
     <div class="pf-variant-row is-muted" data-pf-repeat-item data-pf-inventory-row>
@@ -855,6 +826,7 @@
 
         const closeModal = modal => {
             if (!modal) return;
+            modal.dispatchEvent(new Event("pf:editor-dismiss", { bubbles: true }));
             modal.classList.remove("is-open");
             modal.setAttribute("aria-hidden", "true");
             syncBodyOverflow();
@@ -879,7 +851,7 @@
         });
 
         document.addEventListener("keydown", event => {
-            if (event.key !== "Escape" || document.getElementById("pfBundlePicker")?.open) return;
+            if (event.key !== "Escape") return;
             const modals = [...document.querySelectorAll(openModalSelector)];
             closeModal(modals.at(-1));
         });
@@ -1068,11 +1040,6 @@
                 return false;
             }
 
-            const nextPieces = doc.querySelectorAll("#pfBundlePicker [data-bundle-piece] option");
-            if (doc.getElementById("pfBundlePicker")) {
-                pieceOptions = [...nextPieces].map(option => option.cloneNode(true));
-                pieceById = new Map(pieceOptions.map(option => [option.value, option]));
-            }
             currentSummary.replaceWith(nextSummary);
             return true;
         };
@@ -1153,6 +1120,9 @@
                 const html = await submitRequest(form.action, body);
                 const savedForm = [...parseHtml(html).querySelectorAll("[data-pf-product-edit-form]")]
                     .find(candidate => candidate.dataset.pfProductId === productId);
+                const linkInput = form.querySelector("[data-pf-linked-products]");
+                const postedLinks = body.get("LinkedProductIdsJson");
+                const linksUnchanged = postedLinks === null ? linkInput.disabled : postedLinks === linkInput.value;
                 const savedRows = new Map([...savedForm?.querySelectorAll("[data-pf-inventory-row]") || []]
                     .map(row => [row.querySelector('[data-field="Id"]').value, row]));
                 form.querySelectorAll("[data-pf-inventory-row]").forEach(row => {
@@ -1162,7 +1132,7 @@
                     const saved = savedRows.get(id.value);
                     if (!saved || !original || body.get(id.name) !== id.value) return;
                     const submitted = body.get(stock.name);
-                    if (stock.value === submitted && body.get("BundleComponentsJson") === form.querySelector("[data-pf-bundle-recipe]").value) {
+                    if (stock.value === submitted && linksUnchanged) {
                         original.value = saved.querySelector('[data-field="OriginalStockQuantity"]').value;
                         stock.value = saved.querySelector("[data-pf-stock]").value;
                         updateInventoryRow(row);
@@ -1170,6 +1140,17 @@
                         original.value = submitted;
                     }
                 });
+
+                if (savedForm && postedLinks !== null && linksUnchanged) {
+                    const savedPanel = savedForm.querySelector("[data-pf-link-products]");
+                    form.querySelector("[data-pf-link-products]").dataset.savedRecipe = savedPanel.dataset.savedRecipe;
+                    if (body.get("LinkedProductIdsJson") !== null) {
+                        form.querySelector('[data-pf-collection="InventoryBySize"]').replaceWith(
+                            savedForm.querySelector('[data-pf-collection="InventoryBySize"]'));
+                    }
+                    form.querySelector("[data-pf-linked-products]").disabled = true;
+                    refreshBundleEditor(form);
+                }
 
                 if (refresh && productId) {
                     const replaced = replaceProductUiFromHtml(productId, html, { openModalId: `editProduct${productId}` });
@@ -1600,99 +1581,53 @@
             render();
         };
 
-        const bundlePicker = document.getElementById("pfBundlePicker");
-        const bundleSize = bundlePicker.querySelector("[data-bundle-size]");
-        const bundlePiece = bundlePicker.querySelector("[data-bundle-piece]");
-        const bundleUnits = bundlePicker.querySelector("[data-bundle-units]");
-        const bundleMessage = bundlePicker.querySelector("[data-bundle-message]");
-        const bundleList = bundlePicker.querySelector("[data-bundle-list]");
-        let pieceOptions = [...bundlePiece.options].map(option => option.cloneNode(true));
-        let pieceById = new Map(pieceOptions.map(option => [option.value, option]));
-        let bundleForm;
-        let bundleLinks = [];
-
-        function refreshBundleEditor(form, updateStock = false) {
-            const recipe = form.querySelector("[data-pf-bundle-recipe]");
-            if (!recipe) return;
-            const links = JSON.parse(recipe.value || "[]");
-            form.querySelector("[data-pf-bundle-summary]").textContent = links.length
-                ? `${links.length} linked piece variants · stock calculated from pieces`
-                : "Stock is entered per size.";
-            form.querySelectorAll("[data-pf-inventory-row]").forEach(row => {
-                const stock = row.querySelector("[data-pf-stock]");
-                stock.readOnly = links.length > 0;
-                if (updateStock) {
-                    const size = row.querySelector('[data-field="Size"]').value.trim().toUpperCase();
-                    const parts = links.filter(part => part.BundleSize === size);
-                    const original = row.querySelector('[data-field="OriginalStockQuantity"]');
-                    stock.value = links.length ? (parts.length ? Math.min(...parts.map(part =>
-                        Math.floor(Number(pieceById.get(part.InventoryItemId)?.dataset.stock || 0) / part.Units))) : 0)
-                        : (original?.value || 0);
-                    updateInventoryRow(row);
-                }
+        function refreshBundleEditor(form, resetDraft = false) {
+            const panel = form.querySelector("[data-pf-link-products]");
+            if (!panel) return;
+            const applied = JSON.parse(panel.querySelector("[data-pf-linked-products]").value || "[]");
+            const choices = [...panel.querySelectorAll("[data-pf-link-choice]")];
+            if (resetDraft) choices.forEach(choice => choice.checked = applied.includes(choice.value));
+            const selected = choices.filter(choice => choice.checked);
+            const recipes = JSON.parse(panel.dataset.savedRecipe || "[]");
+            const variants = selected.map(choice => JSON.parse(choice.dataset.variants));
+            const common = variants.length ? variants[0].map(row => row.Size)
+                .filter(size => variants.every(rows => rows.some(row => row.Size === size))) : [];
+            const unmatched = [...new Set(variants.flat().map(row => row.Size))].filter(size => !common.includes(size));
+            const feedback = panel.querySelector("[data-pf-link-feedback]");
+            const lines = common.map(size => {
+                const pieces = variants.map(rows => rows.find(row => row.Size === size));
+                const stock = Math.min(...pieces.map(row => {
+                    const units = recipes.find(part => part.BundleSize === size && part.InventoryItemId === row.InventoryItemId)?.Units || 1;
+                    return Math.floor(row.Stock / units);
+                }));
+                return `${size}: ${stock > 0 ? `${stock} available` : "unavailable"}`;
             });
+            feedback.textContent = selected.length === 0
+                ? "Individual product: stock is entered per size."
+                : common.length ? `Matching sizes — ${lines.join("; ")}.`
+                : "No common enabled size. Enable the same size on every selected product, or change your selection.";
+            if (unmatched.length) feedback.textContent += ` Not matched across every product: ${unmatched.join(", ")}.`;
+            if (recipes.some(part => part.Units !== 1)) feedback.textContent += " Saved quantities are retained for existing size links.";
+            panel.querySelector("[data-pf-link-apply]").disabled = selected.length > 0 && common.length === 0;
+            // Preview only. The server derives all sizes, mappings and stock again on save.
+            form.querySelectorAll("[data-pf-inventory-row] input, [data-pf-inventory-row] button, [data-pf-add-row='inventory']")
+                .forEach(input => input.disabled = applied.length > 0 || recipes.length > 0);
         }
 
-        function renderBundleLinks() {
-            bundleList.replaceChildren();
-            bundleLinks.forEach((link, index) => {
-                const row = document.createElement("li");
-                const piece = pieceById.get(link.InventoryItemId)?.textContent || "Unavailable piece";
-                row.textContent = `${link.BundleSize} · ${piece} × ${link.Units} `;
-                const remove = document.createElement("button");
-                remove.type = "button";
-                remove.className = "pf-row-remove";
-                remove.textContent = "Remove";
-                remove.setAttribute("aria-label", `Remove ${piece} from bundle size ${link.BundleSize}`);
-                remove.addEventListener("click", () => {
-                    bundleLinks.splice(index, 1);
-                    renderBundleLinks();
-                    bundleSize.focus();
-                });
-                row.append(remove);
-                bundleList.append(row);
-            });
-        }
-
+        document.addEventListener("pf:editor-dismiss", event => {
+            event.target.querySelectorAll("[data-pf-product-form]").forEach(form => refreshBundleEditor(form, true));
+        });
         document.addEventListener("click", event => {
-            const trigger = event.target.closest("[data-pf-bundle-open]");
-            if (!trigger) return;
-            bundleForm = trigger.closest("form");
-            bundleLinks = JSON.parse(bundleForm.querySelector("[data-pf-bundle-recipe]").value || "[]");
-            const sizes = [...bundleForm.querySelectorAll("[data-pf-inventory-row]")]
-                .filter(row => row.querySelector("[data-pf-enabled]").checked)
-                .map(row => row.querySelector('[data-field="Size"]').value.trim().toUpperCase()).filter(Boolean);
-            bundleSize.replaceChildren(...[...new Set(sizes)].map(size => new Option(size, size)));
-            const currentId = bundleForm.querySelector('[name="Id"]').value;
-            bundlePiece.replaceChildren(...pieceOptions.filter(option => option.dataset.product !== currentId)
-                .map(option => option.cloneNode(true)));
-            bundleUnits.value = 1;
-            bundleMessage.textContent = "";
-            renderBundleLinks();
-            bundlePicker.showModal();
-        });
-
-        bundlePicker.querySelector("[data-bundle-add]").addEventListener("click", () => {
-            const units = bundleUnits.valueAsNumber;
-            if (!bundleSize.value || !bundlePiece.value || !Number.isInteger(units) || units < 1 || units > 99) {
-                bundleMessage.textContent = "Choose a bundle size, a piece, and 1–99 units.";
-                return;
-            }
-            if (bundleLinks.length >= 200 || bundleLinks.some(link =>
-                link.BundleSize === bundleSize.value && link.InventoryItemId === bundlePiece.value)) {
-                bundleMessage.textContent = "Each piece can be linked once per size. Remove the existing link to change its units.";
-                return;
-            }
-            bundleLinks.push({ BundleSize: bundleSize.value, InventoryItemId: bundlePiece.value, Units: units });
-            bundleMessage.textContent = "";
-            renderBundleLinks();
-        });
-        bundlePicker.querySelector("[data-bundle-cancel]").addEventListener("click", () => bundlePicker.close());
-        bundlePicker.querySelector("[data-bundle-apply]").addEventListener("click", () => {
-            bundleForm.querySelector("[data-pf-bundle-recipe]").value = JSON.stringify(bundleLinks);
-            refreshBundleEditor(bundleForm, true);
-            bundlePicker.close();
-            scheduleAutoSave(bundleForm, { refresh: true });
+            const apply = event.target.closest("[data-pf-link-apply]");
+            const cancel = event.target.closest("[data-pf-link-discard]");
+            if (!apply && !cancel) return;
+            const form = (apply || cancel).closest("form");
+            if (cancel) { refreshBundleEditor(form, true); return; }
+            const selected = [...form.querySelectorAll("[data-pf-link-choice]:checked")].map(choice => choice.value);
+            form.querySelector("[data-pf-linked-products]").value = JSON.stringify(selected);
+            form.querySelector("[data-pf-linked-products]").disabled = false;
+            refreshBundleEditor(form);
+            scheduleAutoSave(form, { refresh: true });
         });
 
         function initializeRoot(root = document) {
@@ -1785,6 +1720,7 @@
         });
 
         document.addEventListener("input", event => {
+            if (event.target.matches("[data-pf-link-choice]")) return;
             if (event.target.matches(".pf-money-display")) {
                 syncMoneyInput(event.target);
             }
@@ -1816,6 +1752,10 @@
 
         document.addEventListener("change", event => {
             const target = event.target;
+            if (target.matches("[data-pf-link-choice]")) {
+                refreshBundleEditor(target.closest("form"));
+                return;
+            }
 
             if (target.matches("[data-pf-upload-input]")) {
                 const form = target.closest("[data-pf-upload-form]");
