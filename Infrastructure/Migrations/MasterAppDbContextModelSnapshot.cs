@@ -3130,9 +3130,6 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.CommerceOrderLine", b =>
                 {
-                    b.Property<string>("InventoryRequirementsJson")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
@@ -3146,6 +3143,9 @@ namespace Infrastructure.Migrations
                     b.Property<string>("ImageUrl")
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
+
+                    b.Property<string>("InventoryRequirementsJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ProductExternalKey")
                         .IsRequired()
@@ -3427,9 +3427,6 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.Entities.CommerceProduct", b =>
                 {
-                    b.Property<string>("BundleComponentsJson")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
@@ -3445,6 +3442,9 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)")
                         .HasDefaultValue("OneTime");
+
+                    b.Property<string>("BundleComponentsJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<Guid>("CommerceBusinessId")
                         .HasColumnType("uniqueidentifier");
@@ -10320,6 +10320,18 @@ namespace Infrastructure.Migrations
                     b.Property<Guid?>("AgentTrackingProfileId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AssistantConfigurationJson")
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("AssistantControlRevision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AssistantCredentialCiphertext")
+                        .HasMaxLength(24000)
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("CapiAccessTokenCiphertext")
                         .HasColumnType("nvarchar(max)");
 
@@ -10658,6 +10670,20 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssistantConfigurationRevision")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssistantConnectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AssistantProvider")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("AssistantWorkspaceKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTime?>("ClosedUtc")
                         .HasColumnType("datetime2");
@@ -12799,7 +12825,10 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("CallId")
+                    b.Property<Guid?>("AssistantOperationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CallId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("CashFinal")
@@ -12830,6 +12859,10 @@ namespace Infrastructure.Migrations
                         .HasPrecision(20, 6)
                         .HasColumnType("decimal(20,6)");
 
+                    b.Property<string>("FeatureKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<Guid>("FundingBudgetAccountId")
                         .HasColumnType("uniqueidentifier");
 
@@ -12838,6 +12871,10 @@ namespace Infrastructure.Migrations
 
                     b.Property<Guid>("FundingControlRevision")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("OperationFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<Guid>("OwnerBudgetAccountId")
                         .HasColumnType("uniqueidentifier");
@@ -12852,19 +12889,28 @@ namespace Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CallId", "ComponentKey")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[CallId] IS NOT NULL");
 
                     b.HasIndex("FundingBudgetAccountId", "FundingBudgetPeriodId");
+
+                    b.HasIndex("OwnerBudgetAccountId", "OwnerBudgetPeriodId");
 
                     b.HasIndex("CallId", "OwnerBudgetAccountId", "OwnerBudgetPeriodId");
 
                     b.HasIndex("FundingBudgetAccountId", "CashFinal", "ConsumptionFinal");
+
+                    b.HasIndex("OwnerBudgetAccountId", "AssistantOperationId", "ComponentKey")
+                        .IsUnique()
+                        .HasFilter("[AssistantOperationId] IS NOT NULL");
 
                     b.HasIndex("OwnerBudgetAccountId", "CashFinal", "ConsumptionFinal");
 
                     b.ToTable("ReceptionistCostReservations", null, t =>
                         {
                             t.HasCheckConstraint("CK_ReceptionistCostReservation_Amounts", "[CashReserved] >= 0 AND [ConsumptionReserved] >= 0 AND [CashObserved] >= 0 AND [ConsumptionObserved] >= 0 AND [OwnerBudgetAccountId] <> [FundingBudgetAccountId]");
+
+                            t.HasCheckConstraint("CK_ReceptionistCostReservation_Operation", "([CallId] IS NOT NULL AND [AssistantOperationId] IS NULL AND [FeatureKey] IS NULL AND [OperationFingerprint] IS NULL) OR ([CallId] IS NULL AND [AssistantOperationId] IS NOT NULL AND [FeatureKey] IS NOT NULL AND [FeatureKey] = 'business-assistant' AND [OperationFingerprint] IS NOT NULL)");
                         });
                 });
 
@@ -16730,12 +16776,18 @@ namespace Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Domain.Entities.ReceptionistBudgetPeriod", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerBudgetAccountId", "OwnerBudgetPeriodId")
+                        .HasPrincipalKey("BudgetAccountId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Domain.Entities.ReceptionistCall", null)
                         .WithMany()
                         .HasForeignKey("CallId", "OwnerBudgetAccountId", "OwnerBudgetPeriodId")
                         .HasPrincipalKey("Id", "OwnerBudgetAccountId", "OwnerBudgetPeriodId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Domain.Entities.ReceptionistCredentialVersion", b =>

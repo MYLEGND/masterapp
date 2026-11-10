@@ -45,6 +45,12 @@ public class MessageConversation
 
     public string? OwnerParticipantType { get; set; }
 
+    /// <summary>Immutable selected assistant workspace. Null preserves legacy Founder history.</summary>
+    public string? AssistantWorkspaceKey { get; set; }
+    public Guid? AssistantConnectionId { get; set; }
+    public Guid? AssistantConfigurationRevision { get; set; }
+    public string? AssistantProvider { get; set; }
+
     /// <summary>
     /// The selected host for a normal group. This is separate from ownership so
     /// a founder or owner can assign a member to host without transferring the

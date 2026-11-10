@@ -72,6 +72,9 @@ internal static class MessagingModelConfiguration
         entity.Property(x => x.OwnerParticipantType)
             .HasMaxLength(40);
 
+        entity.Property(x => x.AssistantWorkspaceKey).HasMaxLength(64);
+        entity.Property(x => x.AssistantProvider).HasMaxLength(20);
+
         entity.Property(x => x.OwnerUserId)
             .HasMaxLength(450);
 

@@ -51,22 +51,22 @@ public sealed class MobileFounderAiController : MobileApiControllerBase
     }
 
     [HttpGet("conversations")]
-    public async Task<IActionResult> Conversations(CancellationToken cancellationToken, int take = 50, int skip = 0)
+    public async Task<IActionResult> Conversations(CancellationToken cancellationToken, int take = 50, int skip = 0, string? assistantWorkspaceKey = null)
     {
         if (!FounderGuard.IsFounder(User)) return Forbid();
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null || resolved.Actor is null) return resolved.Error!;
-        return await Transport.ListConversationsAsync(take, skip, cancellationToken);
+        return await Transport.ListConversationsAsync(take, skip, cancellationToken, assistantWorkspaceKey);
     }
 
     [HttpGet("conversations/{conversationId:guid}")]
     public async Task<IActionResult> Conversation(Guid conversationId, CancellationToken cancellationToken,
-        DateTime? beforeUtc = null, Guid? beforeMessageId = null, int take = 60)
+        DateTime? beforeUtc = null, Guid? beforeMessageId = null, int take = 60, string? assistantWorkspaceKey = null)
     {
         if (!FounderGuard.IsFounder(User)) return Forbid();
         var resolved = await ResolveActorAsync(cancellationToken);
         if (resolved.Error is not null || resolved.Actor is null) return resolved.Error!;
-        return await Transport.GetConversationAsync(conversationId, beforeUtc, beforeMessageId, take, cancellationToken);
+        return await Transport.GetConversationAsync(conversationId, beforeUtc, beforeMessageId, take, cancellationToken, assistantWorkspaceKey);
     }
 
     [HttpPost("chat")]

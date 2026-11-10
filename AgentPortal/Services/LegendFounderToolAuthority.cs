@@ -91,6 +91,9 @@ internal sealed partial class LegendFounderToolAuthority
         {
             var name = JsonSerializer.SerializeToElement(tool, JsonOptions).GetProperty("name").GetString()!;
             if (IsRepositoryControlPlaneMutation(name)) return false;
+            // Growth includes private lead-priority records. Correct read-only
+            // classification must not silently grant an external teacher access.
+            if (externalTeacher && name == "legend_growth_operator") return false;
             if (name is "legend_remember_conversation_facts" or "legend_remember_founder_rule")
                 return !string.IsNullOrWhiteSpace(conversationId);
             if (name == "legend_request_teacher_escalation")
@@ -289,6 +292,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_research_internet" or
             "legend_metric_detail" or
             "legend_client_lead_portfolio" or
+            "legend_growth_operator" or
             "legend_read_masterapp" or
             "legend_language_state";
 
@@ -306,6 +310,7 @@ internal sealed partial class LegendFounderToolAuthority
             LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
 
         if (!TryResolveFounderFunctionParameters(
                 request.ToolName,
@@ -461,6 +466,10 @@ internal sealed partial class LegendFounderToolAuthority
         FounderAiActionScope? serverDerivedScope = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (mode == "teacher" && call.Name == "legend_growth_operator")
+            return MutationFailure("growth_external_disclosure_forbidden",
+                "Private growth records are unavailable to the external teacher.");
 
         if (IsRepositoryControlPlaneMutation(call.Name) &&
             (serverDerivedScope is not null || mode != "founder_work" ||

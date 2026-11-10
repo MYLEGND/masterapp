@@ -78,6 +78,9 @@ public sealed partial class ReceptionistOperatorService(MarketingConnectionStore
         string actor, MarketingOwnerScope? owner, Func<MarketingOwnerScope, CancellationToken, Task<bool>>? authorize, CancellationToken ct)
     {
         var package = await ReadPackageAsync(packageKey, expectedPackageSha256, actor, owner, ct);
+        if (package.Operation == "accept_assistant_cost_bounds")
+            return new(packageKey, expectedPackageSha256, package.Label, package.Operation, false,
+                ["Assistant cost evidence is read-only and is checked during assistant admission."], [], null);
         ReceptionistOperatorState state;
         try
         {
@@ -114,6 +117,8 @@ public sealed partial class ReceptionistOperatorService(MarketingConnectionStore
     {
         ArgumentNullException.ThrowIfNull(request);
         var package = await ReadPackageAsync(request.PackageKey, request.PackageSha256, actor, owner, ct);
+        if (package.Operation == "accept_assistant_cost_bounds")
+            throw new InvalidOperationException("Assistant cost evidence cannot execute an operator action.");
         if (string.IsNullOrWhiteSpace(request.ExpectedStateToken) || request.ExpectedStateToken.Length > 4096)
             throw new ArgumentException("A bounded current operator preview is required.");
         var initial = await admission.ReadOperatorStateAsync(package, request.PackageSha256, ct);
@@ -367,6 +372,7 @@ internal sealed record ReceptionistOperatorPackage
         Supplied("bookingAction", BookingActionId.HasValue || ExpectedBookingActionRevision.HasValue);
         string[] allowed = Operation switch
         {
+            "accept_assistant_cost_bounds" => [],
             "accept_binding" => ["binding", "secrets"], "open_budget_period" => ["opening"],
             "approve_budget_ceilings" => ["budget", "limits"], "set_budget_admission" => ["budget", "enabled"],
             "create_acceptance_window" or "revoke_acceptance_window" => ["window"],
@@ -379,6 +385,14 @@ internal sealed record ReceptionistOperatorPackage
         };
         if (supplied.Except(allowed).Any() || allowed.Where(x => x is not ("finalVoice" or "retirementReason")).Except(supplied).Any())
             throw new ArgumentException("One exact bounded operator operation is required.");
+        if (Operation == "accept_assistant_cost_bounds")
+        {
+            if (FundingScopes.Count != 1 || ExpectedAccountRevisions.Count != 2)
+                throw new ArgumentException("Exact assistant accounting dimensions are required.");
+            foreach (var kind in new[] { "assistant_cost_bounds", "assistant_project_binding", "assistant_data_processing" })
+                if (!Evidence.Any(x => x.Kind == kind)) throw new ArgumentException("Exact assistant provider evidence is required.");
+            return;
+        }
         if (CallId.HasValue && (CallId == Guid.Empty || ExpectedCallRevision is null || ExpectedCallRevision == Guid.Empty))
             throw new ArgumentException("An exact call and expected revision are required.");
         if (RetirementReason is not null) ReceptionistConfigurationCodec.Required(RetirementReason, 500, nameof(RetirementReason));

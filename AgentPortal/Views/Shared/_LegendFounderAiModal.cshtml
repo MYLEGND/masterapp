@@ -100,6 +100,21 @@
                                 </button>
                             </div>
 
+                            <details id="legendBusinessAssistantSettings">
+                                <summary>Business assistant</summary>
+                                <label for="legendBusinessAssistantWorkspace">Business or agent suite</label>
+                                <select id="legendBusinessAssistantWorkspace" class="form-select"><option value="">Select a workspace</option></select>
+                                <label for="legendBusinessAssistantProvider">Provider</label>
+                                <select id="legendBusinessAssistantProvider" class="form-select">
+                                    <option value="openai">OpenAI API</option>
+                                    <option value="cloudflare">Cloudflare</option>
+                                    <option value="legend-native">LEGEND native</option>
+                                </select>
+                                <p id="legendBusinessAssistantReadiness" role="status">Choose a workspace to inspect its connection and funding readiness.</p>
+                                <button type="button" id="legendBusinessAssistantStart" class="btn btn-outline-primary">Start scoped conversation</button>
+                                <p>Provider connections and funding must be configured and reviewed for this workspace. ChatGPT sign-in does not connect an API account. Recommendations require review; this mode cannot execute changes.</p>
+                            </details>
+
                             <label class="legend-founder-ai-native-only"
                                    for="legendFounderAiNativeOnly">
                                 <input type="checkbox"

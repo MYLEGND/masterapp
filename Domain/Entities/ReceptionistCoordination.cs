@@ -116,7 +116,12 @@ public sealed class ReceptionistIngressEvent
 public sealed class ReceptionistCostReservation
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid CallId { get; set; }
+    public Guid? CallId { get; set; }
+    // Non-call features share the same monetary dimensions, locks and postings.
+    // Exactly one call or assistant operation is required; voice semantics stay on ReceptionistCall.
+    public Guid? AssistantOperationId { get; set; }
+    public string? FeatureKey { get; set; }
+    public string? OperationFingerprint { get; set; }
     public Guid OwnerBudgetAccountId { get; set; }
     public Guid OwnerBudgetPeriodId { get; set; }
     public Guid FundingBudgetAccountId { get; set; }

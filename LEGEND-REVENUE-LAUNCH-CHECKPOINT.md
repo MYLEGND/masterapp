@@ -5008,3 +5008,70 @@ Next: resolve the scoped firewall decision, verify zero pending schema, bind and
 hold the existing mutex, obtain final exact admission, then stop/upload/restart only
 portal/protect/parfait and verify runtime identities and affected live behavior.
 Preserve all completed packages/checks; never replay the previous five-app release.
+
+## 2026-11-10 — LEGEND AI foundation continuation (in progress, no deployment)
+
+Founder expanded the retained release scope with the tenant-scoped LEGEND AI
+business-assistant foundation and explicitly prohibited production deployment for
+this assignment. The preceding bundle deployment instructions are on hold; its
+packages, review, CI receipts and candidate186de854d remain preserved, not deployed.
+The bundle-only localhost waiver does not cover the new AI candidate.
+
+Actual fast-track base reconciled: `4e6554d8a34ca89ef7f98f77773be5fa75f92835`.
+The existing task branch `isolation/ad-measurement-canonical-20261109` retained its
+history through content-identical ancestry merge
+`33652c25355307956a3839b46191683f0e9ab3a4`, independently reviewed and read back on
+its remote. No additional checkout, database, credential or service was created.
+
+Current foundation edits remain uncommitted and NOT accepted for publication.
+Implemented so far: immutable workspace/provider/connection-revision conversation
+bindings in the existing messaging owner; scoped web/mobile history; Founder-only
+business configuration endpoints using settings authorization; the existing modal's
+workspace/provider selector; server-owned analytics/marketing recommendations and
+versioned receptionist status; encrypted tenant/project API credentials; one bounded
+OpenAI request through the existing transport, with no paid retry/fallback or mutation
+tools; aggregate cash/service and feature allocation reservations through the existing
+accounting owner; confirmed growth-tool classification/disclosure correction.
+Native/Cloudflare business bindings explicitly remain unavailable; existing Founder
+routes remain. Provider credits are unknown. Unknown assistant costs retain full holds;
+no authoritative assistant cost-settlement adapter is implemented yet. CRM record-level
+and retention data and published website content are not exported (publication identity
+is available). These are genuine remaining scope gaps, not completed capabilities.
+
+Astra reviewed incremental security/accounting corrections and independently accepted
+only the exact synthetic local migration rehearsal. New migration
+`20261110222649_AddBusinessAssistantScopeAndFunding` source SHA256
+`309802b6b893ac64abeb49c728f04a9aeeefe25f27cc15dcfda148781dffdde8` applied successfully
+ONLY to existing `MasterAppLocalTest` on `127.0.0.1:14339`, persistent container/volume
+`legend-masterapp-local-test`, identity verified. No customer data was imported.
+The first attempt stopped before application at manual review; its receipt is retained.
+The existing local database owner now supports explicit focused validation/output roots
+and one exact independently reviewed migration digest; default validate/bundle gates
+remain unchanged. Down migration refuses destructive rollback after assistant data exists.
+Application rollback must retain additive schema and all history/credentials/holds;
+use a reviewed forward repair after use, never delete reservations to restore a budget.
+
+Passed evidence (not rendered/live acceptance): isolated AgentPortal builds; 7 focused
+foundation/workspace/growth regressions; 4 persistent SQL funding regressions (concurrent
+duplicates, cross-owner shared cap, tampering, rollover/unknown holds, revocation, opening
+attribution and evidence expiry); 2 scoped-history/mocked-HTTP regressions (service-instance
+continuity, retail/cross-agent denial, immutable provider binding, disabled-agent denial,
+project headers/default tier/no tools/no retry). Six local database-owner script checks
+pass; JavaScript syntax and diff whitespace pass. No real model calls occurred.
+Logs: `/private/tmp/legend-assistant-foundation-` prefixes `tests-run.log`,
+`tests-current.log`, `local-migrate.log`, `local-migrate-reviewed.log`, `sql-tests.log`,
+`history-tests.log`; builds use `/private/tmp/legend-assistant-foundation-build`.
+NuGet vulnerability-feed lookup emitted NU1900; this is NOT a passed vulnerability gate.
+
+Remaining: complete or explicitly resolve unsupported provider/funding/context/setup
+capabilities, remaining focused acceptance coverage, final independent exact-candidate
+review, required architecture/security/PR checks, source-only fast-track integration.
+No new PR/commit/merge, provider configuration, paid usage or production mutation is
+claimed. Previous bundle candidate/packages remain preserved and undeployed.
+
+The old Library router reference did not resolve to current document content.
+Founder was informed and instructed continuation with repository authority. It is
+not an enforced repository access denial. Rendered localhost browser access was
+rechecked: Work settings disable local browsers and the Mac is locked. Founder is away
+from the Mac and cannot unlock it now. Rendered acceptance is BLOCKED, not waived.
+Continue independent work; no prior visual waiver transfers.

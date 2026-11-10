@@ -203,7 +203,9 @@ public sealed record MessagingFounderAiBeginTurnCommand(
     string Mode,
     string RequestFingerprint,
     DateTime ExecutionDeadlineUtc,
-    MessagingFounderAiCloudflareDelegation? CloudflareDelegation = null);
+    MessagingFounderAiCloudflareDelegation? CloudflareDelegation = null,
+    string? AssistantWorkspaceKey = null, Guid? AssistantConnectionId = null,
+    Guid? AssistantConfigurationRevision = null, string? AssistantProvider = null);
 
 /// <summary>Short-lived server-derived callback scope. Never accepts bearer tokens or model-supplied authority.</summary>
 public sealed record MessagingFounderAiCloudflareDelegation(
@@ -231,7 +233,8 @@ public sealed record MessagingFounderAiCompleteTurnCommand(
     Guid UserMessageId,
     string Body,
     string AuthorKind,
-    MessagingFounderAiResponseProvenance Provenance);
+    MessagingFounderAiResponseProvenance Provenance,
+    string? AssistantWorkspaceKey = null);
 
 public sealed record MessagingFounderAiTurnResult(
     bool Succeeded,
@@ -254,7 +257,8 @@ public sealed record MessagingConversationListQuery(
     bool IncludeClosed = false,
     int Take = 50,
     bool IncludeGroupImages = true,
-    int Skip = 0);
+    int Skip = 0,
+    string? AssistantWorkspaceKey = null);
 
 /// <summary>
 /// A bounded history window for a conversation. The caller may only page a
@@ -265,7 +269,8 @@ public sealed record MessagingConversationMessagePageQuery(
     DateTime? BeforeUtc = null,
     int Take = 60,
     bool IncludeGroupImage = true,
-    Guid? BeforeMessageId = null);
+    Guid? BeforeMessageId = null,
+    string? AssistantWorkspaceKey = null);
 
 public sealed record StartMessagingConversationCommand(
     MessagingActor Actor,
@@ -610,6 +615,9 @@ public sealed record MessagingConversationSummary(
     bool IsMuted = false)
 {
     public string? DisplayTitle { get; init; }
+    public string? AssistantWorkspaceKey { get; init; }
+    public Guid? AssistantConfigurationRevision { get; init; }
+    public string? AssistantProvider { get; init; }
 }
 
 /// <summary>

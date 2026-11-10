@@ -180,10 +180,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('status', 'init', 'start', 'stop', 'run', 'migrate', 'test'))
     parser.add_argument('app', nargs='?', choices=tuple(projects()))
-    parser.add_argument('--filter', help='Focused dotnet test filter; required for local test.')
+    parser.add_argument('--filter', help='Focused dotnet test filter; required for local test, optional for local migrate.')
+    parser.add_argument('--reviewed-migration-sha256', help='Exact independently reviewed pending migration source digest; local migrate only.')
+    parser.add_argument('--artifacts-root', help='Existing isolated build output directory for local tests or migration validation.')
     args = parser.parse_args()
-    require(args.action == 'test' or args.filter is None, '--filter is only valid for local test.')
+    require(args.action in ('test', 'migrate') or args.filter is None, '--filter is only valid for local test or migrate.')
+    require(args.action in ('test', 'migrate') or args.artifacts_root is None, '--artifacts-root is only valid for local test or migrate.')
+    if args.artifacts_root:
+        require(Path(args.artifacts_root).is_absolute() and Path(args.artifacts_root).is_dir(), 'An existing absolute isolated artifacts directory is required.')
     if args.action == 'test': require(bool(args.filter), 'local test requires an explicit focused --filter.')
+    require(args.action == 'migrate' or args.reviewed_migration_sha256 is None, 'Reviewed migration evidence is only valid for local migrate.')
+    if args.reviewed_migration_sha256:
+        require(len(args.reviewed_migration_sha256) == 64 and all(c in '0123456789abcdef' for c in args.reviewed_migration_sha256), 'A full reviewed migration SHA-256 is required.')
     canonical()
     if args.action == 'init':
         initialize()
@@ -204,10 +212,18 @@ def main():
         env = local_environment(data)
         env['LEGEND_TEST_DB_IDENTITY'] = data['identity']
         env['GITHUB_WORKSPACE'] = str(ROOT)
+        if args.artifacts_root: env['MasterAppArtifactsRoot'] = args.artifacts_root
         result = subprocess.run(['dotnet', 'test', str(ROOT / 'AgentPortal.Tests/AgentPortal.Tests.csproj'),
             '--no-restore', '--filter', args.filter, '-p:UseSharedCompilation=false', '-m:1', '-nr:false'], cwd=ROOT, env=env)
     elif args.action == 'migrate':
-        result = subprocess.run(['bash', str(ROOT / 'scripts/db.sh'), 'apply'], cwd=ROOT, env=local_environment(data))
+        env = local_environment(data)
+        env['LEGEND_TEST_DB_IDENTITY'] = data['identity']
+        env['GITHUB_WORKSPACE'] = str(ROOT)
+        env['LEGEND_LOCAL_MIGRATION_VALIDATION'] = '1'
+        if args.reviewed_migration_sha256: env['MASTERAPP_REVIEWED_LOCAL_MIGRATION_SHA256'] = args.reviewed_migration_sha256
+        if args.filter: env['MASTERAPP_DB_TEST_FILTER'] = args.filter
+        if args.artifacts_root: env['MasterAppArtifactsRoot'] = args.artifacts_root
+        result = subprocess.run(['bash', str(ROOT / 'scripts/db.sh'), 'apply'], cwd=ROOT, env=env)
     else:
         require(args.app in projects(), 'run requires an app name.')
         env = local_environment(data)

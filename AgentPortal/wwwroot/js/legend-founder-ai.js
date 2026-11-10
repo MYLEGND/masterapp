@@ -48,6 +48,63 @@
     const settingsClose = document.getElementById('legendFounderAiSettingsClose');
     const settingButtons = Array.from(modalElement.querySelectorAll('[data-legend-ai-setting]'));
 
+    const businessSettings = document.getElementById('legendBusinessAssistantSettings');
+    const businessWorkspace = document.getElementById('legendBusinessAssistantWorkspace');
+    const businessProvider = document.getElementById('legendBusinessAssistantProvider');
+    const businessReadiness = document.getElementById('legendBusinessAssistantReadiness');
+    const businessStart = document.getElementById('legendBusinessAssistantStart');
+    let businessConfiguration = null;
+    let businessSelectionGeneration = 0;
+
+    async function refreshBusinessConfiguration() {
+        const generation = ++businessSelectionGeneration;
+        businessConfiguration = null;
+        businessStart.disabled = true;
+        if (!businessWorkspace.value) return;
+        const query = new URLSearchParams({ workspace: businessWorkspace.value, provider: businessProvider.value });
+        try {
+            const result = await readHistory(`/founder/legend-ai/business/configuration?${query}`, undefined, false);
+            if (generation !== businessSelectionGeneration) return;
+            businessConfiguration = result;
+            const config = result.configuration;
+            businessReadiness.textContent = `${businessProvider.selectedOptions[0].text}: ${result.readiness.replaceAll('_', ' ')}. ` +
+                (config ? `Project: ${config.projectId}. Monthly cash allocation: ${config.monthlyCashAllocation}; service allocation: ${config.monthlyServiceAllocation}. ` : '') +
+                `Provider credit balance: ${result.creditBalanceStatus}. Funding is checked before each request. No automatic fallback.`;
+            businessStart.disabled = !config || !config.enabled || result.readiness !== 'funding_admission_required';
+        } catch (error) {
+            if (generation === businessSelectionGeneration) businessReadiness.textContent = error.message || 'Connection status is unavailable.';
+        }
+    }
+    businessSettings?.addEventListener('toggle', async () => {
+        if (!businessSettings.open || businessWorkspace.options.length > 1) return;
+        try {
+            const options = await readHistory('/founder/legend-ai/business/workspaces', undefined, false);
+            for (const item of options) {
+                const option = document.createElement('option');
+                option.value = item.workspace;
+                option.textContent = item.label;
+                businessWorkspace.append(option);
+            }
+            if (!options.length) businessReadiness.textContent = 'No authorized business or agent workspace is available for this account.';
+        } catch (error) { businessReadiness.textContent = error.message || 'Workspaces are unavailable.'; }
+    });
+    businessWorkspace?.addEventListener('change', refreshBusinessConfiguration);
+    businessProvider?.addEventListener('change', refreshBusinessConfiguration);
+    businessStart?.addEventListener('click', () => {
+        if (busy || !businessConfiguration || businessStart.disabled) return;
+        const conversation = newConversationRecord('business');
+        conversation.assistantWorkspaceKey = businessConfiguration.workspaceKey;
+        conversation.assistantProvider = businessProvider.value;
+        conversation.assistantConfigurationRevision = businessConfiguration.revision;
+        state.conversations.unshift(conversation);
+        stopHistoryRefresh();
+        state.activeConversationId = conversation.id;
+        historySkip = 0;
+        scheduleHistoryRefresh();
+        renderAll({ forceBottom: true });
+        refreshHistory();
+    });
+
     const modeButtons = Array.from(
         modalElement.querySelectorAll('[data-legend-ai-mode]')
     );
@@ -335,15 +392,15 @@
         renderAll();
     }
 
-    async function readHistory(url, signal) {
+    async function readHistory(url, signal, requireHistoryResult = true) {
         const response = await fetch(url, { credentials: 'same-origin', cache: 'no-store', signal });
         if (response.status === 401 || response.status === 403 || response.redirected) {
             clearAuthenticatedHistory();
             throw new Error('Conversation history is unavailable for this account.');
         }
         const result = await response.json();
-        if (!response.ok || result.succeeded !== true) {
-            throw new Error(result.errorMessage || 'Conversation history could not be loaded.');
+        if (!response.ok || (requireHistoryResult && result.succeeded !== true)) {
+            throw new Error(result.errorMessage || result.error || 'Requested information could not be loaded.');
         }
         return result;
     }
@@ -361,6 +418,7 @@
     async function loadConversationPage(conversation, signal, older = false, newer = false) {
         if (!conversation.persisted) return;
         const parameters = new URLSearchParams({ take: '60' });
+        if (conversation.assistantWorkspaceKey) parameters.set('assistantWorkspaceKey', conversation.assistantWorkspaceKey);
         if (older && conversation.messages.length) {
             const first = conversation.messages[0];
             // Keep the original UTC wire string: Date conversion loses SQL ticks.
@@ -399,14 +457,16 @@
         try {
             if (!older) {
                 const skip = more ? historySkip : 0;
-                const result = await readHistory(`${HISTORY_URL}?take=50&skip=${skip}`, request.signal);
+                const result = await readHistory(`${HISTORY_URL}?take=50&skip=${skip}&assistantWorkspaceKey=${encodeURIComponent(active.assistantWorkspaceKey || '')}`, request.signal);
                 if (request.signal.aborted) return;
                 for (const row of result.conversations) {
                     let conversation = state.conversations.find(item => item.id === row.id);
                     if (!conversation) {
                         // History carries transcript provenance, not a new provider restriction.
                         // Keep existing local choices; newly discovered threads use the same defaults as native.
-                        conversation = { ...newConversationRecord(), id: row.id,
+                        conversation = { ...newConversationRecord(active.assistantWorkspaceKey ? 'business' : 'legend'), id: row.id,
+                            assistantWorkspaceKey: row.assistantWorkspaceKey, assistantProvider: row.assistantProvider,
+                            assistantConfigurationRevision: row.assistantConfigurationRevision,
                             persisted: true, messages: [], lastMessageId: null };
                         state.conversations.push(conversation);
                     }
@@ -522,6 +582,10 @@
                 current.nativeOnly === true,
                 current.externalAnsweringBlocked === true
             );
+
+        conversation.assistantWorkspaceKey = current.assistantWorkspaceKey;
+        conversation.assistantProvider = current.assistantProvider;
+        conversation.assistantConfigurationRevision = current.assistantConfigurationRevision;
 
         state.conversations.unshift(conversation);
         stopHistoryRefresh();
@@ -673,7 +737,7 @@
             input.placeholder =
                 conversation.mode === 'teacher'
                     ? 'Message the OpenAI Teacher…'
-                    : `Message ${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai…`;
+                    : conversation.mode === 'business' ? 'Ask about this business…' : `Message ${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai…`;
         }
     }
 
@@ -685,7 +749,7 @@
         history.replaceChildren();
 
         const conversations =
-            [...state.conversations]
+            state.conversations.filter(item => (item.assistantWorkspaceKey || null) === (activeConversation().assistantWorkspaceKey || null))
                 .sort(
                     (a, b) =>
                         new Date(b.updatedUtc) -
@@ -1704,6 +1768,9 @@
         const localUserMessageId = `pending-user-${operationId}`;
         const operation = { id: operationId, localUserMessageId, body: JSON.stringify({
             mode: conversation.mode, nativeOnly: conversation.nativeOnly === true,
+            assistantWorkspaceKey: conversation.assistantWorkspaceKey || null,
+            assistantProvider: conversation.assistantProvider || null,
+            assistantConfigurationRevision: conversation.assistantConfigurationRevision || null,
             externalAnsweringBlocked: conversation.externalAnsweringBlocked === true,
             sourceLanguageCode: null, conversationId: conversation.id,
             expectedLastMessageId: conversation.lastMessageId || null,

@@ -38,5 +38,8 @@ public sealed class MarketingConnectionConfiguration : IEntityTypeConfiguration<
         e.Property(x => x.ProviderPixelId).HasMaxLength(200);
         e.Property(x => x.ProviderDataSourceId).HasMaxLength(200);
         e.Property(x => x.Revision).IsConcurrencyToken();
+        e.Property(x => x.AssistantControlRevision).IsConcurrencyToken();
+        e.Property(x => x.AssistantConfigurationJson).HasMaxLength(8000);
+        e.Property(x => x.AssistantCredentialCiphertext).HasMaxLength(24000);
     }
 }

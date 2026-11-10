@@ -32,19 +32,47 @@ public sealed class LegendFounderAiController : Controller
         Transport.ProgressAsync(operationId, cancellationToken);
 
     [HttpGet("founder/legend-ai/conversations")]
-    public Task<IActionResult> Conversations(CancellationToken cancellationToken, int take = 50, int skip = 0) =>
-        Transport.ListConversationsAsync(take, skip, cancellationToken);
+    public Task<IActionResult> Conversations(CancellationToken cancellationToken, int take = 50, int skip = 0, string? assistantWorkspaceKey = null) =>
+        Transport.ListConversationsAsync(take, skip, cancellationToken, assistantWorkspaceKey);
 
     [HttpGet("founder/legend-ai/conversations/{conversationId:guid}")]
     public Task<IActionResult> Conversation(Guid conversationId, CancellationToken cancellationToken,
-        DateTime? beforeUtc = null, Guid? beforeMessageId = null, int take = 60) =>
-        Transport.GetConversationAsync(conversationId, beforeUtc, beforeMessageId, take, cancellationToken);
+        DateTime? beforeUtc = null, Guid? beforeMessageId = null, int take = 60, string? assistantWorkspaceKey = null) =>
+        Transport.GetConversationAsync(conversationId, beforeUtc, beforeMessageId, take, cancellationToken, assistantWorkspaceKey);
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route("founder/legend-ai/chat")]
     public Task<IActionResult> Chat([FromBody] LegendFounderAiChatRequest request, CancellationToken cancellationToken) =>
         Transport.ChatAsync(request, cancellationToken);
+
+    [HttpGet("founder/legend-ai/business/workspaces")]
+    public async Task<IActionResult> BusinessWorkspaces(CancellationToken ct)
+    {
+        try { return Ok(await _conversation.ListBusinessWorkspacesAsync(User, ct)); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (InvalidOperationException) { return Conflict(new { error = "Workspace selection is unavailable." }); }
+    }
+
+    [HttpGet("founder/legend-ai/business/configuration")]
+    public async Task<IActionResult> BusinessConfiguration(string workspace, string provider, CancellationToken ct)
+    {
+        try { return Ok(await _conversation.GetBusinessConfigurationAsync(User, workspace, provider, ct)); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException) { return BadRequest(new { error = "Select an authorized workspace and supported provider." }); }
+    }
+
+    [HttpPost("founder/legend-ai/business/configuration")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveBusinessConfiguration([FromBody] BusinessAssistantSettingsRequest request, CancellationToken ct)
+    {
+        if (!ModelState.IsValid || request.Configuration is null) return BadRequest();
+        try { return Ok(await _conversation.SaveBusinessConfigurationAsync(User, request.Workspace,
+            request.Configuration, request.ExpectedRevision, request.Credential, ct)); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException) { return BadRequest(new { error = "A complete bounded provider and funding configuration is required." }); }
+        catch (InvalidOperationException) { return Conflict(new { error = "Configuration changed or is unavailable. Reload before saving." }); }
+    }
 
     [HttpGet("founder/legend-ai/actions/{proposalId:guid}")]
     public async Task<IActionResult> ReviewAction(Guid proposalId, CancellationToken cancellationToken)
@@ -87,3 +115,6 @@ public sealed class LegendFounderAiController : Controller
 
     private static int MapStatus(LegendFounderAiChatResponse result) => LegendFounderAiHttpTransport.MapStatus(result);
 }
+
+public sealed record BusinessAssistantSettingsRequest(string Workspace,
+    Infrastructure.Analytics.BusinessAssistantConfiguration? Configuration, Guid ExpectedRevision, string? Credential);

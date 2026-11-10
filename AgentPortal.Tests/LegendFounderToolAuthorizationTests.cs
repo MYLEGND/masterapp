@@ -18,6 +18,23 @@ namespace AgentPortal.Tests;
 [Collection("LegendConnectFounderEnvironment")]
 public sealed class LegendFounderToolAuthorizationTests
 {
+    [Fact]
+    public async Task GrowthReadClassificationPreservesExternalDisclosureBoundary()
+    {
+        // Catalog and denial paths must not open a database or call a provider.
+        var authority = new LegendFounderToolAuthority(null!, null);
+        static string? Name(object tool) => JsonSerializer.SerializeToElement(tool).GetProperty("name").GetString();
+        Assert.True(authority.IsReadOnly("legend_growth_operator"));
+        Assert.Contains(authority.GetAvailableSiteReadTools(), tool => Name(tool) == "legend_growth_operator");
+        Assert.DoesNotContain(authority.GetAvailableCloudTools("conversation",
+            LegendConnectExternalProviderPolicy.CloudflareFoundation), tool => Name(tool) == "legend_growth_operator");
+        Assert.DoesNotContain(authority.GetAvailableTools(false, "conversation",
+            LegendConnectExternalProviderPolicy.ProviderEnabled, externalTeacher: true), tool => Name(tool) == "legend_growth_operator");
+        var denied = await authority.ExecuteAsync(new System.Security.Claims.ClaimsPrincipal(),
+            new FounderAiToolCall("tampered-disclosure", "legend_growth_operator", "{}"), "teacher", CancellationToken.None);
+        Assert.Contains("growth_external_disclosure_forbidden", denied);
+    }
+
     [Theory]
     [InlineData("legend_inspect_repository", "{\"path\":\".\",\"git_reference\":null}")]
     [InlineData("legend_software_remediation_status", "{}")]

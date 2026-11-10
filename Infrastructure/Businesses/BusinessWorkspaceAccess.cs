@@ -9,6 +9,30 @@ public sealed record OwnedBusinessAccountAccess(ClientProfile Actor, Guid Busine
 
 public static class BusinessWorkspaceAccess
 {
+    // Called only after the existing assistant's Founder authorization. Scope
+    // selection cannot substitute for membership or revive an inactive agent.
+    public static async Task<bool> CanReadAssistantWorkspaceAsync(MasterAppDbContext db,
+        string actorUserId, string workspace, CancellationToken ct = default, string capability = "analytics")
+    {
+        if (!Shared.Workspaces.WorkspaceKey.TryParse(workspace, out var key) || key!.OwnerId is not { } id)
+            return false;
+        if (key.Kind == "business")
+        {
+            if (!await db.CommerceBusinesses.AnyAsync(x => x.Id == id && x.IsActive && x.Status.ToLower() == "active", ct)) return false;
+            var members = await db.CommerceBusinessMembers.AsNoTracking().Where(x => x.CommerceBusinessId == id && x.Status == "Active")
+                .Select(x => x.ClientProfileId).Distinct().Take(101).ToListAsync(ct);
+            if (members.Count > 100) return false;
+            foreach (var profileId in members)
+                if (await ResolveActorMembershipAsync(db, id, actorUserId, capability, profileId, ct) is not null) return true;
+            return false;
+        }
+        var profile = await db.AgentTrackingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.Status == "active", ct);
+        if (profile is null || Shared.Auth.IdentityKey.Normalize(profile.AgentUserId) != Shared.Auth.IdentityKey.Normalize(actorUserId)) return false;
+        var agent = await db.AgentProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.AgentUserId == profile.AgentUserId && x.IsActive, ct);
+        return agent is not null && (await Infrastructure.Identity.AccountLifecycleService.ReadAsync(db,
+            new Domain.Accounts.AccountLifecycleSubject(agent.AgentUserId, Domain.Messaging.MessagingParticipantTypes.Agent, agent.Id), ct)).AllowsFullAccess;
+    }
+
     // A personal actor may select an entity account only through its explicit owner link.
     // Emails are presentation data, never account-switch authority.
     public static async Task<OwnedBusinessAccountAccess?> ResolveAccountOwnerAsync(MasterAppDbContext db,

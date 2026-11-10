@@ -28,7 +28,7 @@ namespace AgentPortal.Services;
 /// executor. The local pretrained foundation executes on LEGEND-controlled
 /// infrastructure. OpenAI is a distinct, optional external teacher/escalation.
 /// </summary>
-public sealed class LegendFounderAiConversationService
+public sealed partial class LegendFounderAiConversationService
 {
     private const int MaximumConversationMessages = 60;
     private const int MaximumMessageCharacters = 1_000_000;
@@ -235,7 +235,9 @@ public sealed class LegendFounderAiConversationService
         CancellationToken cancellationToken = default,
         Func<LegendFounderAiProgressEvent, CancellationToken, ValueTask>? progress = null,
         Guid? operationId = null) =>
-        ReplyCoreAsync(founder, request, cancellationToken, progress, operationId, null);
+        request.Mode == "business"
+            ? ReplyBusinessAsync(founder, request, operationId, cancellationToken)
+            : ReplyCoreAsync(founder, request, cancellationToken, progress, operationId, null);
 
     internal Task<FounderAiActionProposalReview?> GetActionProposalAsync(
         ClaimsPrincipal founder, Guid proposalId, CancellationToken cancellationToken) =>
@@ -2535,7 +2537,8 @@ public sealed class LegendFounderAiConversationService
         int maxOutputTokens,
         CancellationToken cancellationToken,
         bool catalogAcceptanceOnly = false,
-        Func<Guid, bool, CancellationToken, Task>? onExternalDisposition = null)
+        Func<Guid, bool, CancellationToken, Task>? onExternalDisposition = null,
+        string? businessProject = null, string? businessOrganization = null)
     {
         if (catalogAcceptanceOnly && !allowTools)
         {
@@ -2573,7 +2576,7 @@ public sealed class LegendFounderAiConversationService
                 effort = reasoningEffort
             },
 
-            service_tier = _serviceTier,
+            service_tier = businessProject is null ? _serviceTier : "default",
             max_output_tokens = maxOutputTokens
         };
 
@@ -2635,6 +2638,11 @@ public sealed class LegendFounderAiConversationService
                     "Bearer",
                     apiKey);
 
+            if (businessProject is not null)
+                request.Headers.Add("OpenAI-Project", businessProject);
+            if (businessOrganization is not null)
+                request.Headers.Add("OpenAI-Organization", businessOrganization);
+
             var answerProduced = false;
             JsonDocument? completedDocument = null;
             try
@@ -2670,7 +2678,7 @@ public sealed class LegendFounderAiConversationService
                 var transient =
                     IsTransientOpenAiStatus(
                         response.StatusCode) &&
-                    attempt < MaximumTransientProviderAttempts &&
+                    businessProject is null && attempt < MaximumTransientProviderAttempts &&
                     !IsBillingOrQuotaRejection(
                         response.StatusCode,
                         errorBody);
@@ -4685,6 +4693,9 @@ public sealed record LegendFounderAiChatMessage(
 
 public sealed class LegendFounderAiChatRequest
 {
+    public string? AssistantWorkspaceKey { get; init; }
+    public string? AssistantProvider { get; init; }
+    public Guid? AssistantConfigurationRevision { get; init; }
     public string? Mode { get; init; }
 
     /// <summary>

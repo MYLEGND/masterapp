@@ -35,10 +35,21 @@ internal sealed partial class MessagingService
         await _db.AgentProfiles.AsNoTracking().AnyAsync(profile => profile.IsActive &&
             profile.AgentUserId.ToLower() == actor.UserId, ct);
 
-    private IQueryable<MessageConversation> FounderAiOwnedQuery(MessagingActor actor) =>
+    private async Task<bool> IsFounderAiScopeAsync(MessagingActor actor, string? workspace, CancellationToken ct)
+    {
+        // Initial rollout remains Founder-only, including history. A workspace key
+        // is a selection, never an authorization credential or a client role grant.
+        if (!await IsFounderAiOwnerAsync(actor, ct)) return false;
+        if (workspace is null) return true;
+        return await Infrastructure.Businesses.BusinessWorkspaceAccess.CanReadAssistantWorkspaceAsync(
+            _db, actor.UserId, workspace, ct);
+    }
+
+    private IQueryable<MessageConversation> FounderAiOwnedQuery(MessagingActor actor, string? workspace = null) =>
         _db.MessageConversations.Where(conversation =>
             conversation.ConversationType == MessagingConversationTypes.Assistant &&
             conversation.Purpose == MessagingConversationPurposes.FounderAI &&
+            conversation.AssistantWorkspaceKey == workspace &&
             conversation.OwnerUserId == actor.UserId &&
             conversation.OwnerParticipantType == MessagingParticipantTypes.Agent &&
             conversation.CreatedByUserId == actor.UserId &&
@@ -50,9 +61,9 @@ internal sealed partial class MessagingService
         MessagingActor actor, MessagingConversationListQuery query, CancellationToken cancellationToken = default)
     {
         actor = NormalizeActor(actor);
-        if (!await IsFounderAiOwnerAsync(actor, cancellationToken))
+        if (!await IsFounderAiScopeAsync(actor, query.AssistantWorkspaceKey, cancellationToken))
             return MessagingConversationListResult.Failure("FOUNDER_HISTORY_FORBIDDEN", ApplicationCopyText.Source("Conversation history is unavailable for this account."));
-        var conversations = FounderAiOwnedQuery(actor).AsNoTracking();
+        var conversations = FounderAiOwnedQuery(actor, query.AssistantWorkspaceKey).AsNoTracking();
         if (!query.IncludeClosed) conversations = conversations.Where(item => !item.IsClosed);
         var search = query.Search?.Trim();
         if (!string.IsNullOrEmpty(search))
@@ -60,12 +71,13 @@ internal sealed partial class MessagingService
         var rows = await conversations.OrderByDescending(item => item.LastMessageUtc)
             .ThenByDescending(item => item.Id).Skip(Math.Clamp(query.Skip, 0, 10_000))
             .Take(Math.Clamp(query.Take, 1, 50))
-            .Select(item => new { item.Id, item.Subject, item.LastMessageUtc, item.IsClosed })
+            .Select(item => new { item.Id, item.Subject, item.LastMessageUtc, item.IsClosed, item.AssistantWorkspaceKey, item.AssistantProvider, item.AssistantConfigurationRevision })
             .ToListAsync(cancellationToken);
         return new(true, null, null, rows.Select(item => new MessagingConversationSummary(
             item.Id, MessagingConversationTypes.Assistant, item.Subject, FounderAiUtc(item.LastMessageUtc),
             item.IsClosed, false, 0, new("", "", "LEGEND"), null,
-            MessagingConversationPurposes.FounderAI)).ToArray());
+            MessagingConversationPurposes.FounderAI) { AssistantWorkspaceKey = item.AssistantWorkspaceKey,
+                AssistantProvider = item.AssistantProvider, AssistantConfigurationRevision = item.AssistantConfigurationRevision }).ToArray());
     }
 
     public async Task<MessagingConversationResult> GetFounderAiConversationPageAsync(
@@ -73,8 +85,8 @@ internal sealed partial class MessagingService
         CancellationToken cancellationToken = default)
     {
         actor = NormalizeActor(actor);
-        if (!await IsFounderAiOwnerAsync(actor, cancellationToken)) return FounderAiHistoryNotFound();
-        var conversation = await FounderAiOwnedQuery(actor).AsNoTracking()
+        if (!await IsFounderAiScopeAsync(actor, query.AssistantWorkspaceKey, cancellationToken)) return FounderAiHistoryNotFound();
+        var conversation = await FounderAiOwnedQuery(actor, query.AssistantWorkspaceKey).AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == conversationId, cancellationToken);
         if (conversation is null) return FounderAiHistoryNotFound();
         var messages = _db.InternalMessages.AsNoTracking().Where(item =>
@@ -172,16 +184,22 @@ internal sealed partial class MessagingService
         MessagingFounderAiBeginTurnCommand command, CancellationToken cancellationToken = default)
     {
         var actor = NormalizeActor(command.Actor);
-        if (!await IsFounderAiOwnerAsync(actor, cancellationToken)) return FounderAiBeginNotFound();
+        if (!await IsFounderAiScopeAsync(actor, command.AssistantWorkspaceKey, cancellationToken)) return FounderAiBeginNotFound();
         var now = DateTime.UtcNow;
         if (command.ConversationId == Guid.Empty || command.OperationId == Guid.Empty ||
+            ((command.Mode == "business") != (command.AssistantWorkspaceKey is not null)) ||
+            (command.Mode == "business" && (command.AssistantConnectionId is null || command.AssistantConnectionId == Guid.Empty ||
+                command.AssistantConfigurationRevision is null || command.AssistantConfigurationRevision == Guid.Empty ||
+                command.AssistantProvider is not ("openai" or "cloudflare" or "legend-native"))) ||
+            (command.Mode != "business" && (command.AssistantConnectionId is not null || command.AssistantConfigurationRevision is not null || command.AssistantProvider is not null)) ||
+            (command.AssistantWorkspaceKey is not null && command.CloudflareDelegation is not null) ||
             string.IsNullOrWhiteSpace(command.Body) || command.Body.Length > FounderAiMaximumBodyCharacters ||
-            command.Mode is not ("legend" or "teacher") || !IsFounderAiFingerprint(command.RequestFingerprint) ||
+            command.Mode is not ("legend" or "teacher" or "business") || !IsFounderAiFingerprint(command.RequestFingerprint) ||
             (command.CloudflareDelegation is { } scope &&
                 (!ValidFounderAiDelegationScope(scope) || scope.UserId != actor.UserId)))
             return MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_REQUEST_INVALID", ApplicationCopyText.Source("The conversation request is invalid."));
         var userKey = FounderAiOperationKey(actor, command.ConversationId, command.OperationId, "user");
-        var conversation = await FounderAiOwnedQuery(actor).AsTracking()
+        var conversation = await FounderAiOwnedQuery(actor, command.AssistantWorkspaceKey).AsTracking()
             .SingleOrDefaultAsync(item => item.Id == command.ConversationId, cancellationToken);
         var added = new List<InternalMessage>();
         if (conversation is null)
@@ -194,6 +212,8 @@ internal sealed partial class MessagingService
                 return MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_DEADLINE_INVALID", ApplicationCopyText.Source("The conversation execution deadline is invalid."));
             conversation = new MessageConversation
             {
+                AssistantWorkspaceKey = command.AssistantWorkspaceKey, AssistantConnectionId = command.AssistantConnectionId,
+                AssistantConfigurationRevision = command.AssistantConfigurationRevision, AssistantProvider = command.AssistantProvider,
                 Id = command.ConversationId, ConversationType = MessagingConversationTypes.Assistant,
                 Purpose = MessagingConversationPurposes.FounderAI, CreatedByUserId = actor.UserId,
                 OwnerUserId = actor.UserId, OwnerParticipantType = actor.ParticipantType,
@@ -206,6 +226,10 @@ internal sealed partial class MessagingService
         }
         else if (conversation.IsClosed)
             return MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_CLOSED", ApplicationCopyText.Source("This conversation is closed."));
+
+        if (conversation.AssistantConnectionId != command.AssistantConnectionId ||
+            conversation.AssistantConfigurationRevision != command.AssistantConfigurationRevision || conversation.AssistantProvider != command.AssistantProvider)
+            return MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_PROVIDER_CHANGED", "Start a new conversation after changing provider or connection settings.");
 
         var prior = await _db.InternalMessages.AsNoTracking().SingleOrDefaultAsync(item =>
             item.ClientMessageId == userKey && item.ConversationId == command.ConversationId, cancellationToken);
@@ -262,7 +286,7 @@ internal sealed partial class MessagingService
         MessagingFounderAiCompleteTurnCommand command, CancellationToken cancellationToken = default)
     {
         var actor = NormalizeActor(command.Actor);
-        if (!await IsFounderAiOwnerAsync(actor, cancellationToken)) return FounderAiCompleteNotFound();
+        if (!await IsFounderAiScopeAsync(actor, command.AssistantWorkspaceKey, cancellationToken)) return FounderAiCompleteNotFound();
         if (command.Provenance is null || !ValidFounderAiResponse(command.Provenance) ||
             command.AuthorKind is not (MessagingAuthorKinds.Assistant or MessagingAuthorKinds.Service) ||
             (command.AuthorKind == MessagingAuthorKinds.Assistant && !command.Provenance.Succeeded) ||
@@ -271,7 +295,7 @@ internal sealed partial class MessagingService
         var json = JsonSerializer.Serialize(command.Provenance, FounderAiJson);
         if (json.Length > FounderAiMaximumMetadataCharacters)
             return MessagingMessageResult.Failure("FOUNDER_HISTORY_RESPONSE_INVALID", ApplicationCopyText.Source("The conversation response could not be verified."));
-        var conversation = await FounderAiOwnedQuery(actor).AsTracking()
+        var conversation = await FounderAiOwnedQuery(actor, command.AssistantWorkspaceKey).AsTracking()
             .SingleOrDefaultAsync(item => item.Id == command.ConversationId, cancellationToken);
         if (conversation is null) return FounderAiCompleteNotFound();
         var userKey = FounderAiOperationKey(actor, command.ConversationId, command.OperationId, "user");
@@ -406,7 +430,7 @@ internal sealed partial class MessagingService
         return receipt is not null &&
             (receipt.Version == 1 && receipt.CloudflareDelegation is null ||
              receipt.Version == 2 && receipt.CloudflareDelegation is { } delegation && ValidFounderAiDelegationScope(delegation)) &&
-            receipt.Mode is "legend" or "teacher" && receipt.ExecutionDeadlineUtc.Kind == DateTimeKind.Utc &&
+            receipt.Mode is "legend" or "teacher" or "business" && receipt.ExecutionDeadlineUtc.Kind == DateTimeKind.Utc &&
             IsFounderAiFingerprint(receipt.RequestFingerprint);
     }
 
@@ -435,7 +459,7 @@ internal sealed partial class MessagingService
         prior.Roles.SequenceEqual(current.Roles, StringComparer.Ordinal);
 
     private static bool ValidFounderAiResponse(MessagingFounderAiResponseProvenance value) =>
-        value.Version == 1 && value.Mode is "legend" or "teacher" &&
+        value.Version == 1 && value.Mode is "legend" or "teacher" or "business" &&
         new[] { value.Stage, value.Reason, value.ResponseAuthority, value.FoundationModel, value.FoundationHosting,
             value.EscalationDisposition, value.ResearchState, value.LearningState, value.ModelAssistanceState,
             value.ModelVersion, value.ModelProvenance, value.FailureKind, value.Reference, value.ModelAssistanceReason }

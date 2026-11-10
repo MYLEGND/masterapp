@@ -61,7 +61,7 @@ public sealed partial class ReceptionistAdmissionService
             .Take(51).ToArrayAsync(ct);
         if (rows.Length > 50) throw new InvalidOperationException("Scope this preparation to one original call.");
         var callIds = rows.Select(x => x.CallId).Distinct().ToArray();
-        var funding = await db.Set<ReceptionistCostReservation>().AsNoTracking().Where(x => callIds.Contains(x.CallId))
+        var funding = await db.Set<ReceptionistCostReservation>().AsNoTracking().Where(x => x.CallId.HasValue && callIds.Contains(x.CallId.Value))
             .Select(x => x.FundingBudgetAccountId).Distinct().ToArrayAsync(ct);
         var accountIds = funding.Concat(rows.Select(x => x.OwnerBudgetAccountId)).Distinct().ToArray();
         var accounts = await db.Set<ReceptionistBudgetAccount>().AsNoTracking().Where(x => accountIds.Contains(x.Id))

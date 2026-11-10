@@ -42,22 +42,22 @@ internal sealed class LegendFounderAiHttpTransport
     private HttpContext HttpContext => _context;
     private ClaimsPrincipal User => _context.User;
 
-    public async Task<IActionResult> ListConversationsAsync(int take, int skip, CancellationToken cancellationToken)
+    public async Task<IActionResult> ListConversationsAsync(int take, int skip, CancellationToken cancellationToken, string? assistantWorkspaceKey = null)
     {
         try
         {
-            var result = await _conversation.ListConversationsAsync(User, new(Take: take, Skip: skip, IncludeGroupImages: false), cancellationToken);
+            var result = await _conversation.ListConversationsAsync(User, new(Take: take, Skip: skip, IncludeGroupImages: false, AssistantWorkspaceKey: assistantWorkspaceKey), cancellationToken);
             return new ObjectResult(result) { StatusCode = result.Succeeded ? StatusCodes.Status200OK : StatusCodes.Status403Forbidden };
         }
         catch (ForbidResultException) { return new ForbidResult(); }
     }
 
-    public async Task<IActionResult> GetConversationAsync(Guid conversationId, DateTime? beforeUtc, Guid? beforeMessageId, int take, CancellationToken cancellationToken)
+    public async Task<IActionResult> GetConversationAsync(Guid conversationId, DateTime? beforeUtc, Guid? beforeMessageId, int take, CancellationToken cancellationToken, string? assistantWorkspaceKey = null)
     {
         try
         {
             var result = await _conversation.GetConversationPageAsync(User, conversationId,
-                new(beforeUtc, take, IncludeGroupImage: false, BeforeMessageId: beforeMessageId), cancellationToken);
+                new(beforeUtc, take, IncludeGroupImage: false, BeforeMessageId: beforeMessageId, AssistantWorkspaceKey: assistantWorkspaceKey), cancellationToken);
             return new ObjectResult(result) { StatusCode = result.Succeeded ? StatusCodes.Status200OK : StatusCodes.Status404NotFound };
         }
         catch (ForbidResultException) { return new ForbidResult(); }
@@ -359,7 +359,7 @@ internal sealed class LegendFounderAiHttpTransport
                     "legend",
                     StringComparison.OrdinalIgnoreCase)
                     ? "legend"
-                    : "invalid";
+                    : string.Equals(request?.Mode?.Trim(), "business", StringComparison.OrdinalIgnoreCase) ? "business" : "invalid";
 
             return LegendFounderAiChatResponse.ModeFailure(
                 mode,
@@ -411,7 +411,7 @@ internal sealed class LegendFounderAiHttpTransport
             ? "OpenAITeacher"
             : string.Equals(mode?.Trim(), "legend", StringComparison.OrdinalIgnoreCase)
                 ? "LegendAi"
-                : "NoResponder";
+                : string.Equals(mode?.Trim(), "business", StringComparison.OrdinalIgnoreCase) ? "ScopedBusinessAssistant" : "NoResponder";
 
     private Guid? ReadOperationId()
     {

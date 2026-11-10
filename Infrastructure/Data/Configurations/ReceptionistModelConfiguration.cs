@@ -127,18 +127,29 @@ public static partial class ReceptionistModelConfiguration
         ingress.HasOne<ReceptionistSessionDecision>().WithMany().HasForeignKey(x => x.DecisionId).OnDelete(DeleteBehavior.Restrict);
 
         var cost = model.Entity<ReceptionistCostReservation>();
-        cost.ToTable("ReceptionistCostReservations", t => t.HasCheckConstraint("CK_ReceptionistCostReservation_Amounts",
-            "[CashReserved] >= 0 AND [ConsumptionReserved] >= 0 AND [CashObserved] >= 0 AND [ConsumptionObserved] >= 0 AND [OwnerBudgetAccountId] <> [FundingBudgetAccountId]"));
+        cost.ToTable("ReceptionistCostReservations", t =>
+        {
+            t.HasCheckConstraint("CK_ReceptionistCostReservation_Amounts",
+                "[CashReserved] >= 0 AND [ConsumptionReserved] >= 0 AND [CashObserved] >= 0 AND [ConsumptionObserved] >= 0 AND [OwnerBudgetAccountId] <> [FundingBudgetAccountId]");
+            t.HasCheckConstraint("CK_ReceptionistCostReservation_Operation",
+                "([CallId] IS NOT NULL AND [AssistantOperationId] IS NULL AND [FeatureKey] IS NULL AND [OperationFingerprint] IS NULL) OR ([CallId] IS NULL AND [AssistantOperationId] IS NOT NULL AND [FeatureKey] IS NOT NULL AND [FeatureKey] = 'business-assistant' AND [OperationFingerprint] IS NOT NULL)");
+        });
         cost.HasKey(x => x.Id);
         cost.HasAlternateKey(x => new { x.Id, x.OwnerBudgetAccountId, x.FundingBudgetAccountId });
         Text(cost, nameof(ReceptionistCostReservation.ComponentKey), 100);
+        cost.Property(x => x.FeatureKey).HasMaxLength(64);
+        cost.Property(x => x.OperationFingerprint).HasMaxLength(64);
         Money(cost, nameof(ReceptionistCostReservation.CashReserved), nameof(ReceptionistCostReservation.ConsumptionReserved),
             nameof(ReceptionistCostReservation.CashObserved), nameof(ReceptionistCostReservation.ConsumptionObserved));
-        cost.HasIndex(x => new { x.CallId, x.ComponentKey }).IsUnique();
+        cost.HasIndex(x => new { x.CallId, x.ComponentKey }).IsUnique().HasFilter("[CallId] IS NOT NULL");
+        cost.HasIndex(x => new { x.OwnerBudgetAccountId, x.AssistantOperationId, x.ComponentKey })
+            .IsUnique().HasFilter("[AssistantOperationId] IS NOT NULL");
         cost.HasIndex(x => new { x.OwnerBudgetAccountId, x.CashFinal, x.ConsumptionFinal });
         cost.HasIndex(x => new { x.FundingBudgetAccountId, x.CashFinal, x.ConsumptionFinal });
         cost.HasOne<ReceptionistCall>().WithMany().HasForeignKey(x => new { x.CallId, x.OwnerBudgetAccountId, x.OwnerBudgetPeriodId })
             .HasPrincipalKey(x => new { x.Id, x.OwnerBudgetAccountId, x.OwnerBudgetPeriodId }).OnDelete(DeleteBehavior.Restrict);
+        cost.HasOne<ReceptionistBudgetPeriod>().WithMany().HasForeignKey(x => new { x.OwnerBudgetAccountId, x.OwnerBudgetPeriodId })
+            .HasPrincipalKey(x => new { x.BudgetAccountId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         cost.HasOne<ReceptionistBudgetPeriod>().WithMany().HasForeignKey(x => new { x.FundingBudgetAccountId, x.FundingBudgetPeriodId })
             .HasPrincipalKey(x => new { x.BudgetAccountId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         cost.Property(x => x.Revision).IsConcurrencyToken();

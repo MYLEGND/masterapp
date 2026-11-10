@@ -21,6 +21,17 @@ public sealed record WorkspaceKey
     public static WorkspaceKey ForAgentTrackingProfile(Guid id) => Create("agent", id);
     public static WorkspaceKey ForBusiness(Guid id) => Create("business", id);
 
+    public static bool TryParse(string? value, out WorkspaceKey? workspace)
+    {
+        workspace = null;
+        if (value == "founder") { workspace = Founder; return true; }
+        var parts = value?.Split(':');
+        if (parts is not { Length: 2 } || parts[0] is not ("business" or "agent") ||
+            !Guid.TryParseExact(parts[1], "N", out var id) || id == Guid.Empty) return false;
+        workspace = Create(parts[0], id);
+        return workspace.Value == value;
+    }
+
     private static WorkspaceKey Create(string kind, Guid id) => id != Guid.Empty
         ? new(kind, id)
         : throw new ArgumentException("A permanent workspace owner ID is required.", nameof(id));
