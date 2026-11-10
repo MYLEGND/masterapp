@@ -1,16 +1,10 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder explicitly authorized direct deployment from the consolidated Mac checkout to Azure for all affected applications using stop, verified upload, and restart. Include the Parfait sign-in privacy correction after independent review and tests. Preserve existing release admission, schema compatibility, publisher exclusion and recovery controls; no campaign or Studio publication is authorized.",
-  "purpose": "Release the consolidated ad-measurement, Protect quote and Studio, shared commerce bundle inventory, receptionist setup guide, and reviewed ClientApp and Parfait authentication corrections from one exact Mac candidate.",
-  "requestId": "consolidated-mac-azure-release-20261109-v1",
-  "releaseMode": "approved-only",
-  "targets": [
-    "portal",
-    "client",
-    "protect",
-    "parfait",
-    "website"
-  ],
+  "authorization": "Founder authorized completion of the direct Mac Azure release and source synchronization. All five apps are deployed and live-verified at ea128c942b7d8bd4452b5ec6abc591ee624111fc. Integrate the preserved source and deployment checkpoint only; no production mutation or repeat deployment is authorized by this request.",
+  "purpose": "Synchronize the completed five-app Mac release and verified deployment checkpoint into Legend/fast-track-release without publishing again.",
+  "requestId": "source-integration-mac-azure-completed-20261110-v1",
+  "releaseMode": "validate-only",
+  "targets": [],
   "cloudflareWebsiteRouting": false,
   "preserveLiveTargets": false,
   "perResourceBaselines": {
@@ -81,5 +75,10 @@
     "rollbackArtifactId": 13016709993,
     "rollbackArtifactDigest": "sha256:171f0b608107fb23f33ce5cb572ded74303018e120ca088e93341dad18aeb3d0",
     "rollbackPackageDigest": "3e8ba8b6073bec9e3a64204c0e0b745e8dcf894c28be05900b158bdc2e28431c"
+  },
+  "sourceIntegration": {
+    "schemaVersion": 1,
+    "baseRevision": "6eed2f4ab7adad92a07f999295582dcb00355181",
+    "sourceRevision": "0128319aa26c495682e65ab69d07d997d50f738c"
   }
 }
