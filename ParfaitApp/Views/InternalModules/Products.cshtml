@@ -280,6 +280,10 @@
                                 <button type="button" class="pf-secondary-action pf-mini-action" data-pf-add-row="inventory" data-pf-target="createInventoryRows">Add Size</button>
                             </div>
 
+                            <input type="hidden" name="BundleComponentsJson" value="@System.Text.Json.JsonSerializer.Serialize(newProduct.BundleComponents)" data-pf-bundle-recipe />
+                            <button type="button" class="pf-secondary-action pf-mini-action" data-pf-bundle-open>Link bundle pieces</button>
+                            <p data-pf-bundle-summary></p>
+
                             <div class="pf-variant-list" id="createInventoryRows" data-pf-collection="InventoryBySize">
                                 @for (var index = 0; index < newProduct.InventoryBySize.Count; index++)
                                 {
@@ -287,6 +291,7 @@
                                     var isStandard = IsStandardSize(size.Size);
                                     <div class="pf-variant-row @ToneClass(size.StatusTone)" data-pf-repeat-item data-pf-inventory-row>
                                         <input type="hidden" name="InventoryBySize[@index].Id" data-field="Id" value="@size.Id" />
+                                        <input type="hidden" name="InventoryBySize[@index].OriginalStockQuantity" data-field="OriginalStockQuantity" value="@size.OriginalStockQuantity" />
                                         <input type="hidden" name="InventoryBySize[@index].DisplayOrder" data-field="DisplayOrder" value="@((index + 1) * 10)" data-pf-order />
 
                                         <label>Size <input class="form-control" name="InventoryBySize[@index].Size" data-field="Size" value="@size.Size" required /></label>
@@ -374,7 +379,11 @@
                 var modalId = $"editProduct{product.Id}";
                 var liveSizeCount = product.InventoryBySize.Count(size => size.IsEnabled);
                 var inventoryNotes = new List<string>();
-                if (product.TotalTrackedStock > 0)
+                if (product.BundleComponents.Count > 0)
+                {
+                    inventoryNotes.Add("Shared stock by size");
+                }
+                else if (product.TotalTrackedStock > 0)
                 {
                     inventoryNotes.Add($"{product.TotalTrackedStock} tracked");
                 }
@@ -603,9 +612,13 @@
                                     <div class="pf-product-accordion-body">
                                         <section class="pf-product-section">
                                             <div class="pf-product-section-tools">
-                                                <span class="pf-command-badge is-info">@product.TotalTrackedStock units</span>
+                                                <span class="pf-command-badge is-info">@product.InventoryLabel</span>
                                                 <button type="button" class="pf-secondary-action pf-mini-action" data-pf-add-row="inventory" data-pf-target="@inventoryTargetId">Add Size</button>
                                             </div>
+
+                                            <input type="hidden" name="BundleComponentsJson" value="@System.Text.Json.JsonSerializer.Serialize(product.BundleComponents)" data-pf-bundle-recipe />
+                                            <button type="button" class="pf-secondary-action pf-mini-action" data-pf-bundle-open>Link bundle pieces</button>
+                                            <p data-pf-bundle-summary></p>
 
                                             <div class="pf-variant-list" id="@inventoryTargetId" data-pf-collection="InventoryBySize">
                                                 @for (var index = 0; index < product.InventoryBySize.Count; index++)
@@ -614,6 +627,7 @@
                                                     var isStandard = IsStandardSize(size.Size);
                                                     <div class="pf-variant-row @ToneClass(size.StatusTone)" data-pf-repeat-item data-pf-inventory-row>
                                                         <input type="hidden" name="InventoryBySize[@index].Id" data-field="Id" value="@size.Id" />
+                                                    <input type="hidden" name="InventoryBySize[@index].OriginalStockQuantity" data-field="OriginalStockQuantity" value="@size.OriginalStockQuantity" />
                                                         <input type="hidden" name="InventoryBySize[@index].DisplayOrder" data-field="DisplayOrder" value="@((index + 1) * 10)" data-pf-order />
 
                                                         <label>Size <input class="form-control" name="InventoryBySize[@index].Size" data-field="Size" value="@size.Size" required /></label>
@@ -758,9 +772,37 @@
     </div>
 }
 
+<dialog id="pfBundlePicker" class="pf-modal-content p-4 w-100" aria-labelledby="pfBundlePickerTitle" style="max-width: 44rem; max-height: 90vh; overflow: auto;">
+    <h2 id="pfBundlePickerTitle">Link bundle pieces</h2>
+    <p>Choose the exact piece and size for each bundle size. Bundle availability is calculated from those pieces. Applying links replaces the bundle’s manual stock count when the product is saved.</p>
+    <div class="d-flex flex-wrap gap-2 align-items-end">
+        <label>Bundle size <select class="form-control" data-bundle-size></select></label>
+        <label>Product and size
+            <select class="form-control" data-bundle-piece>
+                @foreach (var piece in Model.Products.Where(item => item.BundleComponents.Count == 0 && item.BillingKind == Domain.Billing.ClientSubscriptionScope.OneTimeProduct))
+                {
+                    @foreach (var variant in piece.InventoryBySize.Where(size => size.IsEnabled && size.InventoryItemId != Guid.Empty))
+                    {
+                        <option value="@variant.InventoryItemId" data-product="@piece.Id" data-stock="@(piece.IsActive ? variant.AvailableStockQuantity : 0)">@piece.Name · @variant.Size @(piece.IsActive ? "" : "(hidden)")</option>
+                    }
+                }
+            </select>
+        </label>
+        <label>Units per bundle <input class="form-control" type="number" min="1" max="99" value="1" data-bundle-units /></label>
+        <button type="button" class="pf-secondary-action" data-bundle-add>Add piece</button>
+    </div>
+    <p role="status" data-bundle-message></p>
+    <ul data-bundle-list></ul>
+    <div class="d-flex gap-2">
+        <button type="button" class="pf-secondary-action" data-bundle-cancel>Cancel</button>
+        <button type="button" class="pf-action" data-bundle-apply>Apply links</button>
+    </div>
+</dialog>
+
 <template id="pfInventoryRowTemplate">
     <div class="pf-variant-row is-muted" data-pf-repeat-item data-pf-inventory-row>
         <input type="hidden" data-field="Id" value="" />
+        <input type="hidden" data-field="OriginalStockQuantity" value="" />
         <input type="hidden" data-field="DisplayOrder" value="0" data-pf-order />
         <label>Size <input class="form-control" data-field="Size" value="" required /></label>
         <label>Units <input class="form-control" data-field="StockQuantity" type="number" min="0" value="0" data-pf-stock /></label>
@@ -837,7 +879,7 @@
         });
 
         document.addEventListener("keydown", event => {
-            if (event.key !== "Escape") return;
+            if (event.key !== "Escape" || document.getElementById("pfBundlePicker")?.open) return;
             const modals = [...document.querySelectorAll(openModalSelector)];
             closeModal(modals.at(-1));
         });
@@ -1026,6 +1068,11 @@
                 return false;
             }
 
+            const nextPieces = doc.querySelectorAll("#pfBundlePicker [data-bundle-piece] option");
+            if (doc.getElementById("pfBundlePicker")) {
+                pieceOptions = [...nextPieces].map(option => option.cloneNode(true));
+                pieceById = new Map(pieceOptions.map(option => [option.value, option]));
+            }
             currentSummary.replaceWith(nextSummary);
             return true;
         };
@@ -1102,7 +1149,27 @@
             const productId = form.getAttribute("data-pf-product-id");
 
             try {
-                const html = await submitFormRequest(form);
+                const body = new FormData(form);
+                const html = await submitRequest(form.action, body);
+                const savedForm = [...parseHtml(html).querySelectorAll("[data-pf-product-edit-form]")]
+                    .find(candidate => candidate.dataset.pfProductId === productId);
+                const savedRows = new Map([...savedForm?.querySelectorAll("[data-pf-inventory-row]") || []]
+                    .map(row => [row.querySelector('[data-field="Id"]').value, row]));
+                form.querySelectorAll("[data-pf-inventory-row]").forEach(row => {
+                    const id = row.querySelector('[data-field="Id"]');
+                    const stock = row.querySelector("[data-pf-stock]");
+                    const original = row.querySelector('[data-field="OriginalStockQuantity"]');
+                    const saved = savedRows.get(id.value);
+                    if (!saved || !original || body.get(id.name) !== id.value) return;
+                    const submitted = body.get(stock.name);
+                    if (stock.value === submitted && body.get("BundleComponentsJson") === form.querySelector("[data-pf-bundle-recipe]").value) {
+                        original.value = saved.querySelector('[data-field="OriginalStockQuantity"]').value;
+                        stock.value = saved.querySelector("[data-pf-stock]").value;
+                        updateInventoryRow(row);
+                    } else if (!stock.readOnly && submitted !== null && submitted !== body.get(original.name)) {
+                        original.value = submitted;
+                    }
+                });
 
                 if (refresh && productId) {
                     const replaced = replaceProductUiFromHtml(productId, html, { openModalId: `editProduct${productId}` });
@@ -1533,12 +1600,108 @@
             render();
         };
 
+        const bundlePicker = document.getElementById("pfBundlePicker");
+        const bundleSize = bundlePicker.querySelector("[data-bundle-size]");
+        const bundlePiece = bundlePicker.querySelector("[data-bundle-piece]");
+        const bundleUnits = bundlePicker.querySelector("[data-bundle-units]");
+        const bundleMessage = bundlePicker.querySelector("[data-bundle-message]");
+        const bundleList = bundlePicker.querySelector("[data-bundle-list]");
+        let pieceOptions = [...bundlePiece.options].map(option => option.cloneNode(true));
+        let pieceById = new Map(pieceOptions.map(option => [option.value, option]));
+        let bundleForm;
+        let bundleLinks = [];
+
+        function refreshBundleEditor(form, updateStock = false) {
+            const recipe = form.querySelector("[data-pf-bundle-recipe]");
+            if (!recipe) return;
+            const links = JSON.parse(recipe.value || "[]");
+            form.querySelector("[data-pf-bundle-summary]").textContent = links.length
+                ? `${links.length} linked piece variants · stock calculated from pieces`
+                : "Stock is entered per size.";
+            form.querySelectorAll("[data-pf-inventory-row]").forEach(row => {
+                const stock = row.querySelector("[data-pf-stock]");
+                stock.readOnly = links.length > 0;
+                if (updateStock) {
+                    const size = row.querySelector('[data-field="Size"]').value.trim().toUpperCase();
+                    const parts = links.filter(part => part.BundleSize === size);
+                    const original = row.querySelector('[data-field="OriginalStockQuantity"]');
+                    stock.value = links.length ? (parts.length ? Math.min(...parts.map(part =>
+                        Math.floor(Number(pieceById.get(part.InventoryItemId)?.dataset.stock || 0) / part.Units))) : 0)
+                        : (original?.value || 0);
+                    updateInventoryRow(row);
+                }
+            });
+        }
+
+        function renderBundleLinks() {
+            bundleList.replaceChildren();
+            bundleLinks.forEach((link, index) => {
+                const row = document.createElement("li");
+                const piece = pieceById.get(link.InventoryItemId)?.textContent || "Unavailable piece";
+                row.textContent = `${link.BundleSize} · ${piece} × ${link.Units} `;
+                const remove = document.createElement("button");
+                remove.type = "button";
+                remove.className = "pf-row-remove";
+                remove.textContent = "Remove";
+                remove.setAttribute("aria-label", `Remove ${piece} from bundle size ${link.BundleSize}`);
+                remove.addEventListener("click", () => {
+                    bundleLinks.splice(index, 1);
+                    renderBundleLinks();
+                    bundleSize.focus();
+                });
+                row.append(remove);
+                bundleList.append(row);
+            });
+        }
+
+        document.addEventListener("click", event => {
+            const trigger = event.target.closest("[data-pf-bundle-open]");
+            if (!trigger) return;
+            bundleForm = trigger.closest("form");
+            bundleLinks = JSON.parse(bundleForm.querySelector("[data-pf-bundle-recipe]").value || "[]");
+            const sizes = [...bundleForm.querySelectorAll("[data-pf-inventory-row]")]
+                .filter(row => row.querySelector("[data-pf-enabled]").checked)
+                .map(row => row.querySelector('[data-field="Size"]').value.trim().toUpperCase()).filter(Boolean);
+            bundleSize.replaceChildren(...[...new Set(sizes)].map(size => new Option(size, size)));
+            const currentId = bundleForm.querySelector('[name="Id"]').value;
+            bundlePiece.replaceChildren(...pieceOptions.filter(option => option.dataset.product !== currentId)
+                .map(option => option.cloneNode(true)));
+            bundleUnits.value = 1;
+            bundleMessage.textContent = "";
+            renderBundleLinks();
+            bundlePicker.showModal();
+        });
+
+        bundlePicker.querySelector("[data-bundle-add]").addEventListener("click", () => {
+            const units = bundleUnits.valueAsNumber;
+            if (!bundleSize.value || !bundlePiece.value || !Number.isInteger(units) || units < 1 || units > 99) {
+                bundleMessage.textContent = "Choose a bundle size, a piece, and 1–99 units.";
+                return;
+            }
+            if (bundleLinks.length >= 200 || bundleLinks.some(link =>
+                link.BundleSize === bundleSize.value && link.InventoryItemId === bundlePiece.value)) {
+                bundleMessage.textContent = "Each piece can be linked once per size. Remove the existing link to change its units.";
+                return;
+            }
+            bundleLinks.push({ BundleSize: bundleSize.value, InventoryItemId: bundlePiece.value, Units: units });
+            bundleMessage.textContent = "";
+            renderBundleLinks();
+        });
+        bundlePicker.querySelector("[data-bundle-cancel]").addEventListener("click", () => bundlePicker.close());
+        bundlePicker.querySelector("[data-bundle-apply]").addEventListener("click", () => {
+            bundleForm.querySelector("[data-pf-bundle-recipe]").value = JSON.stringify(bundleLinks);
+            refreshBundleEditor(bundleForm, true);
+            bundlePicker.close();
+            scheduleAutoSave(bundleForm, { refresh: true });
+        });
+
         function initializeRoot(root = document) {
             syncMoneyWithin(root);
 
             root.querySelectorAll("[data-pf-product-form]").forEach(form => {
                 form.querySelectorAll("[data-pf-collection]").forEach(reindexCollection);
                 form.querySelectorAll("[data-pf-inventory-row]").forEach(updateInventoryRow);
+                refreshBundleEditor(form);
             });
 
             root.querySelectorAll("[data-pf-product-list]").forEach(initProductList);

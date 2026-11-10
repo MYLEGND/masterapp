@@ -69,7 +69,7 @@ public sealed class ParfaitOrderService
             .ToList()
             .Select(MapOrder)
             .Select(NormalizeOrder)
-            .Select(order => { order.PaymentManagedByProcessor = processorOrders.Contains(order.CommerceOrderId); return order; })
+            .Select(order => { order.PaymentManagedByProcessor = processorOrders.Contains(order.CommerceOrderId) || order.Items.Any(item => item.InventoryRequirementsJson is not null); return order; })
             .OrderByDescending(x => x.CreatedUtc)
             .ToList();
     }
@@ -88,7 +88,7 @@ public sealed class ParfaitOrderService
 
         if (order is null) return null;
         var result = NormalizeOrder(MapOrder(order));
-        result.PaymentManagedByProcessor = HasProcessorPayment(businessId, order.Id);
+        result.PaymentManagedByProcessor = HasProcessorPayment(businessId, order.Id) || order.Lines.Any(line => line.InventoryRequirementsJson is not null);
         return result;
     }
 
@@ -192,6 +192,9 @@ public sealed class ParfaitOrderService
 
         lock (Lock)
         {
+            var reservesInventory = items.Any(item => item.InventoryRequirementsJson is not null);
+            using var preparationTransaction = (reservesInventory || prepareBeforePayment is not null) && _db.Database.IsRelational()
+                ? _db.Database.BeginTransaction(System.Data.IsolationLevel.Serializable) : null;
             var now = DateTime.UtcNow;
 
             var order = _db.CommerceOrders
@@ -232,7 +235,6 @@ public sealed class ParfaitOrderService
                     now);
 
                 order = new CommerceOrder { CommerceBusinessId = businessId };
-                _db.CommerceOrders.Add(order);
             }
             else
             {
@@ -258,11 +260,13 @@ public sealed class ParfaitOrderService
             record.SquareError = null;
             StampOrder(record);
 
-            using var preparationTransaction = prepareBeforePayment is not null && _db.Database.IsRelational()
-                ? _db.Database.BeginTransaction(System.Data.IsolationLevel.Serializable) : null;
+            if (reservesInventory)
+                ParfaitProductService.ValidateInventoryReservation(_db, businessId, order.Id, record.Items);
+            if (_db.Entry(order).State == EntityState.Detached)
+                _db.CommerceOrders.Add(order);
             ApplyRecordToEntity(order, NormalizeOrder(record));
             try { _db.SaveChanges(); }
-            catch (DbUpdateException)
+            catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
             {
                 preparationTransaction?.Rollback();
                 // The database uniqueness constraint arbitrates across host processes.
@@ -271,6 +275,7 @@ public sealed class ParfaitOrderService
                     x.CommerceBusinessId == businessId && x.CheckoutAttemptId == normalizedAttemptId);
                 if (winner is null) throw;
                 var existing = NormalizeOrder(MapOrder(winner));
+                if (!existing.IsPaid && !IsPaymentProcessingActive(existing, now)) throw;
                 return new CheckoutPaymentStartResult(existing.IsPaid
                     ? CheckoutPaymentStartState.AlreadyPaid : CheckoutPaymentStartState.AlreadyProcessing, existing);
             }
@@ -429,7 +434,7 @@ public sealed class ParfaitOrderService
                 return false;
             }
             // Both merchant and legacy processor records own financial evidence.
-            if (HasProcessorPayment(businessId, order.Id)
+            if ((HasProcessorPayment(businessId, order.Id) || order.Lines.Any(line => line.InventoryRequirementsJson is not null))
                 && (NormalizePaymentStatus(request.PaymentStatus) != order.PaymentStatus || request.RefundedCents != order.RefundedCents))
             {
                 error = "Payment and refunds are managed by the payment provider. Refresh the order before saving fulfillment.";
@@ -571,6 +576,7 @@ public sealed class ParfaitOrderService
                     Quantity = line.Quantity,
                     UnitPriceCents = line.UnitPriceCents,
                     CompareAtPriceCents = line.CompareAtPriceCents,
+                    InventoryRequirementsJson = line.InventoryRequirementsJson,
                     ImageUrl = line.ImageUrl
                 })
                 .ToList(),
@@ -646,6 +652,7 @@ public sealed class ParfaitOrderService
                 Quantity = item.Quantity,
                 UnitPriceCents = item.UnitPriceCents,
                 CompareAtPriceCents = item.CompareAtPriceCents,
+                InventoryRequirementsJson = item.InventoryRequirementsJson,
                 ImageUrl = item.ImageUrl
             });
         }
@@ -842,6 +849,7 @@ public sealed class ParfaitOrderService
             Quantity = Math.Clamp(item.Quantity, 1, 99),
             UnitPriceCents = Math.Max(0, item.UnitPriceCents),
             CompareAtPriceCents = Math.Max(0, item.CompareAtPriceCents),
+            InventoryRequirementsJson = item.InventoryRequirementsJson,
             ImageUrl = NullIfEmpty(item.ImageUrl)
         };
     }
@@ -895,6 +903,16 @@ public sealed class ParfaitOrderService
         if (string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase)) return "Fulfilled";
         if (string.Equals(order.FulfillmentStatus, "Shipped", StringComparison.OrdinalIgnoreCase)) return "Shipped";
         return "Paid";
+    }
+
+    internal static bool IsUniqueConstraintViolation(Exception error)
+    {
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
+            if (current is Microsoft.Data.SqlClient.SqlException sql && sql.Number is 2601 or 2627) return true;
+            if (current is Microsoft.Data.Sqlite.SqliteException sqlite && sqlite.SqliteExtendedErrorCode is 1555 or 2067) return true;
+        }
+        return false;
     }
 
     private static bool IsPaymentProcessingActive(ParfaitOrderRecord order, DateTime now)

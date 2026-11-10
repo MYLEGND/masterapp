@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Security.UploadValidation;
@@ -7,7 +8,7 @@ using ParfaitApp.Models;
 
 namespace ParfaitApp.Services;
 
-public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogReader
+public sealed partial class ParfaitProductService : Legend.Commerce.ICommerceCatalogReader
 {
     private static readonly object Lock = new();
 
@@ -28,10 +29,12 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     public IReadOnlyList<ParfaitProductEditorViewModel> GetAllProducts() =>
         GetAllProducts(GetBusinessId());
 
-    public IReadOnlyList<ParfaitProductEditorViewModel> GetAllProducts(Guid businessId)
+    public IReadOnlyList<ParfaitProductEditorViewModel> GetAllProducts(Guid businessId) => ReadProducts(businessId, false);
+
+    private IReadOnlyList<ParfaitProductEditorViewModel> ReadProducts(Guid businessId, bool availableOnly)
     {
         var fallbackBadge = ResolveTenantBadge(businessId);
-        return _db.CommerceProducts
+        var products = _db.CommerceProducts
             .AsNoTracking()
             .Include(x => x.Images)
             .Include(x => x.InventoryItems)
@@ -45,6 +48,8 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
             .OrderBy(product => product.DisplayOrder)
             .ThenBy(product => product.Name)
             .ToList();
+        ProjectBundleInventory(products, ReadReservedInventory(_db, businessId), availableOnly);
+        return products;
     }
 
     public IReadOnlyList<ParfaitStoreProductViewModel> GetActiveStoreProducts() =>
@@ -54,7 +59,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     {
         var settings = GetCommerceSettings(businessId);
 
-        return GetAllProducts(businessId)
+        return ReadProducts(businessId, true)
             .Where(product => product.IsActive && product.BillingKind == Domain.Billing.ClientSubscriptionScope.OneTimeProduct)
             .OrderBy(product => product.DisplayOrder)
             .ThenBy(product => product.Name)
@@ -86,9 +91,18 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     public ParfaitCartQuoteResponse QuoteCart(Guid businessId, IReadOnlyList<ParfaitCheckoutItemRequest> cartItems, string? discountCode)
     {
         var settings = GetCommerceSettings(businessId);
-        var products = GetAllProducts(businessId)
+        var products = ReadProducts(businessId, true)
             .Where(product => product.IsActive && product.BillingKind == Domain.Billing.ClientSubscriptionScope.OneTimeProduct)
             .ToDictionary(product => product.Id, StringComparer.OrdinalIgnoreCase);
+
+        var remaining = products.Values.Where(product => product.BundleComponents.Count == 0)
+            .SelectMany(product => product.InventoryBySize).Where(size => size.IsEnabled && size.InventoryItemId != Guid.Empty)
+            .ToDictionary(size => size.InventoryItemId, size => size.StockQuantity);
+
+        var inventoryLabels = products.Values.Where(product => product.BundleComponents.Count == 0)
+            .SelectMany(product => product.InventoryBySize.Where(size => size.InventoryItemId != Guid.Empty)
+                .Select(size => (size.InventoryItemId, product.Name, size.Size)))
+            .ToDictionary(row => row.InventoryItemId);
 
         var quote = new ParfaitCartQuoteResponse
         {
@@ -124,6 +138,8 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
                 continue;
             }
 
+            var requirements = InventoryFor(product, selectedSize);
+            var available = requirements.Count == 0 ? 0 : requirements.Min(part => remaining.GetValueOrDefault(part.InventoryItemId) / part.Units);
             var effectiveQuantity = requestedQuantity;
             var issue = "";
             var isAvailable = true;
@@ -138,7 +154,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
                 availabilityLabel = "Hidden";
                 issue = $"{product.Name} {selectedSize.Size} is hidden.";
             }
-            else if (selectedSize.StockQuantity <= 0)
+            else if (available <= 0)
             {
                 effectiveQuantity = 0;
                 isAvailable = false;
@@ -146,9 +162,9 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
                 availabilityLabel = "Sold Out";
                 issue = $"{product.Name} {selectedSize.Size} is sold out.";
             }
-            else if (requestedQuantity > selectedSize.StockQuantity)
+            else if (requestedQuantity > available)
             {
-                effectiveQuantity = selectedSize.StockQuantity;
+                effectiveQuantity = available;
                 isAvailable = effectiveQuantity > 0;
                 availabilityTone = effectiveQuantity <= Math.Max(1, selectedSize.LowStockThreshold) ? "warning" : "success";
                 availabilityLabel = effectiveQuantity > 0 ? $"{effectiveQuantity} Left" : "Sold Out";
@@ -156,6 +172,10 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
                     ? $"{product.Name} {selectedSize.Size} was adjusted to {effectiveQuantity} available."
                     : $"{product.Name} {selectedSize.Size} is sold out.";
             }
+
+            if (effectiveQuantity > 0)
+                foreach (var part in requirements)
+                    remaining[part.InventoryItemId] -= effectiveQuantity * part.Units;
 
             var line = new ParfaitCartLineQuote
             {
@@ -166,6 +186,10 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
                 Size = selectedSize.Size,
                 Badge = product.Badge ?? string.Empty,
                 RequestedQuantity = requestedQuantity,
+                InventoryRequirementsJson = requirements.Count == 0 ? null : JsonSerializer.Serialize(
+                    requirements.Select(part => product.BundleComponents.Count > 0 && inventoryLabels.TryGetValue(part.InventoryItemId, out var label)
+                        ? part with { ProductName = label.Name, Size = label.Size }
+                        : part)),
                 Quantity = effectiveQuantity,
                 UnitPriceCents = product.PriceCents,
                 CompareAtPriceCents = product.CompareAtPriceCents,
@@ -314,11 +338,15 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
             if (product.BillingKind == Domain.Billing.ClientSubscriptionScope.MonthlyTraining && product.IsActive &&
                 !_rollout.TrainingSubscriptionsEnabled)
                 throw new InvalidOperationException("Training plans must remain inactive until training enrollment is available.");
+            using var transaction = _db.Database.IsRelational()
+                ? _db.Database.BeginTransaction(System.Data.IsolationLevel.Serializable) : null;
             var existing = _db.CommerceProducts
                 .Include(x => x.Images)
                 .Include(x => x.InventoryItems)
                 .Include(x => x.Discounts)
                 .SingleOrDefault(x => x.CommerceBusinessId == businessId && x.ExternalProductKey == product.Id);
+
+            var components = ValidateBundle(businessId, product, existing);
 
             var existingImages = existing is null
                 ? []
@@ -358,8 +386,11 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
                 normalized.DisplayOrder = existing.DisplayOrder;
             }
 
+            ValidateInventoryEdits(businessId, existing, normalized, components);
+            existing.BundleComponentsJson = components.Count == 0 ? null : JsonSerializer.Serialize(components);
             ApplyProduct(existing, normalized);
             _db.SaveChanges();
+            transaction?.Commit();
         }
     }
 
@@ -370,6 +401,8 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
     {
         lock (Lock)
         {
+            using var transaction = _db.Database.IsRelational()
+                ? _db.Database.BeginTransaction(System.Data.IsolationLevel.Serializable) : null;
             var product = _db.CommerceProducts
                 .Include(x => x.Images)
                 .Include(x => x.InventoryItems)
@@ -379,12 +412,14 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
             if (product is null)
                 return;
 
+            EnsureInventoryCanBeRemoved(businessId, product.InventoryItems.Select(row => row.Id));
             var productFolder = _storagePaths.GetUploadDirectory(GetBusinessKey(businessId), product.ExternalProductKey);
             if (Directory.Exists(productFolder))
                 Directory.Delete(productFolder, recursive: true);
 
             _db.CommerceProducts.Remove(product);
             _db.SaveChanges();
+            transaction?.Commit();
         }
     }
 
@@ -606,8 +641,18 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         lock (Lock)
         {
             var updated = false;
+            foreach (var (id, quantity) in SumRequirements(items))
+            {
+                var inventory = _db.CommerceProductInventoryItems.Include(row => row.CommerceProduct)
+                    .SingleOrDefault(row => row.Id == id && row.CommerceProduct!.CommerceBusinessId == businessId);
+                if (inventory is null || inventory.StockQuantity < quantity)
+                    throw new InvalidOperationException("Paid order inventory needs reconciliation.");
+                inventory.StockQuantity -= quantity;
+                inventory.CommerceProduct!.UpdatedUtc = DateTime.UtcNow;
+                updated = true;
+            }
 
-            foreach (var item in items)
+            foreach (var item in items.Where(item => item.InventoryRequirementsJson is null))
             {
                 var normalizedSize = ParfaitProductCatalogDefaults.NormalizeSize(item.Size);
                 var inventory = _db.CommerceProductInventoryItems
@@ -684,6 +729,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         {
             Id = product.ExternalProductKey,
             BillingKind = product.BillingKind,
+            BundleComponents = ReadComponents(product.BundleComponentsJson),
             Name = product.Name,
             Slug = product.Slug,
             Description = product.Description,
@@ -722,6 +768,8 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         return new ParfaitProductSizeInventoryEditorViewModel
         {
             Id = item.ExternalInventoryKey,
+            InventoryItemId = item.Id,
+            OriginalStockQuantity = item.StockQuantity,
             Size = item.Size,
             IsEnabled = item.IsEnabled,
             StockQuantity = item.StockQuantity,
@@ -907,6 +955,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
 
         return new ParfaitStoreProductViewModel
         {
+            IsBundle = product.BundleComponents.Count > 0,
             Id = product.Id,
             Name = product.Name,
             Slug = product.Slug,
@@ -962,6 +1011,7 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
         {
             Id = string.IsNullOrWhiteSpace(product.Id) ? Guid.NewGuid().ToString("N") : product.Id,
             BillingKind = product.BillingKind,
+            BundleComponents = product.BundleComponents,
             Name = product.Name.Trim(),
             Slug = slug,
             Description = product.Description.Trim(),
@@ -1009,6 +1059,8 @@ public sealed class ParfaitProductService : Legend.Commerce.ICommerceCatalogRead
             {
                 Id = string.IsNullOrWhiteSpace(size.Id) ? Guid.NewGuid().ToString("N") : size.Id,
                 Size = ParfaitProductCatalogDefaults.NormalizeSize(size.Size),
+                InventoryItemId = size.InventoryItemId,
+                OriginalStockQuantity = size.OriginalStockQuantity,
                 IsEnabled = size.IsEnabled,
                 StockQuantity = Math.Max(0, size.StockQuantity),
                 LowStockThreshold = Math.Max(1, size.LowStockThreshold),

@@ -51,6 +51,8 @@ public static class MasterAppSqliteSchemaBootstrapper
         new("ClientProfiles", "ExternalIdentityObjectId", "TEXT"),
         new("ClientProfiles", "AccountManagementMode", "TEXT NOT NULL DEFAULT 'SharedAccount'"),
         new("CommerceProducts", "BillingKind", "TEXT NOT NULL DEFAULT 'OneTime'"),
+        new("CommerceProducts", "BundleComponentsJson", "TEXT"),
+        new("CommerceOrderLines", "InventoryRequirementsJson", "TEXT"),
         new("ClientSubscriptions", "SubscriptionScope", "TEXT NOT NULL DEFAULT 'LegendMembership'"),
         new("ClientSubscriptions", "CommerceBusinessId", "TEXT"),
         new("ClientSubscriptions", "CommerceProductId", "TEXT"),
@@ -640,6 +642,7 @@ public static class MasterAppSqliteSchemaBootstrapper
                 "DisplayOrder" INTEGER NOT NULL,
                 "CreatedUtc" TEXT NOT NULL,
                 "UpdatedUtc" TEXT NOT NULL,
+                "BundleComponentsJson" TEXT NULL,
                 CONSTRAINT "FK_CommerceProducts_CommerceBusinesses_CommerceBusinessId"
                     FOREIGN KEY ("CommerceBusinessId") REFERENCES "CommerceBusinesses" ("Id") ON DELETE CASCADE
             )
@@ -657,6 +660,7 @@ public static class MasterAppSqliteSchemaBootstrapper
                 "UnitPriceCents" INTEGER NOT NULL,
                 "CompareAtPriceCents" INTEGER NOT NULL,
                 "ImageUrl" TEXT NULL,
+                "InventoryRequirementsJson" TEXT NULL,
                 CONSTRAINT "FK_CommerceOrderLines_CommerceOrders_CommerceOrderId"
                     FOREIGN KEY ("CommerceOrderId") REFERENCES "CommerceOrders" ("Id") ON DELETE CASCADE
             )

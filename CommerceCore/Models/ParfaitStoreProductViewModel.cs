@@ -99,6 +99,7 @@ public sealed class ParfaitStoreProductViewModel
     public int DisplayCompareAtPriceCents { get; init; }
     public string DisplayDiscountLabel { get; init; } = "";
     public string Badge { get; init; } = "";
+    public bool IsBundle { get; init; }
     public bool IsFeatured { get; init; }
     public IReadOnlyList<ParfaitStoreProductImageViewModel> Images { get; init; } = [];
     public IReadOnlyList<ParfaitStoreProductSizeViewModel> Sizes { get; init; } = [];
@@ -134,7 +135,7 @@ public sealed class ParfaitStoreProductViewModel
         ? "Sold Out"
         : IsLowStock
             ? "Low Stock"
-            : $"{TotalTrackedStock} Units Ready";
+            : IsBundle ? "Available by size" : $"{TotalTrackedStock} Units Ready";
 }
 
 public sealed class ParfaitStorefrontViewModel
@@ -187,6 +188,9 @@ public sealed class ParfaitProductSizeInventoryEditorViewModel
 
     [Required]
     public string Size { get; set; } = "";
+    public Guid InventoryItemId { get; set; }
+    public int? OriginalStockQuantity { get; set; }
+    public int AvailableStockQuantity { get; set; }
 
     public bool IsEnabled { get; set; } = true;
     public int StockQuantity { get; set; }
@@ -222,6 +226,10 @@ public sealed class ParfaitProductDiscountCodeEditorViewModel
         : $"{Amount:0.#}% Off";
 }
 
+public sealed record ParfaitBundleComponent(string BundleSize, Guid InventoryItemId, int Units);
+
+public sealed record ParfaitInventoryRequirement(Guid InventoryItemId, int Units, string? ProductName = null, string? Size = null);
+
 public sealed class ParfaitProductEditorViewModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -247,11 +255,13 @@ public sealed class ParfaitProductEditorViewModel
     public bool IsActive { get; set; } = true;
     public int DisplayOrder { get; set; }
     public List<ParfaitProductImageEditorViewModel> Images { get; set; } = [];
+    public string? BundleComponentsJson { get; set; }
+    public List<ParfaitBundleComponent> BundleComponents { get; set; } = [];
     public List<ParfaitProductSizeInventoryEditorViewModel> InventoryBySize { get; set; } = ParfaitProductCatalogDefaults.CreateDefaultInventory();
     public List<ParfaitProductDiscountCodeEditorViewModel> DiscountCodes { get; set; } = [];
 
     public bool HasSalePrice => CompareAtPriceCents > PriceCents && PriceCents > 0;
-    public int TotalTrackedStock => InventoryBySize
+    public int TotalTrackedStock => BundleComponents.Count > 0 ? 0 : InventoryBySize
         .Where(size => size.IsEnabled)
         .Sum(size => Math.Max(size.StockQuantity, 0));
     public int LowStockSizeCount => InventoryBySize.Count(size => size.IsLowStock);
@@ -260,12 +270,12 @@ public sealed class ParfaitProductEditorViewModel
         code.IsActive
         && !string.IsNullOrWhiteSpace(code.Code)
         && code.Amount > 0);
-    public string InventoryTone => SoldOutSizeCount > 0 && TotalTrackedStock == 0
+    public string InventoryTone => SoldOutSizeCount > 0 && !InventoryBySize.Any(size => size.IsEnabled && size.StockQuantity > 0)
         ? "danger"
         : LowStockSizeCount > 0
             ? "warning"
             : "success";
-    public string InventoryLabel => TotalTrackedStock > 0
+    public string InventoryLabel => BundleComponents.Count > 0 ? "Shared stock by size" : TotalTrackedStock > 0
         ? $"{TotalTrackedStock} Units"
         : "Needs Stock";
 }

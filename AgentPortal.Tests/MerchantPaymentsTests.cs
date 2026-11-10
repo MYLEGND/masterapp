@@ -123,6 +123,8 @@ public sealed class MerchantPaymentsTests
     [InlineData("USD", 0, false, true, "wrong-amount")]
     [InlineData("USD", 0, true, true, "rollback")]
     [InlineData("USD", 0, true, true, "mail-unknown")]
+    [InlineData("USD", 0, true, false, "bundle")]
+    [InlineData("USD", 0, true, true, "bundle")]
     [InlineData("USD", 0, true, false, "decline-then-capture")]
     [InlineData("USD", 0, true, false, "capture-then-late-decline")]
     [InlineData("USD", 0, true, false, "legacy-capture-blocks-decline")]
@@ -135,7 +137,20 @@ public sealed class MerchantPaymentsTests
         {
             f.Db.CommerceBusinesses.Add(new(){Id=f.Business,Key="independent",DisplayName="Independent",OwnerEmail="owner@example.test",IsActive=true,Status="Active"});
             f.Db.CommerceProducts.Add(new(){CommerceBusinessId=f.Business,ExternalProductKey="product",Name="Product",Slug="product",IsActive=true,PriceCents=1000,InventoryItems=[new(){ExternalInventoryKey="product-m",Size="M",IsEnabled=true,StockQuantity=5}]});
-            f.Db.CommerceOrderLines.Add(new(){CommerceOrderId=f.Order,ProductExternalKey="product",ProductName="Product",ProductSlug="product",Size="M",Quantity=1,UnitPriceCents=1000});
+            var line = new CommerceOrderLine { CommerceOrderId=f.Order,ProductExternalKey="product",ProductName="Product",ProductSlug="product",Size="M",Quantity=1,UnitPriceCents=1000 };
+            f.Db.CommerceOrderLines.Add(line);
+            if (scenario == "bundle")
+            {
+                var component = f.Db.CommerceProductInventoryItems.Local.Single();
+                var second = new CommerceProductInventoryItem { CommerceProductId = component.CommerceProductId,
+                    ExternalInventoryKey = "product-l", Size = "L", IsEnabled = true, StockQuantity = 5 };
+                f.Db.CommerceProductInventoryItems.Add(second);
+                line.ProductExternalKey = "outfit";
+                line.InventoryRequirementsJson = JsonSerializer.Serialize(new ParfaitInventoryRequirement[]
+                {
+                    new(component.Id, 1), new(second.Id, 2)
+                });
+            }
             await f.Db.SaveChangesAsync();
             var context=new CommerceSignalContext(f.Business,null,null,"business","independent","Independent","https://example.test/store",OrderId:f.Order);
             Guid paymentId;
@@ -218,7 +233,9 @@ public sealed class MerchantPaymentsTests
                 await Complete(); f.Db.ChangeTracker.Clear();
                 Assert.Equal("Paid", (await f.Db.CommerceOrders.SingleAsync()).PaymentStatus);
             }
-            Assert.Equal(4,(await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
+            Assert.Equal(4, (await f.Db.CommerceProductInventoryItems.SingleAsync(row => row.Size == "M")).StockQuantity);
+            if (scenario == "bundle")
+                Assert.Equal(3, (await f.Db.CommerceProductInventoryItems.SingleAsync(row => row.Size == "L")).StockQuantity);
             Assert.Equal(1,await f.Db.AnalyticsEvents.CountAsync());
             var purchase=await f.Db.AnalyticsEvents.SingleAsync();Assert.Equal(f.Business,purchase.CommerceBusinessId);
             using var payload=JsonDocument.Parse(purchase.MetadataJson!);Assert.Equal(1000,payload.RootElement.GetProperty("valueCents").GetInt32());
@@ -237,7 +254,7 @@ public sealed class MerchantPaymentsTests
                     await f.Db.SaveChangesAsync();
                     await Complete(); await Complete();
                     Assert.Equal(amount==250 ? 250 : 1000,(await f.Db.CommerceOrders.SingleAsync()).RefundedCents);
-                    Assert.Equal(4,(await f.Db.CommerceProductInventoryItems.SingleAsync()).StockQuantity);
+                    Assert.Equal(4, (await f.Db.CommerceProductInventoryItems.SingleAsync(row => row.Size == "M")).StockQuantity);
                     Assert.Equal(1,await f.Db.AnalyticsEvents.CountAsync());
                 }
                 Assert.Equal("Refunded",(await f.Db.CommerceOrders.SingleAsync()).PaymentStatus);

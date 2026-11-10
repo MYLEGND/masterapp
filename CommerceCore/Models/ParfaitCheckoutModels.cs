@@ -58,6 +58,14 @@ public sealed class ParfaitValidatedCartItem
     public int UnitPriceCents { get; set; }
     public int CompareAtPriceCents { get; set; }
     public string? ImageUrl { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? InventoryRequirementsJson { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<ParfaitInventoryRequirement> BundlePickList =>
+        InventoryRequirementsJson is null ? [] :
+        (System.Text.Json.JsonSerializer.Deserialize<ParfaitInventoryRequirement[]>(InventoryRequirementsJson) ?? [])
+            .Where(part => part.ProductName is not null)
+            .ToArray();
     public int LineTotalCents => UnitPriceCents * Quantity;
 }
 
@@ -79,6 +87,8 @@ public sealed class ParfaitCartLineQuote
     public string AvailabilityTone { get; set; } = "success";
     public string AvailabilityLabel { get; set; } = "Available";
     public string? Issue { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? InventoryRequirementsJson { get; set; }
     public int LineTotalCents => UnitPriceCents * Quantity;
 }
 
