@@ -4758,3 +4758,32 @@ SQL writers. Rehearse the exact wrapper and SQL before production mutation.
 Older commerce code is not automatically safe after new bundle orders exist;
 prefer forward repair and retain explicit recovery evidence. No shutdown, upload,
 restart or production database mutation has occurred in this resume.
+
+
+### Final native packaging preparation
+
+The subsequent PR build exposed an older negative test that still classified the
+now-reviewed exact Xcode project as unknown. Updated that fixture to an unknown
+sibling and added the exact project to its positive native-only coverage.
+All210 fast-track regressions passed; independent review accepted this correction.
+No application or release-authority implementation changed in this follow-up.
+
+At34f87a290 the isolated Website and Parfait packages completed. Portal/Client
+compilers exited137 under concurrent Docker memory pressure; Protect staging
+failed with a host filesystem PermissionError. Preserve these results separately;
+none is an upload receipt. Continue with the retained serial native Mac builder,
+updated only to the consolidated checkout and independently reviewed before use.
+Build final packages against the final clean source; do not relabel earlier ZIPs.
+
+Read-only Azure evidence reconfirmed all five apps Running, terminal deployment
+journals, the recorded live revisions, and configuration fingerprints. Production
+SQL history has exactly237 IDs and neither new schema object exists. SQL is in
+MasterApp-Data-RG; Azure reports Online with earliestRestoreDate
+2026-11-03T07:17:36.729703+00:00. This is restore availability, not a tested restore.
+Exact two-migration SQL was generated without inner transactions. Existing native
+runner/migration owner updates are staged in /private/tmp/legend-ad-release-migration
+for review and rehearsal, not installed/admitted. Disposable SQL rehearsal's first
+attempt failed localhost name resolution; it was interrupted and its owned test
+container removed. A bounded literal-loopback retry is prepared. No production
+mutation occurred. Full rendered local journeys and exact release admission remain
+outstanding; no CI, migration, deployment or live-success evidence is fabricated.
