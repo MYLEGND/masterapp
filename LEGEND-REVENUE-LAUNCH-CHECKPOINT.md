@@ -6094,3 +6094,47 @@ rebuilt for the changed shared transport; preserve earlier3b78 receipts as histo
 Previous architecture43081371822 and commerce43081371643 were cancelled, not PASS.
 Required new-candidate checks remain mandatory; avoid checkpoint-only pushes while
 those checks run. No rendered browser attempt is authorized/requested here.
+
+
+### 2026-11-11 Azure-first LEGEND AI release completed
+
+Application candidate dd72553987c8cb2a2dd7900d9a6cab4fdcc3dc19 is deployed and
+runtime-verified on portal, client, protect and parfait. All four apps are Running;
+static Website remains unchanged at ea128c942b7d8bd4452b5ec6abc591ee624111fc.
+No Cloudflare Worker, credentials, model budgets or app settings changed. Existing
+v1 Cloudflare remains supported; new manual v2 choices stay unavailable until the
+separate Worker upgrade. Rendered/authenticated customer journeys were explicitly
+waived by Founder for this deployment and remain for live user acceptance. Runtime
+provenance is not proof of model answers, website publishing, or customer journeys.
+
+Exact native package manifest SHA256:
+cc85ef7c2d4efdace8b8883389f47b2abbbb23f53c7031b6d22bf930d8f6945b.
+Astra accepted final admission e4dc0afe9062d116e2311a8dcdfe34735f4a99300a8608102f6b52f35299cdad.
+Security43093321190 PASS; architecture43093321046 attempt2 PASS;
+commerce43093321168 attempt2 PASS. Same-run recovery reused successful validation
+after attempt1 artifact-upload/control-plane interruption; no application rebuild.
+Focused compatibility16/16 and prior compatible46 website/action,2 publication,
+8 JS,151 Worker checks retained. Production schema readback241 applied/0 pending,
+settled; no SQL migration was executed or replayed. Existing authorized single-IP firewall
+rule ZacLocalDev-AutoSync was refreshed; no broader network grant.
+
+Native stop/upload/restart/verify receipts and immutable admission evidence:
+AgentPortal/App_Data/linked-bundle-release-20261110/{admission,native-deployment-receipts}/dd7255398.
+Portal operation a59346d156de418e819a1d805a398845;
+Client e00a9f376d014beea6d85c6b4c84612d;
+Protect c896561a7822499db0ccc6b9237b15b4;
+Parfait a7f9d9f0819b46a49ef28dfc5928f984.
+A GitHub read reset before any upload was independently reconciled before one
+unchanged-owner retry. Client upload succeeded despite a later CLI network failure;
+SCM installed assembly hashes matched the exact package. Astra accepted existing
+recovery-owner continuation1683a84f9c19ba9f6e7c0b34b4f0e8601caaae4f2da9d4e232876b98106788ec,
+which preserved Portal/Client and uploaded only unattempted Protect/Parfait.
+No successful upload was repeated. Native mutex43100065298 release requested
+only after exact runtime verification. Prior-baseline39bd recovery packages retained.
+
+Source integration: PR772 into Legend/fast-track-release is the existing source-only
+path; prepare request-only metadata atop this checkpoint with actual fast-track
+base4e6554d8a34ca89ef7f98f77773be5fa75f92835. Integration must not redeploy.
+Task branch source preservation and merge readback remain distinct; record exact
+result in the final session receipt. Cloudflare setup and authenticated live UI/
+provider acceptance remain outstanding, not silently reported complete.
