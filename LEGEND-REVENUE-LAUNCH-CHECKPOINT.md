@@ -5346,3 +5346,84 @@ and JS3 retained. Astra accepted exact10-path manifest
 88ba311ac6d3cd42cd52f721bf73a9bf33fd189af190d487ec9285850a350ed4 for
 source preservation only. No rendered, real-provider, live-voice or release acceptance.
 Canonical finish/remote readback for this increment remains pending. No schema change.
+
+## Household partner continuation on preserved base361ce0f4c
+
+Founder adds spouse/partner membership, pricing and separate individual/shared
+experiences to the same checkout/release. Session preflight PASS at full base
+361ce0f4c2f0bd3f5665aabe20a9d4ea8ee70110; prior AI/voice work retained. No new
+checkout/database/provider/service or production mutation. Actual process read
+showed no Git writer; no process stopped and historical PID48937 not acted on.
+
+Explicit pricing decisions: partner50% of primary ACTUAL recurring price AFTER
+applicable discounts, including retained legacy terms; fractional cents ROUND UP.
+10000+5000=15000cents;9999+5000=14999cents. Existing offer pricing owner now calculates
+those components with checked arithmetic. This pure calculation DOES NOT change
+existing offers/subscriptions, create charges or constitute a payer quote.
+
+Implemented: existing household invitation owner checks conflicting independent
+membership subscriptions/household ownership before external provisioning. Existing
+profiles retain personal names, user IDs and identity binding; new pinned identity
+entry point in existing ClientEntraLifecycleService verifies unique lookup against
+stored objectID before Graph invitation/sync/assignment. Mismatches/missing identity
+require reconciliation rather than silent merging. New-person invitation/sign-in
+flow remains existing owner; an entered email alone grants no household access.
+
+Canonical BillingStateMapper now shares usable-subscription expression with directory
+projection. Active household partners inherit the latest owner's eligible membership
+without duplicate entitlement rows/subscriptions. Directory, household and billing
+evaluator use identical UpdatedUtc/CreatedUtc/Id ordering; grace expiry and scheduled
+cancellation rules remain canonical. Existing personal CRM/member classification is
+preserved. Partner subscription page returns a read-only inherited-membership model
+before payer card/history queries; profile membership indicator recognizes inherited
+access without cancellation authority. EffectiveClientContext retains individual IDs.
+
+Existing HouseholdReconciliationService dry-run now reports partner identity,
+inactive-link and independent payer conflicts separately, with BillingChangeProposed
+false. It does not silently reactivate suspended/removed records, cancel subscriptions,
+merge identities, issue invoices or charge listed partners. Only synthetic reconciliation
+was executed; production inventory and entitlement corrections remain NOT_RUN.
+
+Scope map for remaining rendered/access audit:
+- Individual: ClientProfile/login/name/photo/preferences, personal messaging/Journey,
+  mobile actor/session and notification settings. Do not replace partner profile ID.
+- Shared financial: existing HouseholdAccountId/FinancialScopeOwnerClientProfileId in
+  FinanceController, FinanceToolStatesController and MobileFinancialOperatingSystemProjectionService.
+- Payer-private: subscription payment history/cards and billing mutations. Partner view
+  exposes membership status only; ownership is not granted by household relationship.
+This map is not proof that every individual/shared page has completed acceptance.
+
+Validation: first focused identity run32pass/1fail was an incomplete mock for the
+existing invitation provisioning step; corrected via pinned identity owner. Subsequent
+focused50pass, then pricing/directory8pass, then final exact implementation59pass/0fail
+(`/private/tmp/legend-household-reviewed-tests.log`). Final includes inherited view
+with zero card/billing service calls, existing identity preservation, own-subscription
+conflict, shared-finance revocation, grace/removal/tied latest subscription, arithmetic
+and nonmutating reconciliation. In-memory/synthetic tests are not provider sandbox
+charge verification, relational query acceptance or rendered web/mobile proof. NU1900
+feed warnings remain and do not constitute a passed package security gate.
+
+Unfinished billing work: payer-reviewed recurring/proration quote, durable consent and
+idempotent application through existing billing orchestrator, signup/later addition,
+plan/renewal changes and sandbox provider verification. Current membership model and
+activation policy are monthly; annual arithmetic test does NOT implement annual plans.
+Training promotion coupons are separately scoped and must not become membership rules.
+Current LEGEND-managed Square Payments price-change owner takes effect at next renewal;
+legacy provider-managed subscription changes are explicitly rejected pending migration.
+Square Subscriptions documentation says proration depends on plan variation can_prorate,
+not a universal payment-provider behavior. No existing midcycle partner quote found.
+Founder decision CONFIRMED: partner addition starts charging at the NEXT RENEWAL,
+with NO IMMEDIATE charge. Payer confirmation must show the revised recurring total
+and effective renewal date; no retroactive charge for listed partners. Securely
+verified eligible partner access does not wait for a second activation or purchase. Trials/annual/provider-specific terms still require full
+implementation reconciliation; no price exception or trial charge inferred.
+
+No production charge, data reconciliation, migration, merge, deployment or live
+acceptance. Remaining browser suite includes separate logins/photos/mobile sessions,
+shared financial views, private conversations, billing ownership, signup/later partners,
+removal/cancellation and exact payer confirmation. AI/voice and bundle gates remain open.
+
+Implementation commit 927965d03fdd2eddf2945a047c81f155939fd569.
+Astra accepted14-path manifest5c26efd0537883e3ceb10197217a6424dbf3a19942d280db0bee91f69ce6f81d
+for source preservation only. Checkpoint/remote finish pending; full feature and release
+acceptance explicitly not granted. No schema change in this increment.
