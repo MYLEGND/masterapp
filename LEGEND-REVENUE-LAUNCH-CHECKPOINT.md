@@ -5475,3 +5475,18 @@ latency evidence, remaining AI/voice/household implementation, required release 
 fast-track integration and deployment remain open. Do not reuse an earlier visual
 waiver or replay successful prior deployments. Next: preserve this checkpoint through
 the existing session finish owner, then continue the outstanding combined work.
+
+### Local portal Microsoft callback repair — 2026-11-10
+
+Continuation base aa4860db5bd6ed403aa17ca103ccbae3521b854c; session preflight PASS.
+User reproduced AADSTS50011 at http://127.0.0.1:6206/signin-oidc through the supported
+local launcher. Read-only Azure application metadata for
+c0165351-c30f-475c-8af9-a4713a304b76 confirms the existing web redirect
+http://localhost:5000/signin-oidc and logout http://localhost:5000/Account/LoggedOut.
+Corrected only the portal URL in scripts/local-test-database.py to
+http://localhost:5000. Existing persistent SQL identity/127.0.0.1:14339 and credential
+isolation are unchanged. No Azure registration, database or production change.
+Six existing local launcher Python tests PASS; diff whitespace check PASS.
+Actual browser sign-in remains to be verified after restarting with
+bash scripts/db.sh local run portal and opening http://localhost:5000.
+Do not use the old 127.0.0.1 browser tab. This is not combined release acceptance.

@@ -26,7 +26,9 @@ def projects():
     return {name: row['project'] for name, row in values[0].items() if not row['static']}
 
 
-URLS = {'portal': 'http://127.0.0.1:6206', 'client': 'http://127.0.0.1:5222',
+# Portal's existing Microsoft registration admits this localhost callback.
+# Keep the SQL target independently pinned to 127.0.0.1:14339.
+URLS = {'portal': 'http://localhost:5000', 'client': 'http://127.0.0.1:5222',
         'protect': 'http://127.0.0.1:1112', 'parfait': 'http://127.0.0.1:2122'}
 
 
