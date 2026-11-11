@@ -70,13 +70,13 @@ public sealed class TrainingEnrollmentDependencyResolutionTests
     }
 
     [Fact]
-    public async Task HouseholdEntitlementStillRequiresRealProvisioningConfiguration()
+    public async Task HouseholdReadsResolveWithoutCredentialsWhileIdentityProvisioningStillRejectsMissingConfiguration()
     {
         var configuration = new ConfigurationBuilder().Build();
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IConfiguration>(configuration);
-        services.AddDbContext<MasterAppDbContext>(options => options.UseSqlite("Data Source=:memory:"));
+        services.AddScoped<MasterAppDbContext>(_ => ControllerTestHelpers.BuildDb());
         services.AddMasterAppBilling(configuration);
         Assert.Equal(typeof(HouseholdMembershipService), services.Single(x =>
             x.ServiceType == typeof(IHouseholdMembershipService)).ImplementationType);
@@ -90,10 +90,14 @@ public sealed class TrainingEnrollmentDependencyResolutionTests
         var unknown = await entitlements.EvaluateAsync(new BillingEntitlementEvaluationRequest(
             Guid.NewGuid(), "unknown", DateTime.UtcNow));
         Assert.Equal("UNKNOWN_ENTITLEMENT", unknown.ReasonCode);
-        // Household access must resolve the real service and retain its credential validation.
-        // Missing tenant fails in the constructor before any SQL/Graph operation can occur.
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => entitlements.EvaluateAsync(
-            new BillingEntitlementEvaluationRequest(Guid.NewGuid(), BillingEntitlementKeys.ClientAppFullAccess, DateTime.UtcNow)));
+        // Access reads use canonical local membership data without requiring Graph.
+        var access = await entitlements.EvaluateAsync(new BillingEntitlementEvaluationRequest(
+            Guid.NewGuid(), BillingEntitlementKeys.ClientAppFullAccess, DateTime.UtcNow));
+        Assert.Equal(ClientEntitlementStatus.NotGranted, access.Status);
+        // Actual identity provisioning still requires the real credentials before provider access.
+        var lifecycle = scope.ServiceProvider.GetRequiredService<IClientEntraLifecycleService>();
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            lifecycle.EnsureBusinessTeamIdentityAsync("Synthetic", "Member", "synthetic@example.invalid"));
         Assert.Contains("Missing required configuration: GraphProvisioning:TenantId", error.Message);
     }
 

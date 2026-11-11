@@ -5691,3 +5691,25 @@ The earlier migration repair and its SQL receipts remain preserved and compatibl
 this identity-service change invalidates affected application package bytes and
 requires normal impact/admission evaluation before deployment. Do not relabel the
 old app packages or replay any successful production effects.
+
+### Combined release admission continuation — 2026-11-10
+
+Founder explicitly deferred unfinished internal-store LEGEND AI integration and
+requested direct Mac admission/deployment of the existing combined candidate,
+reusing compatible evidence and the stop/deploy/restart sequence. No deferred
+integration implementation is part of this continuation. Clean session preflight
+verified local and task-remote5fc8da4527bac36cb74fd71d69e9c018ced6318e.
+
+At that candidate, security and validated-migration-probe passed. Architecture
+run42969270475 (601PASS/1FAIL) and commerce run42969270488 failed the same stale
+TrainingEnrollmentDependencyResolutionTests constructor-exception expectation.
+Updated that test to use the existing synthetic fixture and assert entitlement
+reads deny absent membership without Graph credentials, while actual canonical
+identity provisioning still rejects missing configuration. Focused supported local
+tests7PASS/0FAIL/0SKIP; log/private/tmp/legend-admission-dependency-tests.log.
+Independent reviewer accepted the exact test diff, SHA256
+f955472f36a4f48647fefdde95dc0b329f79be0a26ea16cbbd78bae673d5a451.
+This test/document-only correction changes no application or migration bytes;
+previous CRM22PASS and migration repair evidence remain compatible. Required
+failed CI lanes still need current-candidate success. Rendered acceptance remains
+NOT_RUN, not waived by a prior candidate. No production mutation or app shutdown.
