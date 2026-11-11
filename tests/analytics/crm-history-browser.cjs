@@ -4,6 +4,10 @@ const assert=require('node:assert/strict'),{spawn}=require('node:child_process')
 function startupDiagnostics(log,driver,elapsedMs){
   return {
     ready:/started successfully on port \d+/i.test(log),
+    initReceived:/COMMAND InitSession/.test(log),
+    browserLaunchIssued:/Launching chrome:/.test(log),
+    devToolsListening:/DevTools listening on/.test(log),
+    devToolsHttpFailed:/DevTools HTTP Request failed/.test(log),
     versionMismatch:/only supports Chrome version|current browser version is/i.test(log),
     sandboxFailure:/no usable sandbox|running as root without --no-sandbox/i.test(log),
     resourceFailure:/resource temporarily unavailable|cannot allocate memory|out of memory/i.test(log),
@@ -40,7 +44,9 @@ function startupDiagnostics(log,driver,elapsedMs){
   const keys=values=>command('POST','/session/'+session+'/actions',{actions:[{type:'key',id:'keyboard',actions:values.flatMap(value=>[{type:'keyDown',value},{type:'keyUp',value}])}]});
   try{
     const binary=process.env.CHROMEWEBDRIVER?path.join(process.env.CHROMEWEBDRIVER,'chromedriver'):'chromedriver';
-    driver=spawn(binary,['--port=0','--allowed-ips=127.0.0.1'],{detached:true,stdio:['ignore','pipe','pipe']});
+    // Retain bounded driver detail in memory only. Emit fixed diagnostic flags,
+    // never raw driver logs (which contain paths and session identifiers).
+    driver=spawn(binary,['--port=0','--allowed-ips=127.0.0.1','--verbose'],{detached:true,stdio:['ignore','pipe','pipe']});
     driver.on('error',e=>{log+=e.message;});for(const stream of [driver.stdout,driver.stderr])stream.on('data',data=>{log=(log+data.toString()).slice(-12000);});
     const startup=Date.now()+8000;while(!/started successfully on port (\d+)/i.test(log)&&Date.now()<startup&&driver.exitCode===null)await pause(40);
     const port=log.match(/started successfully on port (\d+)/i)?.[1];assert.ok(port,'ChromeDriver failed to start');driverOrigin='http://127.0.0.1:'+port;

@@ -107,6 +107,8 @@ internal static partial class RehearsalFixture
                 location = file + ":" + line.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 break;
             }
+            if (error.Data["CatalogObject"] is string catalogObject && System.Text.RegularExpressions.Regex.IsMatch(catalogObject, @"\A[A-Za-z_][A-Za-z0-9_]{0,127}\z"))
+                Console.Error.WriteLine("LEGEND_ISOLATED_FIXTURE:CATALOG_OBJECT:" + catalogObject);
             Console.Error.WriteLine("LEGEND_ISOLATED_FIXTURE:UNPROVEN:" + stage + ":" + reason +
                 ":TYPES:" + string.Join(">", types) + ":LOCATION:" + location);
             throw;
@@ -128,8 +130,11 @@ internal static partial class RehearsalFixture
         var contract = CandidateContract.Current(db);
         ValidateExpandedFixture(db, contract);
         var guideSuccessor = HasSetupGuideMigration(db) ? 1 : 0;
-        var additionalSuccessors = guideSuccessor + (HasBundleMigration(db) ? 1 : 0);
+        var assistantSuccessors = contract.Migrations.Count(m => CandidateContract.IsAssistantMigration(m.Id));
+        var additionalSuccessors = guideSuccessor + (HasBundleMigration(db) ? 1 : 0) + assistantSuccessors;
         var requestedCount = Environment.GetEnvironmentVariable("LEGEND_REHEARSAL_PENDING_COUNT");
+        if (requestedCount == "assistant-both") requestedCount = "2";
+        if (requestedCount == "assistant-settlement") requestedCount = "1";
         if (requestedCount is "store-all" or "store-crm-provisioning-membership" or "store-provisioning-membership" or "store-membership" or "crm-store" ||
             requestedCount?.EndsWith("-crm-store", StringComparison.Ordinal) == true)
         {
@@ -152,7 +157,8 @@ internal static partial class RehearsalFixture
         if (requestedCount == "standalone-reconciliation-only") requestedCount = (2 + additionalSuccessors).ToString();
         if (requestedCount == "receptionist-guide-only")
         {
-            var expected = HasBundleMigration(db) ? new[] { SetupGuideMigration, BundleMigration } : new[] { SetupGuideMigration };
+            var expected = (HasBundleMigration(db) ? new[] { SetupGuideMigration, BundleMigration } : new[] { SetupGuideMigration })
+                .Concat(contract.Migrations.Where(m => CandidateContract.IsAssistantMigration(m.Id)).Select(m => m.Id)).ToArray();
             if (guideSuccessor != 1 || !contract.Migrations.TakeLast(expected.Length).Select(m => m.Id).SequenceEqual(expected))
                 throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
             requestedCount = expected.Length.ToString();
@@ -213,6 +219,7 @@ internal static partial class RehearsalFixture
         // that existing rows and constraints survive a migration.
         const string paymentMigration = "20261011064911_AddBusinessScopedMerchantPayments";
         const string retentionMigration = "20261011120000_AddWebsiteSnapshotRetirement";
+        var assistant = pending.Any(m => CandidateContract.IsAssistantMigration(m.Id));
         var expanded = pending.Any(m => ExpandedMigrations.Contains(m.Id));
         var guide = pending.Any(m => m.Id == SetupGuideMigration);
         var payments = pending.Any(m => m.Id == paymentMigration);
@@ -241,7 +248,7 @@ internal static partial class RehearsalFixture
             (m.Id == ManagementMigration && !IsManagementFixture(m)) ||
             (m.Id == CanonicalPaymentMigration && !IsCanonicalPaymentFixture(m)) ||
             (m.Id == CandidateContract.TrainingMigration && !IsTrainingFixture(m)) ||
-            (!ExpandedMigrations.Contains(m.Id) && m.Id != SetupGuideMigration && m.Id != BundleMigration && !CandidateContract.IsStoreMigration(m.Id) && m.Id != CandidateContract.CrmMigration && m.Id != CandidateContract.DiagnosticsMigration && m.Id != CandidateContract.BrowserMigration && m.Id != ManagementMigration && m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration && m.Id != CandidateContract.TrainingMigration &&
+            (!CandidateContract.IsAssistantMigration(m.Id) && !ExpandedMigrations.Contains(m.Id) && m.Id != SetupGuideMigration && m.Id != BundleMigration && !CandidateContract.IsStoreMigration(m.Id) && m.Id != CandidateContract.CrmMigration && m.Id != CandidateContract.DiagnosticsMigration && m.Id != CandidateContract.BrowserMigration && m.Id != ManagementMigration && m.Id != paymentMigration && m.Id != retentionMigration && m.Id != ReceptionistMigration && m.Id != CanonicalPaymentMigration && m.Id != CandidateContract.TrainingMigration &&
             (m.Tables.Length != 0 || m.Indexes.Length != 0 || m.Guards.Length != 0 || m.ForeignKeys.Length != 0 ||
             m.Columns.Any(c => c.Schema != "dbo" || c.Table != "MobileProfileSettings")))))
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
@@ -258,7 +265,8 @@ internal static partial class RehearsalFixture
             if (expanded) SeedExpandedFixture(db, payments);
             if (crm) await SeedCrmData(db, timeout.Token);
             if (diagnostics) db.AddRange(DiagnosticRows());
-            if (receptionist || management || browser) db.AddRange(MarketingRows());
+            if (receptionist || management || browser || assistant) db.AddRange(MarketingRows());
+            if (assistant) db.Add(new Domain.Entities.MessageConversation { Id = AssistantConversationId, ConversationType = "direct", Subject = "retained synthetic conversation", CreatedByUserId = "synthetic-assistant-owner", CreatedUtc = new DateTime(2026, 1, 1), UpdatedUtc = new DateTime(2026, 1, 1) });
             if (canonicalPayments) db.AddRange(CanonicalPaymentRows());
             if (training) db.AddRange(TrainingLegacyRows());
             if (retention)
@@ -307,7 +315,8 @@ internal static partial class RehearsalFixture
                 """, timeout.Token);
             if (browser) await db.Database.ExecuteSqlRawAsync(
                 "ALTER TABLE dbo.ReceptionistCalls DROP CONSTRAINT CK_ReceptionistCall_BrowserCreation", timeout.Token);
-            var reverse = pending.Reverse().SelectMany(m =>
+            await PrepareAssistantBaseline(db, pending, timeout.Token);
+            var reverse = pending.Where(m => !CandidateContract.IsAssistantMigration(m.Id)).Reverse().SelectMany(m =>
                 m.ForeignKeys.Select(f => (MigrationOperation)new DropForeignKeyOperation {
                     Schema = f.Schema, Table = f.Table, Name = f.Constraint.Name })
                 .Concat(m.Indexes.Where(i => !m.Tables.Any(t => t.Schema == i.Schema && t.Name == i.Table))
@@ -320,8 +329,8 @@ internal static partial class RehearsalFixture
             if (pending.Any(m => m.Id == OwnerMigration) && !payments) await db.Database.ExecuteSqlRawAsync("ALTER TABLE dbo.CommerceMerchantAuthorizations ALTER COLUMN ClientProfileId uniqueidentifier NOT NULL", timeout.Token);
             // The guide-only predecessor already has these migration-owned defaults.
             // Reconstruct them after EnsureCreated without seeding commerce fixtures.
-            if (store || expanded || guide) await FinishStoreBaseline(db, pending, timeout.Token);
-            if ((store || expanded || guide) && !crm) await db.Database.ExecuteSqlRawAsync(
+            if (store || expanded || guide || assistant) await FinishStoreBaseline(db, pending, timeout.Token);
+            if ((store || expanded || guide || assistant) && !crm) await db.Database.ExecuteSqlRawAsync(
                 "ALTER TABLE dbo.WebsiteLeadIntakeLinks ADD CONSTRAINT DF_Rehearsal_AssociationVersion DEFAULT ('00000000-0000-0000-0000-000000000000') FOR AssociationVersion", timeout.Token);
             if (browser && !receptionist) await db.Database.ExecuteSqlRawAsync("""
                 ALTER TABLE dbo.ReceptionistCalls ALTER COLUMN ProviderSessionId nvarchar(200) COLLATE Latin1_General_100_BIN2 NOT NULL;
@@ -342,10 +351,11 @@ internal static partial class RehearsalFixture
                     """, timeout.Token);
             var history = db.GetService<IHistoryRepository>();
             await db.Database.ExecuteSqlRawAsync(history.GetCreateScript(), timeout.Token);
-            if ((management || browser) && !receptionist)
+            if ((management || browser || assistant) && !receptionist)
             {
                 await db.Database.OpenConnectionAsync(timeout.Token);
                 await VerifyReceptionistData(db, timeout.Token, persist: true);
+                if (assistant) await SeedAssistantLegacy(db, timeout.Token);
                 await SaveManagementPredecessor(db, sql.InitialCatalog, timeout.Token);
             }
             // Synthetic baseline, never copied production history or rows.
@@ -356,7 +366,7 @@ internal static partial class RehearsalFixture
         }
         else if (operation == "precondition")
         {
-            if (!payments && !receptionist && !canonicalPayments && !training && !management && !browser && !diagnostics && !crm && !store && !expanded && !guide) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist && !canonicalPayments && !training && !management && !browser && !diagnostics && !crm && !store && !expanded && !guide && !assistant) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             await VerifyCatalogBatchProtocol(db, timeout.Token);
             var applied = (await db.Database.GetAppliedMigrationsAsync(timeout.Token)).ToArray();
             await VerifyFixtureContract(db, contract, applied, timeout.Token);
@@ -411,17 +421,23 @@ internal static partial class RehearsalFixture
         else if (operation == "migrate")
         {
             // Only this disposable, synthetic database can reach this branch.
+            if (pending.Any(m => m.Id == CandidateContract.AssistantScopeMigration))
+            {
+                await db.GetService<IMigrator>().MigrateAsync(CandidateContract.AssistantScopeMigration, timeout.Token);
+                await VerifyFixtureContract(db, contract, (await db.Database.GetAppliedMigrationsAsync(timeout.Token)).ToArray(), timeout.Token);
+            }
             await db.Database.MigrateAsync(timeout.Token);
         }
         else if (operation == "adversarial")
         {
-            if (!payments && !receptionist && !canonicalPayments && !training && !management && !browser && !diagnostics && !crm && !store && !expanded && !guide) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
+            if (!payments && !receptionist && !canonicalPayments && !training && !management && !browser && !diagnostics && !crm && !store && !expanded && !guide && !assistant) throw new ProbeObservationFailure("INPUT_UNAVAILABLE");
             var applied = db.Database.GetMigrations().ToArray();
             var mutations = payments ? new[] {
                 "ALTER INDEX [IX_CommercePaymentReceipts_Provider_Environment_AccountId_EventId] ON [dbo].[CommercePaymentReceipts] DISABLE",
                 "ALTER TABLE [dbo].[CommercePaymentEffects] NOCHECK CONSTRAINT [FK_CommercePaymentEffects_CommercePaymentAttempts_AttemptId]",
                 "ALTER TABLE [dbo].[CommerceOrders] ALTER COLUMN [PaymentReference] nvarchar(199) NULL"
             } : Array.Empty<string>();
+            if (assistant) mutations = mutations.Concat(AssistantDrift()).ToArray();
             if (training) mutations = mutations.Concat(new[] {
                 "ALTER INDEX IX_ClientSubscriptions_ClientProfileId_SubscriptionScope ON dbo.ClientSubscriptions DISABLE",
                 "DROP INDEX IX_ClientSubscriptions_ClientProfileId_SubscriptionScope ON dbo.ClientSubscriptions",
@@ -502,7 +518,7 @@ internal static partial class RehearsalFixture
             if (guide) await VerifySetupGuideData(db, timeout.Token);
             if (diagnostics) await VerifyDiagnosticsData(db, timeout.Token);
             if (canonicalPayments) await VerifyCanonicalPaymentData(db, timeout.Token);
-            if ((management || browser) && !receptionist) await VerifyManagementPredecessor(db, sql.InitialCatalog, timeout.Token);
+            if ((management || browser || assistant) && !receptionist) await VerifyManagementPredecessor(db, sql.InitialCatalog, timeout.Token);
             if (receptionist)
             {
                 var expectedRows = MarketingRows();
@@ -523,8 +539,9 @@ internal static partial class RehearsalFixture
                 defaults.CommandTimeout = 30;
                 if (Convert.ToInt32(await defaults.ExecuteScalarAsync(timeout.Token)) != 0)
                     throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
-                await VerifyReceptionistData(db, timeout.Token, persist: management || browser);
+                await VerifyReceptionistData(db, timeout.Token, persist: management || browser || assistant);
             }
+            if (assistant) await VerifyAssistantData(db, !receptionist, timeout.Token);
             if (browser) await VerifyBrowserData(db, timeout.Token);
             if (management) await VerifyManagementData(db, timeout.Token);
             if (payments)
@@ -653,6 +670,7 @@ internal static partial class RehearsalFixture
         ConnectedUtc = new DateTime(2026, 1, 1), LastVerifiedUtc = new DateTime(2026, 1, 2),
         CreatedUtc = new DateTime(2026, 1, 1), UpdatedUtc = new DateTime(2026, 1, 2),
         AccessTokenExpiresUtc = new DateTime(2027, 1, 1),
+        AssistantControlRevision = Guid.Empty,
         Revision = Guid.Parse("00000000-0000-0000-0000-000000000199")
     };
     private static JsonObject LegacyMarketing(Domain.Entities.MarketingConnection row)
@@ -858,9 +876,11 @@ internal static partial class RehearsalFixture
             .Tables.Single(t => t.Name == "ReceptionistCalls").Columns;
         using var quote = new SqlCommandBuilder();
         var callColumns = string.Join(",", calls.Select(c => quote.QuoteIdentifier(c.Name)));
+        var marketingColumns = string.Join(",", db.Model.FindEntityType(typeof(Domain.Entities.MarketingConnection))!.GetProperties()
+            .Where(p => !p.Name.StartsWith("Assistant", StringComparison.Ordinal)).Select(p => quote.QuoteIdentifier(p.GetColumnName())));
         command.CommandText = $"""
             SELECT
-            (SELECT * FROM dbo.MarketingConnections WHERE Id IN ('00000000-0000-0000-0000-000000000101','00000000-0000-0000-0000-000000000102','00000000-0000-0000-0000-000000000103') ORDER BY Id FOR JSON PATH, INCLUDE_NULL_VALUES) AS connections,
+            (SELECT {marketingColumns} FROM dbo.MarketingConnections WHERE Id IN ('00000000-0000-0000-0000-000000000101','00000000-0000-0000-0000-000000000102','00000000-0000-0000-0000-000000000103') ORDER BY Id FOR JSON PATH, INCLUDE_NULL_VALUES) AS connections,
             (SELECT * FROM dbo.ReceptionistConfigurationVersions ORDER BY Id FOR JSON PATH, INCLUDE_NULL_VALUES) AS versions,
             (SELECT * FROM dbo.ReceptionistBudgetAccounts ORDER BY Id FOR JSON PATH, INCLUDE_NULL_VALUES) AS accounts,
             (SELECT * FROM dbo.ReceptionistBudgetPeriods ORDER BY Id FOR JSON PATH, INCLUDE_NULL_VALUES) AS periods,

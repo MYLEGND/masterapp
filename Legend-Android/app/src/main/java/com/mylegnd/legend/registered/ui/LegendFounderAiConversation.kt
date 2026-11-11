@@ -46,6 +46,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -117,6 +119,7 @@ fun FounderAiConversationDialog(
     var nativeOnly by remember { mutableStateOf(false) }
     var externalAnsweringBlocked by remember { mutableStateOf(false) }
     var draft by remember { mutableStateOf("") }
+    var businessMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(viewModel) { viewModel.resolveAvailability() }
     LaunchedEffect(state.availability) { if (state.availability is LoadState.Idle) draft = "" }
@@ -152,6 +155,30 @@ fun FounderAiConversationDialog(
                     drawerContainerColor = LegendColors.Surface,
                     drawerContentColor = LegendColors.TextPrimary,
                 ) {
+                    Box {
+                        TextButton(onClick = { businessMenu = true; viewModel.loadBusinessWorkspaces() }, enabled = !state.isSending && !state.canRetry) {
+                            Text(state.businessWorkspaces.firstOrNull { it.workspace == state.assistantWorkspace }?.label ?: "Founder workspace")
+                        }
+                        DropdownMenu(expanded = businessMenu, onDismissRequest = { businessMenu = false }) {
+                            DropdownMenuItem(text = { Text("Founder workspace") }, onClick = {
+                                businessMenu = false; viewModel.selectBusinessWorkspace(null)
+                            })
+                            state.businessWorkspaces.forEach { workspace ->
+                                DropdownMenuItem(text = { Text(workspace.label) }, onClick = {
+                                    businessMenu = false; nativeOnly = false; externalAnsweringBlocked = false
+                                    viewModel.selectBusinessWorkspace(workspace.workspace)
+                                })
+                            }
+                        }
+                    }
+                    if (state.assistantWorkspace != null) {
+                        listOf("openai", "cloudflare", "legend-native").forEach { provider ->
+                            TextButton(onClick = { viewModel.selectBusinessWorkspace(state.assistantWorkspace, provider) },
+                                enabled = !state.isSending && !state.canRetry) { Text(provider) }
+                        }
+                        Text("Provider: ${state.assistantProvider}. ${state.assistantConnection?.readiness?.replace('_', ' ') ?: "Loading connection"}", modifier = Modifier.padding(horizontal = 16.dp))
+                        Text("${state.assistantConnection?.configuration?.model.orEmpty()} · ${state.assistantConnection?.configuration?.projectId.orEmpty()}", modifier = Modifier.padding(horizontal = 16.dp))
+                    }
                     FounderAiDrawer(
                         mode = mode,
                         nativeOnly = nativeOnly,
@@ -162,6 +189,7 @@ fun FounderAiConversationDialog(
                             scope.launch { drawerState.close() }
                         },
                         selectMode = { selected ->
+                            viewModel.selectBusinessWorkspace(null)
                             mode = selected
                             if (selected == "teacher") { nativeOnly = false; externalAnsweringBlocked = false }
                             viewModel.startNewConversation()
@@ -173,7 +201,7 @@ fun FounderAiConversationDialog(
                         hasMore = state.hasMoreConversations,
                         loadMore = { viewModel.refresh(more = true) },
                         openConversation = { id ->
-                            mode = "legend"; nativeOnly = false; externalAnsweringBlocked = true
+                            mode = "legend"; nativeOnly = false; externalAnsweringBlocked = state.assistantWorkspace == null
                             viewModel.openConversation(id)
                             scope.launch { drawerState.close() }
                         },
@@ -313,6 +341,9 @@ private fun FounderAiConversationContent(
                     }
                 } else {
                     items(state.messages) { message -> FounderAiMessageBubble(message) }
+                }
+                if (state.isSending && state.provisionalAnswer.isNotEmpty()) {
+                    item { Text(text = state.provisionalAnswer) }
                 }
                 state.progress?.let { progress -> item { FounderAiStatusCard(progress) } }
                 state.failure?.let { failure -> item { FounderAiStatusCard(failure, isError = true) } }

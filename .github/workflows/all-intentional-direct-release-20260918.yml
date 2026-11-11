@@ -1,5 +1,5 @@
 name: LEGEND approved direct release
-run-name: "LEGEND release pr=${{ inputs.source_pr || '0' }} candidate=${{ inputs.validated_sha || inputs.merge_sha || github.sha }} authority=${{ inputs.merge_sha || github.sha }}"
+run-name: ${{ format('LEGEND release pr={0} candidate={1} authority={2}', inputs.source_pr || '0', inputs.validated_sha || inputs.merge_sha || github.sha, inputs.merge_sha || github.sha) }}
 
 on:
   workflow_dispatch:

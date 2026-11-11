@@ -74,6 +74,23 @@ public sealed partial class SubscriptionController : Controller
             });
         }
 
+        if (context.FinancialScopeOwnerClientProfileId is Guid householdOwner && householdOwner != context.ClientProfileId &&
+            entitlement.Status is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod)
+        {
+            // Membership is inherited, but payer cards, invoices and mutation
+            // controls stay private to the subscription owner.
+            return View(new ClientSubscriptionManagementViewModel
+            {
+                IsInheritedMembership = true,
+                HasSubscription = true,
+                ClientName = $"{context.Profile.FirstName} {context.Profile.LastName}".Trim(),
+                EntitlementStatus = entitlement.Status.ToString(),
+                SubscriptionStatus = entitlement.Status.ToString(),
+                CurrentPlanDisplay = "Household partner membership",
+                ReturnUrl = target
+            });
+        }
+
         var latestSubscription = await _db.ClientSubscriptions.Where(scope => scope.SubscriptionScope == Domain.Billing.ClientSubscriptionScope.LegendMembership)
             .Where(x => x.ClientProfileId == context.ClientProfileId)
             .OrderByDescending(x => x.UpdatedUtc)

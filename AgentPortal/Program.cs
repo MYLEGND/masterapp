@@ -153,6 +153,9 @@ builder.Services.AddScoped<AgencyCommandService>();
 builder.Services.AddScoped<FounderSubscribersService>();
 builder.Services.AddScoped<FounderLegendConnectService>();
 builder.Services.AddScoped<FounderCallRelayService>();
+// Reuse the canonical Studio API host for publishing; Portal does not own its compiler.
+builder.Services.AddHttpClient("WebsiteStudioPublishing", client => client.Timeout = TimeSpan.FromMinutes(3))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient("FounderCallRelay").ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<LegendIntelligenceEvaluationService>();
 builder.Services.AddScoped<ILegendIntelligenceEvaluationService>(provider =>

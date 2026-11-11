@@ -26,25 +26,112 @@ public sealed class LegendFounderAiController : Controller
 
     private LegendFounderAiHttpTransport Transport => new(HttpContext, _conversation, _progress, _logger);
 
+    [HttpGet("founder/legend-ai/models")]
+    public async Task<IActionResult> Models(CancellationToken ct) => Ok(new { models = await _conversation.GetChatModelsAsync(User, ct),
+        availability = "configured_models_only", credits = "not_verified", automaticFallback = false });
+
     [HttpGet]
     [Route("founder/legend-ai/progress/{operationId:guid}")]
     public Task Progress(Guid operationId, CancellationToken cancellationToken) =>
         Transport.ProgressAsync(operationId, cancellationToken);
 
     [HttpGet("founder/legend-ai/conversations")]
-    public Task<IActionResult> Conversations(CancellationToken cancellationToken, int take = 50, int skip = 0) =>
-        Transport.ListConversationsAsync(take, skip, cancellationToken);
+    public Task<IActionResult> Conversations(CancellationToken cancellationToken, int take = 50, int skip = 0, string? assistantWorkspaceKey = null) =>
+        Transport.ListConversationsAsync(take, skip, cancellationToken, assistantWorkspaceKey);
 
     [HttpGet("founder/legend-ai/conversations/{conversationId:guid}")]
     public Task<IActionResult> Conversation(Guid conversationId, CancellationToken cancellationToken,
-        DateTime? beforeUtc = null, Guid? beforeMessageId = null, int take = 60) =>
-        Transport.GetConversationAsync(conversationId, beforeUtc, beforeMessageId, take, cancellationToken);
+        DateTime? beforeUtc = null, Guid? beforeMessageId = null, int take = 60, string? assistantWorkspaceKey = null) =>
+        Transport.GetConversationAsync(conversationId, beforeUtc, beforeMessageId, take, cancellationToken, assistantWorkspaceKey);
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Route("founder/legend-ai/chat")]
     public Task<IActionResult> Chat([FromBody] LegendFounderAiChatRequest request, CancellationToken cancellationToken) =>
         Transport.ChatAsync(request, cancellationToken);
+
+    [HttpGet("founder/legend-ai/business/workspaces")]
+    public async Task<IActionResult> BusinessWorkspaces(CancellationToken ct)
+    {
+        try { return Ok(await _conversation.ListBusinessWorkspacesAsync(User, ct)); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (InvalidOperationException) { return Conflict(new { error = "Workspace selection is unavailable." }); }
+    }
+
+    [HttpPost("founder/legend-ai/business/dictation")]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(2_600_000)]
+    public async Task<IActionResult> BusinessDictation([FromBody] BusinessAssistantDictationRequest request, CancellationToken ct)
+    {
+        if (!ModelState.IsValid || request is null || string.IsNullOrWhiteSpace(request.Workspace)) return BadRequest();
+        try { return Ok(new { transcript = await _conversation.TranscribeBusinessAsync(User, request, ct) }); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException) { return BadRequest(new { error = "Record 0.1–60 seconds of microphone audio in a selected workspace." }); }
+        catch (Exception error) when (error is InvalidOperationException or HttpRequestException or OperationCanceledException or System.Text.Json.JsonException)
+        { return StatusCode(503, new { error = "Dictation could not complete. Check the selected workspace's dictation configuration and funding. No message was sent; no automatic retry was made." }); }
+    }
+
+    [HttpGet("founder/legend-ai/business/media")]
+    public async Task<IActionResult> BusinessMedia(string workspace, CancellationToken ct)
+    {
+        try { return Ok(await _conversation.ListBusinessMediaAsync(User, workspace, ct)); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException) { return BadRequest(); }
+    }
+
+    [HttpGet("founder/legend-ai/business/media/{id:guid}")]
+    public async Task<IActionResult> BusinessMediaFile(Guid id, string workspace, CancellationToken ct, bool download = false)
+    {
+        try
+        {
+            var media = await _conversation.OpenBusinessMediaAsync(User, workspace, id, ct);
+            Response.Headers.CacheControl = "private, no-store";
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            if (media is null) return NotFound();
+            if (media.Value.Asset.ContentType is not ("image/png" or "image/jpeg" or "image/webp"))
+            {
+                await media.Value.Content.DisposeAsync();
+                return NotFound();
+            }
+            return download ? File(media.Value.Content, media.Value.Asset.ContentType, id +
+                (media.Value.Asset.ContentType == "image/png" ? ".png" : media.Value.Asset.ContentType == "image/jpeg" ? ".jpg" : ".webp"))
+                : File(media.Value.Content, media.Value.Asset.ContentType);
+        }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException) { return BadRequest(); }
+    }
+
+    [HttpGet("founder/legend-ai/business/configuration")]
+    public async Task<IActionResult> BusinessConfiguration(string workspace, string provider, CancellationToken ct)
+    {
+        try { return Ok(await _conversation.GetBusinessConfigurationAsync(User, workspace, provider, ct)); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException) { return BadRequest(new { error = "Select an authorized workspace and supported provider." }); }
+    }
+
+    [HttpPost("founder/legend-ai/business/configuration")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveBusinessConfiguration([FromBody] BusinessAssistantSettingsRequest request, CancellationToken ct)
+    {
+        if (!ModelState.IsValid || request.Configuration is null) return BadRequest();
+        try { return Ok(await _conversation.SaveBusinessConfigurationAsync(User, request.Workspace,
+            request.Configuration, request.ExpectedRevision, request.Credential, ct)); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException) { return BadRequest(new { error = "A complete bounded provider and funding configuration is required." }); }
+        catch (InvalidOperationException) { return Conflict(new { error = "Configuration changed or is unavailable. Reload before saving." }); }
+    }
+
+    [HttpPost("founder/legend-ai/business/model-access")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> BusinessModelAccess([FromBody] BusinessAssistantModelAccessRequest request, CancellationToken ct)
+    {
+        if (!ModelState.IsValid || request is null || string.IsNullOrWhiteSpace(request.Workspace)) return BadRequest();
+        try { return Ok(await _conversation.InspectBusinessModelAccessAsync(User, request.Workspace, ct)); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException) { return BadRequest(); }
+        catch (Exception error) when (error is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+        { return StatusCode(503, new { error = "Provider model access could not be verified. No inference was requested." }); }
+    }
 
     [HttpGet("founder/legend-ai/actions/{proposalId:guid}")]
     public async Task<IActionResult> ReviewAction(Guid proposalId, CancellationToken cancellationToken)
@@ -87,3 +174,7 @@ public sealed class LegendFounderAiController : Controller
 
     private static int MapStatus(LegendFounderAiChatResponse result) => LegendFounderAiHttpTransport.MapStatus(result);
 }
+
+public sealed record BusinessAssistantSettingsRequest(string Workspace,
+    Infrastructure.Analytics.BusinessAssistantConfiguration? Configuration, Guid ExpectedRevision, string? Credential);
+public sealed record BusinessAssistantModelAccessRequest(string Workspace);

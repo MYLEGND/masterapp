@@ -91,6 +91,9 @@ internal sealed partial class LegendFounderToolAuthority
         {
             var name = JsonSerializer.SerializeToElement(tool, JsonOptions).GetProperty("name").GetString()!;
             if (IsRepositoryControlPlaneMutation(name)) return false;
+            // Growth includes private lead-priority records. Correct read-only
+            // classification must not silently grant an external teacher access.
+            if (externalTeacher && name == "legend_growth_operator") return false;
             if (name is "legend_remember_conversation_facts" or "legend_remember_founder_rule")
                 return !string.IsNullOrWhiteSpace(conversationId);
             if (name == "legend_request_teacher_escalation")
@@ -139,14 +142,14 @@ internal sealed partial class LegendFounderToolAuthority
         // Repository/control-plane writes are never model capabilities, even
         // when historical cloud mutation flags or approvals remain enabled.
         var repositoryEnabled = CloudToolFeatureEnabled("FounderSoftwareRemediation:Enabled");
-        return GetAvailableTools(false, conversationId, providerPolicy, externalTeacher: false)
+        return GetAvailableTools(true, conversationId, providerPolicy, externalTeacher: false)
             .Where(tool => IsCloudExposedTool(JsonSerializer.SerializeToElement(tool, JsonOptions)
                 .GetProperty("name").GetString()!, false, repositoryEnabled)).ToArray();
     }
 
     private static bool IsCloudExposedTool(string name, bool mutationsEnabled, bool repositoryEnabled) =>
         !IsRepositoryControlPlaneMutation(name) &&
-        (name == "legend_remember_founder_rule" ||
+        (IsWebsiteTool(name) || name == "legend_remember_founder_rule" ||
          (name == "legend_inspect_repository" ? repositoryEnabled : IsCloudReadableTool(name)));
 
     // Cloudflare consumes the same canonical read projection exposed by the
@@ -226,7 +229,8 @@ internal sealed partial class LegendFounderToolAuthority
 
     private static bool RequiresExplicitFounderCommand(string name) =>
         !IsReadOnlyFounderTool(name) &&
-        name is not ("legend_remember_conversation_facts" or "legend_remember_founder_rule");
+        name is not ("legend_remember_conversation_facts" or "legend_remember_founder_rule" or
+            "legend_website_propose_edit" or "legend_website_propose_publish");
 
     internal bool IsGovernedEvidence(string name) =>
         IsGovernedEvidenceTool(name);
@@ -265,6 +269,7 @@ internal sealed partial class LegendFounderToolAuthority
     private static bool IsReadOnlyFounderTool(
         string name) =>
         name is
+            "legend_website_inspect" or
             "legend_calculate" or
             "legend_capabilities" or
             "legend_system_inventory" or
@@ -289,6 +294,7 @@ internal sealed partial class LegendFounderToolAuthority
             "legend_research_internet" or
             "legend_metric_detail" or
             "legend_client_lead_portfolio" or
+            "legend_growth_operator" or
             "legend_read_masterapp" or
             "legend_language_state";
 
@@ -306,6 +312,7 @@ internal sealed partial class LegendFounderToolAuthority
             LegendConnectExternalProviderPolicy? providerPolicy = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
 
         if (!TryResolveFounderFunctionParameters(
                 request.ToolName,
@@ -461,6 +468,20 @@ internal sealed partial class LegendFounderToolAuthority
         FounderAiActionScope? serverDerivedScope = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (IsWebsiteTool(call.Name))
+        {
+            if (serverDerivedScope is null || !ValidCloudIdentifier(call.CallId) ||
+                call.IdempotencyKey != ComputeCloudToolIdempotencyKey(serverDerivedScope.RequestId, call.CallId) ||
+                !await ReauthorizeCloudScopeAsync(founder, serverDerivedScope, cancellationToken))
+                return CloudActionFailure("website_scoped_execution_required");
+            return await ExecuteWebsiteToolAsync(founder, call, Guid.Parse(serverDerivedScope.ConversationId),
+                Guid.Parse(serverDerivedScope.RequestId), cancellationToken);
+        }
+
+        if (mode == "teacher" && call.Name == "legend_growth_operator")
+            return MutationFailure("growth_external_disclosure_forbidden",
+                "Private growth records are unavailable to the external teacher.");
 
         if (IsRepositoryControlPlaneMutation(call.Name) &&
             (serverDerivedScope is not null || mode != "founder_work" ||
@@ -2680,6 +2701,31 @@ internal sealed partial class LegendFounderToolAuthority
     {
         IReadOnlyList<object> tools =
         [
+            new {
+                type = "function", name = "legend_website_inspect",
+                description = "Inspect an authorized Website Studio workspace. Use empty website_id and node_id to list available sites; then inspect a site summary or one node. No customer records, provider credentials or backend source are returned.",
+                parameters = new { type = "object", properties = new {
+                    website_id = new { type = "string", maxLength = 36 },
+                    node_id = new { type = "string", maxLength = 240 }
+                }, required = new[] { "website_id", "node_id" }, additionalProperties = false }, strict = true
+            },
+            new {
+                type = "function", name = "legend_website_propose_edit",
+                description = "Prepare exact Website Studio presentation mutations and a privacy-safe preview for authenticated review. Inspect the site and target node first. operations_json is a JSON array of existing WebsiteMutationOperation objects, preserving stable node IDs and fingerprints. This does not save or publish content. The user must approve the returned review URL; backend code, consent, payment and form processing remain protected.",
+                parameters = new { type = "object", properties = new {
+                    website_id = new { type = "string", maxLength = 36 },
+                    expected_revision = new { type = "integer", minimum = 0 },
+                    operations_json = new { type = "string", minLength = 2, maxLength = 24000 }
+                }, required = new[] { "website_id", "expected_revision", "operations_json" }, additionalProperties = false }, strict = true
+            },
+            new {
+                type = "function", name = "legend_website_propose_publish",
+                description = "Prepare separate approval to publish the exact current saved Website Studio draft. The review binds its content digest, website and revision. No publication occurs until the user approves that review and canonical publication checks pass. Draft approval never grants publication approval.",
+                parameters = new { type = "object", properties = new {
+                    website_id = new { type = "string", maxLength = 36 },
+                    expected_revision = new { type = "integer", minimum = 0 }
+                }, required = new[] { "website_id", "expected_revision" }, additionalProperties = false }, strict = true
+            },
             new
             {
                 type = "function", name = "legend_calculate",

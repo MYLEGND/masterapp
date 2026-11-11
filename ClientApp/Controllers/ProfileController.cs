@@ -286,8 +286,10 @@ public class ProfileController : Controller
                 .Select(subscription => new { subscription.Status })
                 .FirstOrDefaultAsync(HttpContext.RequestAborted);
 
-            ViewBag.HasClientSubscription = latestSubscription is not null;
-            ViewBag.CanCancelSubscription = latestSubscription?.Status is
+            var inheritedMembership = context.HouseholdAccountId.HasValue &&
+                context.FinancialScopeOwnerClientProfileId is Guid primaryId && primaryId != context.ClientProfileId;
+            ViewBag.HasClientSubscription = inheritedMembership || latestSubscription is not null;
+            ViewBag.CanCancelSubscription = !inheritedMembership && latestSubscription?.Status is
                 ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod;
             ViewBag.SubscriptionNotice = TempData["SubscriptionNotice"]?.ToString();
 

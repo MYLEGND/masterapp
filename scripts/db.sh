@@ -21,6 +21,7 @@ readonly STARTUP_PROJECT="AgentPortal/AgentPortal.csproj"
 readonly DB_CONTEXT="MasterAppDbContext"
 readonly TEST_PROJECT="AgentPortal.Tests/AgentPortal.Tests.csproj"
 readonly MIGRATION_DIR="Infrastructure/Migrations"
+readonly DB_OWNER_COMMAND="${1:-}"
 readonly SNAPSHOT_FILE="$MIGRATION_DIR/MasterAppDbContextModelSnapshot.cs"
 readonly TOOL_MANIFEST="$ROOT_DIR/.config/dotnet-tools.json"
 readonly LEGACY_MIGRATIONS="$ROOT_DIR/scripts/db-legacy-manual-migrations.txt"
@@ -152,7 +153,14 @@ build_backend() {
 
 test_backend() {
     printf '\n[TEST] %s\n' "$TEST_PROJECT"
-    if ! dotnet test "$TEST_PROJECT" --nologo; then
+    local test_args=()
+    if [[ -n "${MASTERAPP_DB_TEST_FILTER:-}" ]]; then
+        if [[ "$DB_OWNER_COMMAND" != "apply" || "${LEGEND_LOCAL_MIGRATION_VALIDATION:-}" != "1" || -z "${LEGEND_TEST_DB_IDENTITY:-}" ]]; then
+            build_or_test_failure "A focused migration test filter requires the verified scripts/db.sh local migrate owner."
+        fi
+        test_args+=(--filter "$MASTERAPP_DB_TEST_FILTER")
+    fi
+    if ! dotnet test "$TEST_PROJECT" --nologo "${test_args[@]}"; then
         build_or_test_failure "The backend test suite failed."
     fi
 }
@@ -770,8 +778,16 @@ command_apply() {
     fi
 
     if ! scan_for_manual_review "${PENDING_MIGRATION_FILES[@]}"; then
-        printf '[RECOVERY] Review the listed operations and apply the migration manually to a disposable local database if appropriate.\n' >&2
-        exit 21
+        local reviewed_sha=""
+        if (( ${#PENDING_MIGRATION_FILES[@]} == 1 )); then
+            reviewed_sha="$(shasum -a 256 "${PENDING_MIGRATION_FILES[0]}" | awk '{print $1}')"
+        fi
+        if [[ "${LEGEND_LOCAL_MIGRATION_VALIDATION:-}" != "1" || -z "${LEGEND_TEST_DB_IDENTITY:-}" ||
+              -z "$reviewed_sha" || "$reviewed_sha" != "${MASTERAPP_REVIEWED_LOCAL_MIGRATION_SHA256:-}" ]]; then
+            printf '[RECOVERY] Obtain independent review of the exact pending migration, then use scripts/db.sh local migrate --reviewed-migration-sha256 SHA256.\n' >&2
+            exit 21
+        fi
+        printf '[LOCAL DATABASE] Exact independently reviewed migration digest matched.\n'
     fi
 
     apply_local_migrations

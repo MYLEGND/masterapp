@@ -356,6 +356,36 @@ public sealed class ClientAppSubscriptionRedirectTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task InheritedMembershipViewDoesNotLoadPayerCardsOrExposeBillingMutationControls()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var partner = await AddProfileAsync(db, DateTime.UtcNow, "partner-client");
+        var ownerId = Guid.NewGuid();
+        var households = new Mock<Infrastructure.Households.IHouseholdMembershipService>();
+        households.Setup(x => x.ResolveActiveAccessAsync(partner.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Infrastructure.Households.HouseholdAccessResolution(true, Guid.NewGuid(), ownerId,
+                Domain.Enums.HouseholdMemberRole.Partner, null));
+        var entitlements = new Mock<IBillingEntitlementService>();
+        entitlements.Setup(x => x.EvaluateAsync(It.IsAny<BillingEntitlementEvaluationRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BillingEntitlementEvaluationResult(ClientEntitlementStatus.Active, null, null, null, null,
+                ClientEntitlementSourceType.Subscription, "owner-subscription", "Inherited"));
+        var cards = new Mock<IClientPaymentMethodService>(MockBehavior.Strict);
+        var billing = new Mock<IBillingOrchestrator>(MockBehavior.Strict);
+        var controller = new ClientSubscriptionController(db, new EffectiveClientContextService(db, households.Object),
+            entitlements.Object, billing.Object, cards.Object, new SquareBillingOptions(), new ClientAppReturnUrlNormalizer())
+        {
+            ControllerContext = new ControllerContext { HttpContext = CreateAuthenticatedContext("partner-client") },
+            TempData = Mock.Of<ITempDataDictionary>()
+        };
+        var view = Assert.IsType<ViewResult>(await controller.Index());
+        var model = Assert.IsType<ClientSubscriptionManagementViewModel>(view.Model);
+        Assert.True(model.IsInheritedMembership); Assert.True(model.HasSubscription);
+        Assert.Null(model.ClientSubscriptionId); Assert.Empty(model.PaymentMethods);
+        Assert.False(model.CanCancelSubscription); Assert.False(model.CanManagePaymentMethods); Assert.False(model.CanRetryPayment);
+        cards.VerifyNoOtherCalls(); billing.VerifyNoOtherCalls();
+    }
+
     private static async Task<BillingEntitlementEvaluationResult> EvaluateAsync(MasterAppDbContext db, Guid profileId)
     {
         var service = new BillingEntitlementService(db, ControllerTestHelpers.BuildHouseholdMembershipService(db));

@@ -32,11 +32,15 @@ class FounderAiRepository(private val client: LegendApiClient) {
         client.api.founderAiAccess(role).legendBody()
     }
 
-    suspend fun conversations(role: String, skip: Int = 0) = request {
-        client.api.founderAiConversations(role, skip = skip).legendBody()
+    suspend fun businessWorkspaces(role: String) = request { client.api.businessAssistantWorkspaces(role).legendBody() }
+    suspend fun businessConfiguration(role: String, workspace: String, provider: String) = request {
+        client.api.businessAssistantConfiguration(role, workspace, provider).legendBody()
     }
-    suspend fun conversation(role: String, id: String, beforeUtc: String? = null, beforeMessageId: String? = null) = request {
-        client.api.founderAiConversation(role, id, beforeUtc, beforeMessageId).legendBody()
+    suspend fun conversations(role: String, skip: Int = 0, workspace: String? = null) = request {
+        client.api.founderAiConversations(role, skip = skip, workspace = workspace).legendBody()
+    }
+    suspend fun conversation(role: String, id: String, beforeUtc: String? = null, beforeMessageId: String? = null, workspace: String? = null) = request {
+        client.api.founderAiConversation(role, id, beforeUtc, beforeMessageId, workspace = workspace).legendBody()
     }
 
     suspend fun chat(

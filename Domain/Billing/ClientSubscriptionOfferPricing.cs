@@ -2,6 +2,19 @@ namespace Domain.Billing;
 
 public static class ClientSubscriptionOfferPricing
 {
+    /// <summary>
+    /// Uses the primary's actual recurring amount after applicable discounts,
+    /// including a retained legacy price, in the same currency and interval.
+    /// Fractional cents round up per Founder policy. This calculation neither
+    /// quotes provider proration nor authorizes a subscription change or charge.
+    /// Trial dates and effective changes remain owned by the billing lifecycle.
+    /// </summary>
+    public static HouseholdRecurringPrice ResolveHouseholdRecurringPrice(int primaryRecurringAmountCents)
+    {
+        if (primaryRecurringAmountCents < 0) throw new ArgumentOutOfRangeException(nameof(primaryRecurringAmountCents));
+        var partner = primaryRecurringAmountCents / 2 + primaryRecurringAmountCents % 2;
+        return new(primaryRecurringAmountCents, partner, checked(primaryRecurringAmountCents + partner));
+    }
     public const int Fixed50Cents = 5_000;
     public const int Fixed75Cents = 7_500;
     public const int Fixed100Cents = 10_000;
@@ -53,3 +66,5 @@ public static class ClientSubscriptionOfferPricing
         };
     }
 }
+
+public sealed record HouseholdRecurringPrice(int PrimaryAmountCents, int PartnerAmountCents, int CombinedAmountCents);

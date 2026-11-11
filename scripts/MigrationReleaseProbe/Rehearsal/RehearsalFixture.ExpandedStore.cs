@@ -105,9 +105,18 @@ internal static partial class RehearsalFixture
         var storeEnd = Array.FindIndex(contract.Migrations, m => m.Id == CandidateContract.StoreMigrations[^1]) + 1;
         var reviewedSuffix = guide ? ExpandedMigrations.Append(SetupGuideMigration) : ExpandedMigrations;
         if (bundle) reviewedSuffix = reviewedSuffix.Append(BundleMigration);
+        var assistants = contract.Migrations.Where(m => CandidateContract.IsAssistantMigration(m.Id)).ToArray();
+        if (!assistants.Select(m => m.Id).SequenceEqual(CandidateContract.AssistantMigrations.Take(assistants.Length)) ||
+            assistants.Any(m => !CandidateContract.ExactAssistantEntry(m)))
+            throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
+        reviewedSuffix = reviewedSuffix.Concat(assistants.Select(m => m.Id));
         if (storeEnd == 0 || !contract.Migrations.Skip(storeEnd).Select(m => m.Id).SequenceEqual(reviewedSuffix)
             || rows.Any(m => !IsExpandedFixture(m))) throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
         var assembly = db.GetService<IMigrationsAssembly>();
+        foreach (var entry in assistants)
+            if (!CandidateContract.ExactAssistantOperations(entry.Id,
+                assembly.CreateMigration(assembly.Migrations[entry.Id], db.Database.ProviderName!).UpOperations))
+                throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
         if (bundle)
         {
             var operations = assembly.CreateMigration(assembly.Migrations[BundleMigration], db.Database.ProviderName!).UpOperations;

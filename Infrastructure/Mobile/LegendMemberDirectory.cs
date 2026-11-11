@@ -1,6 +1,8 @@
 using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Billing;
+using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace Infrastructure.Mobile;
@@ -43,14 +45,30 @@ public static class LegendMemberDirectory
         ArgumentNullException.ThrowIfNull(db);
 
         var profiles = source ?? db.ClientProfiles.AsNoTracking();
+        var usableSubscriptions = db.ClientSubscriptions.AsNoTracking().Where(BillingStateMapper.UsableAt(DateTime.UtcNow));
+        var inheritedProfiles = from membership in db.HouseholdMemberships.AsNoTracking()
+            join household in db.HouseholdAccounts.AsNoTracking() on membership.HouseholdAccountId equals household.Id
+            where membership.Status == HouseholdMembershipStatus.Active && household.Status == HouseholdAccountStatus.Active &&
+                membership.ClientProfileId.HasValue &&
+                usableSubscriptions.Any(subscription => subscription.ClientProfileId == household.SubscriptionOwnerClientProfileId &&
+                    subscription.SubscriptionScope == ClientSubscriptionScope.LegendMembership &&
+                    subscription.Id == db.ClientSubscriptions.Where(candidate => candidate.ClientProfileId == subscription.ClientProfileId &&
+                        candidate.SubscriptionScope == ClientSubscriptionScope.LegendMembership)
+                        .OrderByDescending(candidate => candidate.UpdatedUtc).ThenByDescending(candidate => candidate.CreatedUtc)
+                        .ThenByDescending(candidate => candidate.Id).Select(candidate => candidate.Id).FirstOrDefault())
+
+            select membership.ClientProfileId;
         return profiles
             .Where(profile => profile.CrmStatus == null ||
                 !UnavailableCrmStatuses.Contains(profile.CrmStatus.ToLower()))
-            .Where(profile => db.ClientEntitlements.Any(entitlement =>
+            .Where(profile => inheritedProfiles.Contains(profile.Id) ||
+                (!db.HouseholdMemberships.Any(member => member.ClientProfileId == profile.Id) &&
+                 !db.HouseholdAccounts.Any(household => household.SubscriptionOwnerClientProfileId == profile.Id && household.Status != HouseholdAccountStatus.Active) &&
+                 db.ClientEntitlements.Any(entitlement =>
                 entitlement.ClientProfileId == profile.Id &&
                 entitlement.EntitlementKey == BillingEntitlementKeys.ClientAppFullAccess &&
                 (entitlement.Status == ClientEntitlementStatus.Active ||
-                 entitlement.Status == ClientEntitlementStatus.GracePeriod)));
+                 entitlement.Status == ClientEntitlementStatus.GracePeriod))));
     }
 
     /// <summary>

@@ -15,11 +15,14 @@ public sealed record LegendCloudflareRequestScope(
 internal sealed partial class LegendConnectModelInferenceTransport
 {
     private async Task<LegendModelEvaluationGenerationResult> SendCloudflareTaskAsync(
-        LegendModelTaskRequest task, CancellationToken cancellationToken)
+        string model, LegendModelTaskRequest task, CancellationToken cancellationToken)
     {
         const string prefix = "LegendConnect:Foundation:";
         if (task.ProviderPolicy is not { AllowExternalProviders: true, AllowCloudflareInference: true })
             return new(false, null, "cloudflare_inference_forbidden_by_policy");
+        if (model.StartsWith("@cf/", StringComparison.Ordinal) &&
+            _configuration[prefix + "Cloudflare:ProtocolVersion"] != "legend-cloudflare.v2")
+            return new(false, null, "cloudflare_manual_model_update_required");
         var scope = task.CloudflareScope;
         if (scope is null || scope.UserId != task.RequestingActorId ||
             new[] { scope.RequestId, scope.TenantId, scope.UserId, scope.SessionId,
@@ -90,14 +93,17 @@ internal sealed partial class LegendConnectModelInferenceTransport
             var expires = Math.Min(now + seconds * 1000L, scope.ExpiresUtc is { } scopeExpiry
                 ? new DateTimeOffset(scopeExpiry).ToUnixTimeMilliseconds() : long.MaxValue);
             if (expires <= now) return new(false, null, "cloudflare_scope_expired");
+            var requestedModel = model.StartsWith("@cf/", StringComparison.Ordinal) ? model : null;
+            var protocolVersion = requestedModel is null ? "legend-cloudflare.v1" : "legend-cloudflare.v2";
             var payload = JsonSerializer.SerializeToUtf8Bytes(new
             {
-                version = "legend-cloudflare.v1", requestId = scope.RequestId, issuedAt = now, expiresAt = expires,
+                version = protocolVersion, requestId = scope.RequestId, issuedAt = now, expiresAt = expires,
                 scope = new { accountId, tenantId = scope.TenantId, userId = scope.UserId, sessionId = scope.SessionId,
                     conversationId = scope.ConversationId, roles = scope.Roles, authorizationVersion = scope.AuthorizationVersion },
                 task = new
                 {
                     kind = "general",
+                    requestedModel,
                     messages,
                     tools = toolSchemas,
                     requireToolCall = task.RequireToolCall,
@@ -140,7 +146,7 @@ internal sealed partial class LegendConnectModelInferenceTransport
             using var document = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync(deadline.Token));
             var root = document.RootElement;
             if (!root.TryGetProperty("version", out var version) ||
-                version.GetString() != "legend-cloudflare.v1" || !root.TryGetProperty("requestId", out var returnedId) ||
+                version.GetString() != protocolVersion || !root.TryGetProperty("requestId", out var returnedId) ||
                 returnedId.GetString() != scope.RequestId)
                 return new(false, null, "cloudflare_execution_failed");
             var usage = root.GetProperty("usage");

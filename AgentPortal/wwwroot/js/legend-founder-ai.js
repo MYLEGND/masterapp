@@ -48,9 +48,187 @@
     const settingsClose = document.getElementById('legendFounderAiSettingsClose');
     const settingButtons = Array.from(modalElement.querySelectorAll('[data-legend-ai-setting]'));
 
-    const modeButtons = Array.from(
-        modalElement.querySelectorAll('[data-legend-ai-mode]')
-    );
+    const businessSettings = document.getElementById('legendBusinessAssistantSettings');
+    const businessWorkspace = document.getElementById('legendBusinessAssistantWorkspace');
+    const businessProvider = document.getElementById('legendBusinessAssistantProvider');
+    const businessReadiness = document.getElementById('legendBusinessAssistantReadiness');
+    const businessStart = document.getElementById('legendBusinessAssistantStart');
+    const businessFields = document.getElementById('legendBusinessAssistantConfigurationFields');
+    const businessCredential = document.getElementById('legendBusinessAssistantCredential');
+    const businessSave = document.getElementById('legendBusinessAssistantSave');
+    const businessSaveStatus = document.getElementById('legendBusinessAssistantSaveStatus');
+    const businessInspectModels = document.getElementById('legendBusinessAssistantInspectModels');
+    const businessGenerateImage = document.getElementById('legendBusinessAssistantGenerateImage');
+    const businessImageReferences = document.getElementById('legendBusinessAssistantImageReferences');
+    const businessSettingFields = [
+        ['projectId', 'API project ID', 'text'], ['organizationId', 'Organization ID (optional)', 'text'],
+        ['model', 'Reviewed model ID', 'text'],
+        ['reasoningEffort', 'Reviewed reasoning effort: low, medium, or high (default low)', 'text'],
+        ['ownerBudgetAccountId', 'Workspace budget account ID', 'text'],
+        ['fundingBudgetAccountId', 'Shared funding account ID', 'text'],
+        ['monthlyCashAllocation', 'Monthly cash allocation', 'number'],
+        ['monthlyServiceAllocation', 'Monthly service allocation', 'number'],
+        ['maximumCashPerTurn', 'Maximum cash reserved per request', 'number'],
+        ['maximumServicePerTurn', 'Maximum service reserved per request', 'number'],
+        ['maximumOutputTokens', 'Maximum output tokens', 'number'],
+        ['maximumInputCharacters', 'Maximum input characters', 'number'],
+        ['costCeilingEvidenceSha256', 'Reviewed cost-bound evidence SHA-256', 'text'],
+        ['costCeilingExpiresUtc', 'Cost-bound expiry (UTC)', 'text'],
+        ['enabled', 'Enable requests after funding admission', 'checkbox']
+        ,['imageModel', 'Reviewed image model ID (optional)', 'text'],
+        ['imageQuality', 'Image quality: low, medium, or high', 'text'],
+        ['imagesEnabled', 'Enable image requests within the same reviewed funding limits', 'checkbox'],
+        ['transcriptionModel', 'Reviewed dictation model (gpt-transcribe)', 'text'],
+        ['dictationEnabled', 'Enable dictation within reviewed funding limits (up to 60 seconds)', 'checkbox']
+    ];
+    function renderBusinessSettings(config) {
+        if (!businessFields) return;
+        businessFields.replaceChildren();
+        businessCredential.value = '';
+        for (const [name, label, type] of businessSettingFields) {
+            const row = document.createElement('label');
+            row.textContent = label;
+            row.className = 'd-block mb-2';
+            const input = document.createElement('input');
+            input.type = type;
+            input.dataset.assistantSetting = name;
+            input.className = type === 'checkbox' ? 'form-check-input ms-2' : 'form-control';
+            if (type === 'checkbox') input.checked = config?.[name] === true;
+            else input.value = config?.[name] ?? '';
+            if (type === 'number') { input.min = '0'; input.step = name.includes('Tokens') || name.includes('Characters') ? '1' : '0.000001'; }
+            input.autocomplete = 'off';
+            row.append(input); businessFields.append(row);
+        }
+    }
+    let businessConfiguration = null;
+    let businessSelectionGeneration = 0;
+
+    async function refreshBusinessConfiguration() {
+        cancelDictation();
+        const generation = ++businessSelectionGeneration;
+        businessConfiguration = null;
+        businessStart.disabled = true;
+        if (businessSave) businessSave.disabled = true;
+        renderBusinessSettings(null);
+        if (businessImageReferences) businessImageReferences.replaceChildren();
+        if (businessGenerateImage) { businessGenerateImage.checked = false; businessGenerateImage.disabled = true; }
+        if (!businessWorkspace.value) return;
+        const query = new URLSearchParams({ workspace: businessWorkspace.value, provider: businessProvider.value });
+        try {
+            const result = await readHistory(`/founder/legend-ai/business/configuration?${query}`, undefined, false);
+            if (generation !== businessSelectionGeneration) return;
+            businessConfiguration = result;
+            const config = result.configuration;
+            renderBusinessSettings(config);
+            businessSave.disabled = false;
+            businessReadiness.textContent = `${businessProvider.selectedOptions[0].text}: ${result.readiness.replaceAll('_', ' ')}. ` +
+                (config ? `Project: ${config.projectId}. Monthly cash allocation: ${config.monthlyCashAllocation}; service allocation: ${config.monthlyServiceAllocation}. ` : '') +
+                `Provider credit balance: ${result.creditBalanceStatus}. Funding is checked before each request. No automatic fallback.`;
+            businessStart.disabled = !config || !config.enabled || result.readiness !== 'funding_admission_required';
+            businessGenerateImage.disabled = businessStart.disabled || !config?.imagesEnabled;
+            const media = await readHistory(`/founder/legend-ai/business/media?${new URLSearchParams({ workspace: businessWorkspace.value })}`, undefined, false).catch(() => []);
+            if (generation !== businessSelectionGeneration) return;
+            for (const item of media) {
+                const option = document.createElement('option'); option.value = item.id;
+                option.textContent = `${item.contentType} · ${item.createdUtc} · ${item.id}`;
+                businessImageReferences.append(option);
+            }
+        } catch (error) {
+            if (generation === businessSelectionGeneration) businessReadiness.textContent = error.message || 'Connection status is unavailable.';
+        }
+    }
+    businessSave?.addEventListener('click', async () => {
+        if (!businessConfiguration || !businessWorkspace.value) return;
+        const generation = businessSelectionGeneration;
+        const configuration = { provider: businessProvider.value, serviceTier: 'default' };
+        for (const [name, , type] of businessSettingFields) {
+            const input = businessFields.querySelector(`[data-assistant-setting="${name}"]`);
+            configuration[name] = type === 'checkbox' ? input.checked : type === 'number' ? Number(input.value) : input.value.trim();
+        }
+        configuration.organizationId ||= null;
+        configuration.reasoningEffort ||= null;
+        configuration.imageModel ||= null;
+        configuration.imageQuality ||= null;
+        configuration.transcriptionModel ||= null;
+        businessSave.disabled = true;
+        businessSaveStatus.textContent = 'Saving settings…';
+        const credential = businessCredential.value || null;
+        businessCredential.value = '';
+        try {
+            const response = await fetch('/founder/legend-ai/business/configuration', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json',
+                    'RequestVerificationToken': form.querySelector('input[name="__RequestVerificationToken"]')?.value || '' },
+                body: JSON.stringify({ workspace: businessWorkspace.value, configuration,
+                    expectedRevision: businessConfiguration.revision, credential })
+            });
+            if (generation !== businessSelectionGeneration) return;
+            if (!response.ok) {
+                const error = await response.json().catch(() => null);
+                throw new Error(error?.error || 'Settings could not be saved. Reload the connection before trying again.');
+            }
+            businessSaveStatus.textContent = 'Settings saved. Provider readiness and funding are checked independently.';
+            await refreshBusinessConfiguration();
+        } catch (error) {
+            if (generation === businessSelectionGeneration) businessSaveStatus.textContent = error.message;
+        } finally {
+            if (generation === businessSelectionGeneration) businessSave.disabled = false;
+        }
+    });
+    businessInspectModels?.addEventListener('click', async () => {
+        if (!businessConfiguration || !businessWorkspace.value) return;
+        const generation = businessSelectionGeneration;
+        businessInspectModels.disabled = true;
+        businessSaveStatus.textContent = 'Checking configured model metadata…';
+        try {
+            const response = await fetch('/founder/legend-ai/business/model-access', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json',
+                    'RequestVerificationToken': form.querySelector('input[name="__RequestVerificationToken"]')?.value || '' },
+                body: JSON.stringify({ workspace: businessWorkspace.value })
+            });
+            const result = await response.json();
+            if (generation !== businessSelectionGeneration) return;
+            businessSaveStatus.textContent = response.ok
+                ? `${result.status.replaceAll('_', ' ')}. ${(result.models || []).map(item => `${item.model}: ${item.status.replaceAll('_', ' ')}`).join('; ')} ${result.limitation || ''}`
+                : result.error || 'Model access could not be verified.';
+        } catch {
+            if (generation === businessSelectionGeneration) businessSaveStatus.textContent = 'Model access could not be verified. No generation was requested.';
+        } finally { businessInspectModels.disabled = false; }
+    });
+    businessSettings?.addEventListener('toggle', async () => {
+        if (!businessSettings.open || businessWorkspace.options.length > 1) return;
+        try {
+            const options = await readHistory('/founder/legend-ai/business/workspaces', undefined, false);
+            for (const item of options) {
+                const option = document.createElement('option');
+                option.value = item.workspace;
+                option.textContent = item.label;
+                businessWorkspace.append(option);
+            }
+            if (!options.length) businessReadiness.textContent = 'No authorized business or agent workspace is available for this account.';
+        } catch (error) { businessReadiness.textContent = error.message || 'Workspaces are unavailable.'; }
+    });
+    businessWorkspace?.addEventListener('change', refreshBusinessConfiguration);
+    businessProvider?.addEventListener('change', refreshBusinessConfiguration);
+    businessStart?.addEventListener('click', () => {
+        if (busy || !businessConfiguration || businessStart.disabled) return;
+        const conversation = newConversationRecord('business');
+        conversation.assistantWorkspaceKey = businessConfiguration.workspaceKey;
+        conversation.assistantProvider = businessProvider.value;
+        conversation.assistantConfigurationRevision = businessConfiguration.revision;
+        state.conversations.unshift(conversation);
+        stopHistoryRefresh();
+        state.activeConversationId = conversation.id;
+        historySkip = 0;
+        scheduleHistoryRefresh();
+        renderAll({ forceBottom: true });
+        refreshHistory();
+    });
+
+    const modelSelection = document.getElementById('legendFounderAiModelSelection');
+    const modelStatus = document.getElementById('legendFounderAiModelStatus');
+    let chatModels = [];
 
     const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
 
@@ -322,6 +500,7 @@
     }
 
     function clearAuthenticatedHistory() {
+        cancelDictation();
         accountGeneration++;
         const request = activeRequest;
         activeRequest = null;
@@ -335,15 +514,15 @@
         renderAll();
     }
 
-    async function readHistory(url, signal) {
+    async function readHistory(url, signal, requireHistoryResult = true) {
         const response = await fetch(url, { credentials: 'same-origin', cache: 'no-store', signal });
         if (response.status === 401 || response.status === 403 || response.redirected) {
             clearAuthenticatedHistory();
             throw new Error('Conversation history is unavailable for this account.');
         }
         const result = await response.json();
-        if (!response.ok || result.succeeded !== true) {
-            throw new Error(result.errorMessage || 'Conversation history could not be loaded.');
+        if (!response.ok || (requireHistoryResult && result.succeeded !== true)) {
+            throw new Error(result.errorMessage || result.error || 'Requested information could not be loaded.');
         }
         return result;
     }
@@ -361,6 +540,7 @@
     async function loadConversationPage(conversation, signal, older = false, newer = false) {
         if (!conversation.persisted) return;
         const parameters = new URLSearchParams({ take: '60' });
+        if (conversation.assistantWorkspaceKey) parameters.set('assistantWorkspaceKey', conversation.assistantWorkspaceKey);
         if (older && conversation.messages.length) {
             const first = conversation.messages[0];
             // Keep the original UTC wire string: Date conversion loses SQL ticks.
@@ -387,6 +567,10 @@
         conversation.title = detail.subject || 'New conversation';
         conversation.updatedUtc = detail.lastMessageUtc;
         if (!older) conversation.lastMessageId = page.at(-1)?.id || null;
+        if (!older && conversation.modelSelection == null) {
+            const selected = [...page].reverse().find(item => item.modelSelection)?.modelSelection;
+            if (selected) conversation.modelSelection = selected;
+        }
         const pending = conversation.pendingOperation;
         if (pending && page.some(item => item.id === pending.terminalId || (pending.userMessageId && item.replyToMessageId === pending.userMessageId))) conversation.pendingOperation = null;
     }
@@ -399,14 +583,16 @@
         try {
             if (!older) {
                 const skip = more ? historySkip : 0;
-                const result = await readHistory(`${HISTORY_URL}?take=50&skip=${skip}`, request.signal);
+                const result = await readHistory(`${HISTORY_URL}?take=50&skip=${skip}&assistantWorkspaceKey=${encodeURIComponent(active.assistantWorkspaceKey || '')}`, request.signal);
                 if (request.signal.aborted) return;
                 for (const row of result.conversations) {
                     let conversation = state.conversations.find(item => item.id === row.id);
                     if (!conversation) {
                         // History carries transcript provenance, not a new provider restriction.
                         // Keep existing local choices; newly discovered threads use the same defaults as native.
-                        conversation = { ...newConversationRecord(), id: row.id,
+                        conversation = { ...newConversationRecord(active.assistantWorkspaceKey ? 'business' : 'legend'), id: row.id,
+                            assistantWorkspaceKey: row.assistantWorkspaceKey, assistantProvider: row.assistantProvider,
+                            assistantConfigurationRevision: row.assistantConfigurationRevision,
                             persisted: true, messages: [], lastMessageId: null };
                         state.conversations.push(conversation);
                     }
@@ -463,54 +649,8 @@
         return ensureActiveConversation();
     }
 
-    function setMode(nextMode) {
-        if (busy) {
-            return;
-        }
-
-        if (
-            nextMode !== 'legend' &&
-            nextMode !== 'teacher'
-        ) {
-            if (status) {
-                updateThinkingStatus(`Conversation mode is invalid. Select ${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai or OpenAI Teacher.`, false);
-            }
-            return;
-        }
-
-        const requestedMode = nextMode;
-
-        const current = activeConversation();
-
-        if (current.mode === requestedMode) {
-            return;
-        }
-
-        // One browser conversation has exactly one responder identity. Never
-        // relabel an existing LEGEND brand AI transcript as OpenAI Teacher (or the
-        // reverse), because that would feed one AI's prior responses to the
-        // other under the wrong role. A mode change starts a clean thread while
-        // preserving both histories independently.
-        const conversation = newConversationRecord(
-            requestedMode,
-            false
-        );
-        state.conversations.unshift(conversation);
-        stopHistoryRefresh();
-        state.activeConversationId = conversation.id;
-        scheduleHistoryRefresh();
-        sortConversations();
-        setSidebarOpen(false);
-        renderAll({ forceBottom: true });
-
-        if (status) {
-            updateThinkingStatus('', false);
-        }
-
-        focusComposer();
-    }
-
     function startNewConversation() {
+        cancelDictation();
         if (busy) {
             return;
         }
@@ -522,6 +662,10 @@
                 current.nativeOnly === true,
                 current.externalAnsweringBlocked === true
             );
+
+        conversation.assistantWorkspaceKey = current.assistantWorkspaceKey;
+        conversation.assistantProvider = current.assistantProvider;
+        conversation.assistantConfigurationRevision = current.assistantConfigurationRevision;
 
         state.conversations.unshift(conversation);
         stopHistoryRefresh();
@@ -540,6 +684,7 @@
     }
 
     function openConversation(id) {
+        cancelDictation();
         if (busy) {
             return;
         }
@@ -604,6 +749,7 @@
     }
 
     function renderAll({ forceBottom = false } = {}) {
+        if (dictation && dictation.conversationId !== state.activeConversationId) cancelDictation();
         const wasNearBottom =
             isTranscriptNearBottom();
 
@@ -629,27 +775,35 @@
     function renderModes() {
         const conversation = activeConversation();
 
-        for (const button of modeButtons) {
-            const active =
-                button.dataset.legendAiMode ===
-                conversation.mode;
-
-            button.classList.toggle(
-                'is-active',
-                active
-            );
-
-            button.setAttribute(
-                'aria-selected',
-                active ? 'true' : 'false'
-            );
+        if (modelSelection) {
+            modelSelection.replaceChildren(new Option('Auto', 'auto'));
+            if (conversation.mode === 'business') {
+                const configured = businessConfiguration?.configuration?.model;
+                modelSelection.replaceChildren(new Option(configured || 'Workspace model', 'auto'));
+                modelSelection.disabled = true;
+            } else {
+                for (const model of chatModels) {
+                    const option = new Option(model.label + (model.configured ? '' : ' · Not configured'), model.id);
+                    option.disabled = !model.configured;
+                    modelSelection.add(option);
+                }
+                const selected = conversation.modelSelection || (conversation.mode === 'teacher'
+                    ? chatModels.find(item => item.provider === 'openai' && item.configured)?.id : 'auto');
+                if (selected && !Array.from(modelSelection.options).some(option => option.value === selected)) {
+                    const unavailable = new Option('Selected model unavailable', selected);
+                    unavailable.disabled = true;
+                    modelSelection.add(unavailable);
+                }
+                modelSelection.value = selected || 'auto';
+                modelSelection.disabled = busy;
+            }
         }
 
         if (nativeOnly) {
             nativeOnly.checked =
                 conversation.nativeOnly === true;
             nativeOnly.disabled =
-                busy || conversation.mode !== 'legend';
+                busy || conversation.mode === 'business';
             nativeOnly.closest(
                 '.legend-founder-ai-native-only'
             )?.classList.toggle(
@@ -660,7 +814,7 @@
 
         if (externalAnsweringBlocked) {
             externalAnsweringBlocked.checked = conversation.externalAnsweringBlocked === true;
-            externalAnsweringBlocked.disabled = busy || conversation.mode !== 'legend' || conversation.nativeOnly === true;
+            externalAnsweringBlocked.disabled = busy || conversation.mode === 'business' || conversation.nativeOnly === true;
             externalAnsweringBlocked.closest(
                 '.legend-founder-ai-native-only'
             )?.classList.toggle(
@@ -671,9 +825,7 @@
 
         if (input) {
             input.placeholder =
-                conversation.mode === 'teacher'
-                    ? 'Message the OpenAI Teacher…'
-                    : `Message ${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai…`;
+                `Message ${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai…`;
         }
     }
 
@@ -685,7 +837,7 @@
         history.replaceChildren();
 
         const conversations =
-            [...state.conversations]
+            state.conversations.filter(item => (item.assistantWorkspaceKey || null) === (activeConversation().assistantWorkspaceKey || null))
                 .sort(
                     (a, b) =>
                         new Date(b.updatedUtc) -
@@ -754,9 +906,7 @@
             preview.textContent =
                 last?.content ||
                 (
-                    conversation.mode === 'teacher'
-                        ? 'OpenAI Teacher'
-                        : `${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai`
+                    `${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai`
                 );
 
             const time =
@@ -934,6 +1084,18 @@
                 i += 2;
                 continue;
             }
+            const reviewLink = /^\[([^\]\r\n]{1,120})\]\((\/founder\/legend-ai\/actions\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)/.exec(text.slice(i));
+            if (reviewLink) {
+                flush();
+                const link = document.createElement('a');
+                link.href = reviewLink[2];
+                link.textContent = reviewLink[1];
+                link.target = '_blank';
+                link.rel = 'noopener';
+                parent.appendChild(link);
+                i += reviewLink[0].length;
+                continue;
+            }
             let token = null;
             let tag = null;
             if (text[i] === '`') {
@@ -1098,6 +1260,18 @@
         if (role === 'assistant') renderAssistantContent(body, content);
         else body.textContent = content;
         bubble.appendChild(body);
+        if (role === 'assistant' && metadata?.stage === 'business_image_saved' && typeof metadata.reference === 'string') {
+            const url = new URL(metadata.reference, window.location.origin);
+            if (url.origin === window.location.origin && /^\/founder\/legend-ai\/business\/media\/[0-9a-f-]{36}$/i.test(url.pathname) &&
+                /^(business|agent):[0-9a-f]{32}$/.test(url.searchParams.get('workspace') || '')) {
+                const image = document.createElement('img');
+                image.src = url.href; image.alt = 'Generated image saved privately to this workspace'; image.className = 'img-fluid';
+                image.loading = 'lazy'; bubble.append(image);
+                const download = document.createElement('a');
+                url.searchParams.set('download', 'true'); download.href = url.href;
+                download.textContent = 'Download image'; download.className = 'd-block'; bubble.append(download);
+            }
+        }
 
         // Provider/model provenance remains on the governed response contract for
         // diagnostics and audit, but ordinary chat presentation shows only the answer.
@@ -1187,18 +1361,16 @@
             retryRequest.hidden = !activeConversation().pendingOperation || value;
         }
 
-        for (const button of modeButtons) {
-            button.disabled = value;
-        }
+        if (modelSelection) modelSelection.disabled = value || activeConversation().mode === 'business';
 
         if (nativeOnly) {
             nativeOnly.disabled =
                 value ||
-                activeConversation().mode !== 'legend';
+                activeConversation().mode === 'business';
         }
 
         if (externalAnsweringBlocked) {
-            externalAnsweringBlocked.disabled = value || activeConversation().mode !== 'legend' || activeConversation().nativeOnly === true;
+            externalAnsweringBlocked.disabled = value || activeConversation().mode === 'business' || activeConversation().nativeOnly === true;
         }
         updateThinkingStatus(message, value);
     }
@@ -1243,7 +1415,7 @@
             : fallback || `${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai could not complete that response.`;
     }
 
-    async function consumeChatResultStream(response, signal) {
+    async function consumeChatResultStream(response, signal, onAnswerDelta) {
         if (!response.ok || !response.body) {
             const raw = await response.text().catch(() => '');
             let result = null;
@@ -1266,6 +1438,10 @@
             try { payload = JSON.parse(trimmed); } catch { return; }
 
             if (payload?.type === 'progress') {
+                if (payload.progress?.stage === 'answer_delta' && typeof payload.progress.answerDelta === 'string') {
+                    onAnswerDelta?.(payload.progress.answerDelta);
+                    return;
+                }
                 applyOperationalProgress(payload);
                 return;
             }
@@ -1415,12 +1591,122 @@
         }
     );
 
-    voiceFocus?.addEventListener(
-        'click',
-        () => {
-            input?.focus({ preventScroll: true });
+    const voiceStatus = document.getElementById('legendFounderAiVoiceStatus');
+    const voiceCancel = document.getElementById('legendFounderAiVoiceCancel');
+    let dictation = null;
+    function stopMicrophone(session) {
+        clearTimeout(session.timer);
+        session.stream?.getTracks().forEach(track => track.stop());
+        if (session.node) { session.node.port.onmessage = null; session.node.disconnect(); }
+        session.source?.disconnect();
+        void session.context?.close().catch(() => {});
+    }
+    function cancelDictation() {
+        if (!dictation) return;
+        const session = dictation; dictation = null;
+        session.abort.abort(); stopMicrophone(session);
+        session.chunks.length = 0;
+        voiceCancel.hidden = true; voiceFocus.setAttribute('aria-pressed', 'false');
+        voiceFocus.setAttribute('aria-label', 'Record dictation');
+        voiceStatus.textContent = session.phase === 'transcribing'
+            ? 'Transcription cancelled locally. OpenAI may already have received the audio; its cost reservation remains pending. Typed text is unchanged.'
+            : 'Recording discarded before upload. Typed text is unchanged.';
+    }
+    async function finishDictation() {
+        const session = dictation;
+        if (!session || session.phase !== 'recording') return;
+        session.phase = 'transcribing'; stopMicrophone(session);
+        voiceFocus.setAttribute('aria-pressed', 'false');
+        voiceFocus.setAttribute('aria-label', 'Transcription in progress');
+        voiceStatus.textContent = 'Transcribing with the selected OpenAI project… No message has been sent.';
+        try {
+            const { encodeDictationWave, appendDictation } = await import('/js/legend-ai-dictation.mjs');
+            if (dictation !== session || session.accountGeneration !== accountGeneration ||
+                activeConversation().id !== session.conversationId) return;
+            const wave = encodeDictationWave(session.chunks, session.sampleRate);
+            session.chunks.length = 0;
+            let binary = '';
+            for (let i = 0; i < wave.length; i += 8192) binary += String.fromCharCode(...wave.subarray(i, i + 8192));
+            const response = await fetch('/founder/legend-ai/business/dictation', {
+                method: 'POST', credentials: 'same-origin', signal: session.abort.signal,
+                headers: { 'Content-Type': 'application/json',
+                    'RequestVerificationToken': form.querySelector('input[name="__RequestVerificationToken"]')?.value || '' },
+                body: JSON.stringify({ workspace: session.workspace, configurationRevision: session.revision,
+                    operationId: session.operationId, audioBase64: btoa(binary) })
+            });
+            if (response.status === 401 || response.status === 403 || response.redirected) { clearAuthenticatedHistory(); return; }
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Transcription failed. Check dictation configuration and funding.');
+            if (dictation !== session || session.accountGeneration !== accountGeneration || activeConversation().id !== session.conversationId ||
+                businessConfiguration?.revision !== session.revision) return;
+            input.value = appendDictation(input.value, result.transcript, input.maxLength);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            voiceStatus.textContent = 'Transcript added. Review it, then press Send. Raw audio was not saved by LEGEND.';
+        } catch (error) {
+            if (dictation === session) voiceStatus.textContent = error.message || 'Dictation failed. Typed text is unchanged.';
+        } finally {
+            if (dictation === session) {
+                dictation = null; voiceCancel.hidden = true;
+                voiceFocus.setAttribute('aria-label', 'Record dictation');
+            }
         }
-    );
+    }
+    voiceFocus?.addEventListener('click', async () => {
+        if (dictation) { if (dictation.phase === 'recording') await finishDictation(); return; }
+        const conversation = activeConversation();
+        if (busy || conversation.pendingOperation) { voiceStatus.textContent = 'Finish the pending request before recording.'; return; }
+        if (conversation.mode !== 'business' || conversation.nativeOnly || conversation.externalAnsweringBlocked ||
+            businessConfiguration?.workspaceKey !== conversation.assistantWorkspaceKey ||
+            businessConfiguration?.revision !== conversation.assistantConfigurationRevision ||
+            businessConfiguration?.configuration?.dictationEnabled !== true || conversation.assistantProvider !== 'openai') {
+            voiceStatus.textContent = 'Select a business conversation with reviewed OpenAI dictation and funding enabled in its settings. You can continue typing.'; return;
+        }
+        if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || !window.AudioWorkletNode) {
+            voiceStatus.textContent = 'Microphone recording is unavailable here. Use an HTTPS browser with microphone access, or type your message.'; return;
+        }
+        const session = { phase: 'permission', chunks: [], samples: 0, abort: new AbortController(),
+            workspace: conversation.assistantWorkspaceKey, revision: conversation.assistantConfigurationRevision,
+            conversationId: conversation.id, accountGeneration, operationId: crypto.randomUUID() };
+        dictation = session; voiceCancel.hidden = false;
+        voiceStatus.textContent = 'Allow microphone access to record. Audio goes to your selected OpenAI project when you stop or reach 60 seconds. Cancel before transcription discards the local recording.';
+        try {
+            const AudioContextType = window.AudioContext || window.webkitAudioContext;
+            session.context = new AudioContextType();
+            await session.context.resume();
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 }, video: false });
+            if (dictation !== session) { stream.getTracks().forEach(track => track.stop()); return; }
+            session.stream = stream;
+            await session.context.audioWorklet.addModule('/js/legend-ai-microphone-worklet.js');
+            if (dictation !== session) return;
+            session.sampleRate = session.context.sampleRate;
+            session.source = session.context.createMediaStreamSource(stream);
+            session.node = new AudioWorkletNode(session.context, 'legend-microphone-capture');
+            session.node.port.onmessage = event => {
+                if (dictation !== session || session.phase !== 'recording') return;
+                const remaining = session.sampleRate * 60 - session.samples;
+                const chunk = event.data.subarray(0, remaining);
+                session.chunks.push(chunk); session.samples += chunk.length;
+                if (session.samples >= session.sampleRate * 60) void finishDictation();
+            };
+            session.source.connect(session.node); session.node.connect(session.context.destination);
+            session.phase = 'recording';
+            voiceFocus.setAttribute('aria-pressed', 'true'); voiceFocus.setAttribute('aria-label', 'Stop recording and transcribe');
+            voiceStatus.textContent = 'Recording microphone · press Stop to transcribe, or Cancel to discard (60 seconds maximum).';
+            session.timer = setTimeout(() => void finishDictation(), 60000);
+            stream.getAudioTracks()[0].addEventListener('ended', () => { if (dictation === session && session.phase === 'recording') cancelDictation(); });
+        } catch (error) {
+            if (dictation === session) {
+                cancelDictation();
+                voiceStatus.textContent = error.name === 'NotAllowedError'
+                    ? 'Microphone access was denied. Allow it in browser settings and try again, or type your message.'
+                    : 'Microphone could not start. Check that a microphone is connected and available, or type your message.';
+            }
+        }
+    });
+    voiceCancel?.addEventListener('click', cancelDictation);
+    modalElement.addEventListener('hidden.bs.modal', cancelDictation);
+    window.addEventListener('pagehide', cancelDictation);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) cancelDictation(); });
 
     transcript?.addEventListener(
         'click',
@@ -1479,8 +1765,7 @@
         if (kind === 'model') {
             settingsTitle.textContent = 'Model';
             settingsBody.append(
-                settingsAction(`${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai`, 'Use LEGEND hosted foundation and governed tools.', () => { closeSettingsPanel(); setMode('legend'); }),
-                settingsAction('OpenAI', 'Use the direct OpenAI teacher conversation mode.', () => { closeSettingsPanel(); setMode('teacher'); })
+                settingsAction('Choose model', 'Choose Auto or a configured model in this conversation’s header.', () => { closeSettingsPanel(); modelSelection?.focus(); })
             );
         } else if (kind === 'tools') {
             settingsTitle.textContent = 'Tools & data';
@@ -1490,7 +1775,7 @@
                     current.nativeOnly ? 'Start a clean LEGEND conversation with governed provider access restored.' : 'Start a clean native-only conversation with external answering, research, and translation disabled.',
                     () => {
                         closeSettingsPanel();
-                        if (!nativeOnly || current.mode !== 'legend') return;
+                        if (!nativeOnly || current.mode === 'business') return;
                         nativeOnly.checked = !current.nativeOnly;
                         nativeOnly.dispatchEvent(new Event('change', { bubbles: true }));
                     }
@@ -1500,7 +1785,7 @@
                     'Keep authorized research and translation available while controlling external answer generation.',
                     () => {
                         closeSettingsPanel();
-                        if (!externalAnsweringBlocked || current.mode !== 'legend' || current.nativeOnly) return;
+                        if (!externalAnsweringBlocked || current.mode === 'business' || current.nativeOnly) return;
                         externalAnsweringBlocked.checked = !current.externalAnsweringBlocked;
                         externalAnsweringBlocked.dispatchEvent(new Event('change', { bubbles: true }));
                     }
@@ -1538,23 +1823,29 @@
     });
     settingsClose?.addEventListener('click', closeSettingsPanel);
 
-    for (const button of modeButtons) {
-        button.addEventListener(
-            'click',
-            () => {
-                const requestedMode =
-                    button.dataset.legendAiMode;
-
-                if (requestedMode) {
-                    setMode(requestedMode);
-                }
-            }
-        );
+    modelSelection?.addEventListener('change', () => {
+        if (busy || activeConversation().mode === 'business') return;
+        activeConversation().modelSelection = modelSelection.value;
+        // A model is a per-turn selection, never a new identity or transcript.
+        renderModes();
+    });
+    async function loadChatModels() {
+        try {
+            const response = await fetch(modalElement.dataset.modelsUrl, { credentials: 'same-origin', cache: 'no-store' });
+            if (!response.ok) throw new Error('model_catalog_unavailable');
+            const catalog = await response.json();
+            chatModels = Array.isArray(catalog.models) ? catalog.models : [];
+            if (modelStatus) modelStatus.textContent = 'Configured models. Provider access and funding are checked separately.';
+            renderModes();
+        } catch {
+            if (modelStatus) modelStatus.textContent = 'Model list unavailable. Retry opening LEGEND AI.';
+        }
     }
+    loadChatModels();
 
     externalAnsweringBlocked?.addEventListener('change', () => {
         const current = activeConversation();
-        if (busy || current.mode !== 'legend' || current.nativeOnly === true) {
+        if (busy || current.mode === 'business' || current.nativeOnly === true) {
             renderModes();
             return;
         }
@@ -1576,7 +1867,7 @@
             }
 
             const current = activeConversation();
-            if (current.mode !== 'legend') {
+            if (current.mode === 'business') {
                 renderModes();
                 return;
             }
@@ -1617,6 +1908,7 @@
         setBusy(true, 'Preparing a response…');
         const request = new AbortController();
         activeRequest = request;
+        let provisionalAnswer = null;
         try {
             const token = form.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
             const response = await fetch(modalElement.dataset.chatUrl, {
@@ -1631,7 +1923,18 @@
                 clearAuthenticatedHistory();
                 return;
             }
-            const result = await consumeChatResultStream(response, request.signal);
+            const result = await consumeChatResultStream(response, request.signal, delta => {
+                if (activeRequest !== request || epoch !== accountGeneration || !transcript) return;
+                if (!provisionalAnswer) {
+                    provisionalAnswer = document.createElement('article');
+                    provisionalAnswer.className = 'legend-founder-ai-message is-assistant';
+                    provisionalAnswer.setAttribute('aria-label', 'Response in progress; not yet saved');
+                    transcript.appendChild(provisionalAnswer);
+                }
+                // Provider text is untrusted. Render provisional text without HTML.
+                provisionalAnswer.appendChild(document.createTextNode(delta));
+                scrollToBottom();
+            });
             if (activeRequest !== request) return;
             if (result.failureKind === 'authorization') { clearAuthenticatedHistory(); return; }
             if (result.conversationId) {
@@ -1673,6 +1976,7 @@
                 false
             );
         } finally {
+            provisionalAnswer?.remove();
             if (epoch !== accountGeneration) return;
             if (activeRequest === request) {
                 activeRequest = null;
@@ -1686,6 +1990,7 @@
 
     form?.addEventListener('submit', async event => {
         event.preventDefault();
+        if (dictation) { voiceStatus.textContent = 'Stop or cancel dictation before sending.'; return; }
         if (busy) { abortActiveRequest(); return; }
         const text = input?.value.trim();
         if (!text) return;
@@ -1704,6 +2009,14 @@
         const localUserMessageId = `pending-user-${operationId}`;
         const operation = { id: operationId, localUserMessageId, body: JSON.stringify({
             mode: conversation.mode, nativeOnly: conversation.nativeOnly === true,
+            modelSelection: conversation.mode === 'business' ? null : (modelSelection?.value || 'auto'),
+            pagePath: window.location.pathname,
+            assistantWorkspaceKey: conversation.assistantWorkspaceKey || null,
+            assistantProvider: conversation.assistantProvider || null,
+            assistantConfigurationRevision: conversation.assistantConfigurationRevision || null,
+            generateImage: conversation.mode === 'business' && businessConfiguration?.workspaceKey === conversation.assistantWorkspaceKey && businessGenerateImage.checked,
+            referenceImageIds: conversation.mode === 'business' && businessConfiguration?.workspaceKey === conversation.assistantWorkspaceKey && businessGenerateImage.checked
+                ? Array.from(businessImageReferences.selectedOptions, option => option.value) : [],
             externalAnsweringBlocked: conversation.externalAnsweringBlocked === true,
             sourceLanguageCode: null, conversationId: conversation.id,
             expectedLastMessageId: conversation.lastMessageId || null,

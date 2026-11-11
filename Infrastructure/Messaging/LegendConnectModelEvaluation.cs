@@ -439,8 +439,8 @@ internal sealed partial class LegendConnectModelInferenceTransport
         if (string.IsNullOrWhiteSpace(model) || model.Length > 200)
             return new(false, null, "model_inference_invalid_model");
         if (_configuration["LegendConnect:Foundation:HostKind"] == "Cloudflare" &&
-            string.Equals(model, _configuration["LegendConnect:Foundation:Model"], StringComparison.Ordinal))
-            return await SendCloudflareTaskAsync(task, cancellationToken);
+            (string.Equals(model, _configuration["LegendConnect:Foundation:Model"], StringComparison.Ordinal) || model.StartsWith("@cf/", StringComparison.Ordinal)))
+            return await SendCloudflareTaskAsync(model, task, cancellationToken);
 
         var localModel = _configuration["LegendConnect:Foundation:Model"]?.Trim();
         if (string.Equals(model, localModel, StringComparison.Ordinal) ||

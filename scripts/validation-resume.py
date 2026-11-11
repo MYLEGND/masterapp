@@ -359,6 +359,16 @@ def historical_recovery_workflow_matches(source, current):
         hashlib.sha256(current.encode()).hexdigest(),
         hashlib.sha256(source.encode()).hexdigest(),
     ) in {
+        # Native Mac coordination moved here; recovery commands/permissions unchanged.
+        # Exact historical bytes only, never admission of a live old workflow.
+        ('3ce7bd341a900629957325a0324fe1ca08c1c37c1625e1b89009e4d9eab9f43e',
+         'c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c'),
+        ('3ce7bd341a900629957325a0324fe1ca08c1c37c1625e1b89009e4d9eab9f43e',
+         '62980dabd1c0ed2ec843b181a1f92c7c2a922190bbe1773ca9ad9ebb09c18a2e'),
+        ('3ce7bd341a900629957325a0324fe1ca08c1c37c1625e1b89009e4d9eab9f43e',
+         '946f12938a47c3009871006969ae9d0ef50e9c0cc67f1df81a202f0a3bacc424'),
+        ('3ce7bd341a900629957325a0324fe1ca08c1c37c1625e1b89009e4d9eab9f43e',
+         'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd'),
         # Read-only observer preparation changed; retain exact predecessor history only.
         ('c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c',
          '62980dabd1c0ed2ec843b181a1f92c7c2a922190bbe1773ca9ad9ebb09c18a2e'),
@@ -928,7 +938,7 @@ def recovery_admission_proof():
         # Include active/queued rows and reject their drift just like terminal rows.
         for repository, entry in state['histories'].items():
             if entry.get('kind')=='completed-resource-other-writers':
-                current=_completed_resource_other_writers(entry['repository'],entry['token'])
+                current=_completed_resource_other_writers(entry['repository'],entry['token'],**(dict(native_owner=entry['nativeOwner']) if 'nativeOwner' in entry else {}))
                 if json.dumps(current,sort_keys=True,separators=(',',':'))!=entry['raw']:
                     raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_WRITER_CHANGED_AT_BOUNDARY')
                 continue
@@ -4873,6 +4883,21 @@ def fast_track_scope(paths):
     # Infrastructure/Domain/Shared ProjectReference dependencies. Keep exact
     # ownership: an unknown sibling is not silently admitted.
     shared_server = {
+        'Domain/Billing/ClientSubscriptionOfferPricing.cs',
+        'Domain/Entities/MessageConversation.cs',
+        'Domain/Messaging/MessagingModels.cs',
+        'Domain/Messaging/MessagingInterfaces.cs',
+        'Infrastructure/Data/Configurations/MarketingConnectionConfiguration.cs',
+        'Infrastructure/Data/Configurations/MessagingModelConfiguration.cs',
+        'Infrastructure/Messaging/MessagingService.FounderAi.cs',
+        'Infrastructure/Messaging/LegendConnectCloudflareTransport.cs',
+        'Infrastructure/Messaging/LegendConnectModelEvaluation.cs',
+        'Infrastructure/Mobile/LegendMemberDirectory.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.Assistant.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.AssistantAccounting.cs',
+        'Infrastructure/Reception/ReceptionistOperatorService.Assistant.cs',
+        'Infrastructure/Reception/ReceptionistOperatorService.AssistantAccounting.cs',
+        'SHARED/Workspaces/WorkspaceKey.cs',
         'Infrastructure/Mobile/MobileHomeService.cs',
         'Infrastructure/Notifications/NotificationEngine.cs',
         # Filed CRM history shares the existing Domain/Infrastructure graph.
@@ -5027,6 +5052,8 @@ def fast_track_scope(paths):
     # Reviewed native application sources are not inputs to server packages.
     # Keep this exact: new native files still require ownership review.
     native_only = {
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/ui/LegendFounderAiConversation.kt',
+        'Legend-Android/app/src/test/java/com/mylegnd/legend/registered/FounderAiMobileContractTest.kt',
         'Legend-ios/Legend.xcodeproj/project.pbxproj',
         'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/LegendActivityProjection.kt',
         'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/MobileContracts.kt',
@@ -5069,6 +5096,8 @@ def fast_track_scope(paths):
             return set(dotnet)
         if path.startswith(('Legend-Cloudflare/src/website-routing/', 'Legend-Cloudflare/tests/website-routing/')):
             return set()
+        if founder_cloudflare_release_required([path]):
+            return {'portal'}
         if path.startswith('SHARED/wwwroot/js/finance-') or path in {
             'SHARED/wwwroot/js/legend-living-balance-sheet.js',
             'SHARED/wwwroot/js/expense-lens-projection.js',
@@ -7134,13 +7163,15 @@ def completed_resource_legacy_run_disposition(repository, token, *, observed=Non
                 authorization=expected['authorization'] if state[0] == 'queued' else None)
 
 
-def _completed_resource_other_writers(repository, token):
+def _completed_resource_other_writers(repository, token, *, native_owner=None):
     """Current writers and the audited legacy dispatch surface, not all old events.
 
     At approved5bf the lifecycle can dispatch NEW production runs and rerun only
     PR validations/read-only readiness. The complete dispatch inventory catches
     old direct attempts too. An unaudited approved ref cannot inherit this proof.
     """
+    if native_owner is not None:
+        assert_native_mac_execution(repository, native_owner, token)
     approved='5bf13a59c7608d87264ffbf280fa3551598ea774'
     if _api_get_uncached(repository,'git/ref/heads/'+TRUSTED_PR_BASE,token).get('object',{}).get('sha')!=approved:
         raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_SOURCE_CHANGED')
@@ -7181,6 +7212,11 @@ def _completed_resource_other_writers(repository, token):
             path=row.get('path','');name=path.removeprefix('.github/workflows/')
             if row.get('head_repository',{}).get('full_name','').lower()!=repository.lower():
                 raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ACTIVE_OWNER_UNKNOWN')
+            if native_owner is not None and row.get('id')==native_owner['runId']:
+                if (row.get('head_sha')!=native_owner['controlRevision'] or row.get('run_attempt')!=native_owner['runAttempt']
+                    or path!='.github/workflows/'+FAST_TRACK_RELEASE_WORKFLOW or row.get('event')!='workflow_dispatch'):
+                    raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_OWNER_CHANGED')
+                continue
             if row.get('id')==current:
                 if row.get('head_sha')!=os.environ.get('GITHUB_SHA') or path!='.github/workflows/'+FAST_TRACK_RELEASE_WORKFLOW:
                     raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ACTIVE_OWNER_CHANGED')
@@ -7199,23 +7235,53 @@ def _completed_resource_other_writers(repository, token):
     return dict(approvedRef=approved,dispatchCount=len(rows),dispatchIdentity=digest,activeWriters=[],nonwriterDispositions=nonwriters)
 
 
-def completed_resource_other_writers(repository,token):
-    state=_RECOVERY_PROOF_VIEW.get();key=(repository,'completed-resource-other-writers')
+def completed_resource_other_writers(repository,token,*,native_owner=None):
+    state=_RECOVERY_PROOF_VIEW.get();key=(repository,'completed-resource-other-writers') if native_owner is None else (repository,'completed-resource-other-writers',json.dumps(native_owner,sort_keys=True))
     if state is not None and key in state['histories']:
         evidence_remaining(30)
         return json.loads(state['histories'][key]['raw'])
-    value=_completed_resource_other_writers(repository,token)
+    value=_completed_resource_other_writers(repository,token,**(dict(native_owner=native_owner) if native_owner is not None else {}))
     if state is not None:
         raw=json.dumps(value,sort_keys=True,separators=(',',':'));size=len(raw.encode())
         if len(state['histories'])>=4 or state['bytes']+size>32*1024*1024:
             raise ReleaseOperationHistoryUnproven('RECOVERY_PROOF_STORAGE_BOUND')
         state['histories'][key]=dict(kind='completed-resource-other-writers',repository=repository,raw=raw,token=token)
+        if native_owner is not None:state['histories'][key]['nativeOwner']=dict(native_owner)
         state['bytes']+=size
     return value
 
 
 
-def completed_resource_recovery_attempts(repository,original,resource,operation,token,*,current_observer=None):
+def native_recovery_schema_prefix_compatible(repository, run, original, resource, operation, context, token):
+    """Bound possible old startup EF effects; never attest old app publication."""
+    if not isinstance(context, dict) or resource not in RELEASE_TARGETS:
+        return False
+    # Exact audited historical executable/application generation. Its possible
+    # SQL Server startup writes are confined to this application's EF migrations.
+    if (run.get('head_sha') != '3f4953ee733d44bd566f3d1e997f065473dc06d6'
+        or original['run'].get('head_sha') != 'f2841ef8d0871ed69be01484024424eb3f63f121'
+        or run.get('status') != 'completed' or original['run'].get('status') != 'completed'):
+        return False
+    observation = context['observation']; owner = context['owner']; revision = context['applicationRevision']
+    assert_native_mac_execution(repository, owner, token)
+    import datetime
+    age = time.time() - datetime.datetime.fromisoformat(observation['observedUtc'].replace('Z', '+00:00')).timestamp()
+    if (not 0 <= age < 900 or owner['applicationRevision'] != revision
+        or observation.get('mutationActivity') != 'settled' or observation.get('ready') is not False
+        or observation.get('databaseIdentity') != _fast_track_policy().STABLE_BASELINE_ADOPTION['databaseIdentity']
+        or type(observation.get('appliedCount')) is not int or observation['appliedCount'] <= 0
+        or type(observation.get('pendingCount')) is not int or observation['pendingCount'] <= 0
+        or type(observation.get('knownCount')) is not int
+        or observation['knownCount'] != observation['appliedCount'] + observation['pendingCount']
+        or any(not re.fullmatch('[a-f0-9]{64}', str(observation.get(k))) for k in ('baselineIdentity', 'schemaIdentity'))
+        or not re.fullmatch('[a-f0-9]{64}', str(context.get('packageDigest')))
+        or operation != retained_operation_id(resource, original['run']['head_sha'], context['packageDigest'])):
+        return False
+    return _applied_migration_prefix_separate(original['run']['head_sha'], revision,
+        observation.get('firstPendingMigrationId'), observation.get('lastAppliedMigrationId'))
+
+
+def completed_resource_recovery_attempts(repository,original,resource,operation,token,*,current_observer=None,native_schema_context=None,resource_holds=None):
     """Reconcile each same-original recovery attempt using existing validators.
 
     A durable inherited intent means reconcile-only under the authenticated
@@ -7275,6 +7341,10 @@ def completed_resource_recovery_attempts(repository,original,resource,operation,
                 or attested_recovery_preintent_failure(repository,run,owner,attempt,revision,token,target=resource,operation_id=operation)
                 or attested_recovery_target_hold(repository,run,owner,attempt,revision,token,resource,operation)):
                 continue
+            if (resource_holds is not None and native_recovery_schema_prefix_compatible(
+                    repository, run, original, resource, operation, native_schema_context, token)):
+                resource_holds[resource] = 'RESOURCE_RECOVERY_PRIOR_UNJOURNALED_ENTRY'
+                continue  # UNKNOWN app effect retained; inspect every later attempt.
             raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_PRIOR_UNJOURNALED_ENTRY')
     return intent_artifact
 
@@ -7362,7 +7432,42 @@ def completed_resource_historical_acceptance(repository, original, resource, row
     return accepted[-1][1]
 
 
-def completed_resource_currentness(repository, revision, contract, proofs, token, *, recovery_original=None, recovery_observer=None, required_resources=None, resource_holds=None):
+def completed_resource_schema_observation_only(repository, run, attempts, artifacts, token):
+    """Authenticate every schema attempt as observation-only; retain the baseline."""
+    if not attempts or set(attempts) != set(range(1, run['run_attempt'] + 1)):
+        return False
+    # A read-only receipt cannot conceal an entered migration operation.
+    for artifact in artifacts:
+        if artifact.get('name', '').startswith('legend-release-child-'):
+            record = _release_history_json(repository, run['id'], artifact, 'operation.json', verify_digest=True)
+            if record.get('child') == 'migrations':
+                return False
+    contract = completed_resource_contract(run['head_sha'])
+    reference = contract['resources'].get('schema') if contract else None
+    if reference is None:
+        return False
+    baseline = completed_resource_receipt(repository, 'schema', reference, token)
+    seen = False
+    for attempt, jobs in attempts.items():
+        owners = [j for j in jobs if j.get('name') == 'Reconcile production schema before publication']
+        if len(owners) != 1:
+            return False
+        owner = owners[0]
+        if owner.get('status') != 'completed':
+            return False
+        if owner.get('conclusion') == 'skipped' and owner.get('steps') == []:
+            continue
+        sql = [s for s in owner.get('steps', []) if s.get('name') == 'Apply or reconcile the exact rehearsed migration bundle']
+        observations = [s for s in owner.get('steps', []) if s.get('name') == 'Reconcile fresh already-ready schema without SQL bundle or mutation']
+        if (len(sql) != 1 or sql[0].get('status') != 'completed' or sql[0].get('conclusion') != 'skipped'
+            or len(observations) != 1 or not attested_fast_track_no_write_observation(
+                repository, run, attempt, owner, observations[0], artifacts, token, baseline['record']['observation'])):
+            return False
+        seen = True
+    return seen
+
+
+def completed_resource_currentness(repository, revision, contract, proofs, token, *, recovery_original=None, recovery_observer=None, required_resources=None, resource_holds=None, native_owner=None, native_schema_observation=None):
     """Authenticate newer effects, not retired source ancestry.
 
     The fixed root is a metadata cut only, never proof that old submissions have
@@ -7371,13 +7476,17 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
     """
     required_resources = set(contract['resources']) if required_resources is None else set(required_resources)
     resource_holds = {} if resource_holds is None else resource_holds
+    if native_schema_observation is not None:
+        if native_owner is None or required_resources != {'schema'}:
+            raise ReleaseOperationHistoryUnproven('NATIVE_SCHEMA_SCOPE_REQUIRED')
+        assert_native_mac_execution(repository, native_owner, token)
     def hold(resource, reason):
         # Only positively classified target evidence may be isolated. Unknown
         # actor/attempt/shared effects still raise at their original global gate.
         resource_holds[resource] = reason
         if resource in required_resources:
             raise ReleaseOperationHistoryUnproven(reason)
-    completed_resource_other_writers(repository,token)
+    completed_resource_other_writers(repository,token,**(dict(native_owner=native_owner) if native_owner is not None else {}))
     rows = _fast_track_history_observation(repository, token)
     old = [{k:r.get(k) for k in _RESOURCE_ROOT_HISTORY_FIELDS} for r in rows if r['id'] <= _RESOURCE_ROOT_HISTORY['lastRun']]
     old.sort(key=lambda r:r['id'])
@@ -7436,7 +7545,11 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
                 proof=historical_acceptance(original,resource);material=fast_track_recovery_material(repository,original,resource,token)
                 digest=fast_track_recovery_package_digest(repository,original,material,resource,token)
                 operation=retained_operation_id(resource,match[2],digest)
-                intent=completed_resource_recovery_attempts(repository,original,resource,operation,token)
+                compatibility = (dict(observation=native_schema_observation, owner=native_owner,
+                    applicationRevision=revision, packageDigest=digest) if native_schema_observation is not None else None)
+                intent=completed_resource_recovery_attempts(repository,original,resource,operation,token,
+                    **(dict(native_schema_context=compatibility, resource_holds=resource_holds) if compatibility is not None else {}))
+                if resource in resource_holds:continue
                 if intent is None:continue
                 if (proof is None or proof['record'].get('operationId')!=operation
                     or proof['reference']['sourceRevision']!=match[2]
@@ -7445,6 +7558,9 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
                     continue
                 latest[resource]=proof['reference']
             continue
+        artifacts = _completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts')
+        if completed_resource_failed_selector_nonentry(repository, run, revision, token, artifacts):
+            continue  # No downstream owner entered; historical intent remains unchanged.
         request = _fast_track_policy().read_request(run['head_sha'])
         if _fast_track_policy().source_integration_requested(run['head_sha']):
             fast_track_source_integration_parent(repository, run, token)
@@ -7456,14 +7572,11 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
         if completed_resource_contract(run['head_sha']) is None:
             raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_NEW_LEGACY_WRITER')
         fast_track_merged_source_proof(repository,run['head_sha'],token)
-        artifacts = _completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts')
         attempts = _completion_jobs(repository,run,token)
         parents=subprocess.check_output(['git','rev-list','--parents','-n','1',run['head_sha']],text=True).split()
         if len(parents)!=3:raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PRODUCER_PARENT_UNKNOWN')
         recorded=completed_resource_scope(parents[1],run['head_sha'],completed_resource_contract(run['head_sha']))
         selected={r['key'] for r in recorded['matrix']['include']}
-        if completed_resource_failed_selector_nonentry(repository, run, revision, token, artifacts):
-            continue  # No downstream owner entered; historical intent remains unchanged.
         if set(request.get('targets',[]))!={r['azure_app'] for r in recorded['matrix']['include']}:
             raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_RECORDED_SCOPE_CHANGED')
         for resource in ('portal','client','protect','parfait','website','schema','routing'):
@@ -7494,6 +7607,8 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
                     raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PUBLICATION_STATE_UNKNOWN')
                 if any(s.get('conclusion')!='skipped' for s in steps):entered=True
             if not entered:continue
+            if resource == 'schema' and completed_resource_schema_observation_only(repository, run, attempts, artifacts, token):
+                continue  # Verified read-only history never advances a resource baseline.
             resolved=None
             recovery_title='LEGEND retained recovery original='+str(run['id'])+' application='+run['head_sha']
             if resource in RELEASE_TARGETS and any(row.get('display_title')==recovery_title for row in rows):
@@ -7594,6 +7709,92 @@ def completed_resource_selection(before, head, *, repository=None, token=None):
     return dict(scope, baseline=before, sourceParent=before, resourceBaselines=contract,
         schemaBaseline=contract['resources']['schema']['sourceRevision'], resourceHolds=holds,
         authenticatedResources=sorted(proofs), productionEligible=True,promotion=None)
+
+
+def assert_native_mac_execution(repository, owner, token, *, now=None):
+    """Authenticate the existing read-only native hold without hosted impersonation."""
+    import datetime
+    now = time.time() if now is None else now
+    if (not isinstance(owner, dict) or set(owner) != {'runId','runAttempt','controlRevision','applicationRevision'}
+        or type(owner['runId']) is not int or owner['runId'] < 1 or type(owner['runAttempt']) is not int or owner['runAttempt'] != 1
+        or any(not re.fullmatch('[a-f0-9]{40}', str(owner[key])) for key in ('controlRevision','applicationRevision'))):
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_OWNER_INVALID')
+    if subprocess.run(['git','merge-base','--is-ancestor',owner['applicationRevision'],owner['controlRevision']],capture_output=True).returncode:
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_APPLICATION_ANCESTRY_CHANGED')
+    run = _api_get_uncached(repository, 'actions/runs/'+str(owner['runId']), token)
+    path = '.github/workflows/'+FAST_TRACK_RELEASE_WORKFLOW
+    if (run.get('id')!=owner['runId'] or run.get('run_attempt')!=owner['runAttempt']
+        or run.get('head_sha')!=owner['controlRevision'] or run.get('path')!=path
+        or run.get('event')!='workflow_dispatch' or run.get('status')!='in_progress'
+        or not str(run.get('head_branch','')).startswith('isolation/')
+        or run.get('head_repository',{}).get('full_name','').lower()!=repository.lower()
+        or run.get('display_title')!='LEGEND native Mac coordination candidate='+owner['controlRevision']):
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_OWNER_CHANGED')
+    source = _release_history_source(repository, owner['controlRevision'], path, token)
+    if hashlib.sha256(source.encode()).hexdigest() != '3ce7bd341a900629957325a0324fe1ca08c1c37c1625e1b89009e4d9eab9f43e':
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_WORKFLOW_CHANGED')
+    remote = _api_get_uncached(repository,'git/ref/heads/'+run['head_branch'],token)
+    if remote.get('object',{}).get('sha')!=owner['controlRevision']:
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_SOURCE_CHANGED')
+    payload = _api_get_uncached(repository,f"actions/runs/{owner['runId']}/attempts/1/jobs?per_page=100",token)
+    jobs = payload.get('jobs')
+    if (not isinstance(jobs,list) or payload.get('total_count')!=len(jobs) or len(jobs)!=7
+        or any(j.get('run_id')!=owner['runId'] or j.get('head_sha')!=owner['controlRevision'] or j.get('run_attempt')!=1 for j in jobs)):
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_JOBS_INCOMPLETE')
+    holds = [j for j in jobs if j.get('name')=='native-mac-ownership']
+    if (len(holds)!=1 or holds[0].get('status')!='in_progress'
+        or any(j.get('status')!='completed' or j.get('conclusion')!='skipped' or j.get('steps')!=[] for j in jobs if j is not holds[0])):
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_PUBLISHER_ENTERED')
+    steps=holds[0].get('steps',[])
+    if (sum(s.get('name')=='Verify native ownership request' and s.get('conclusion')=='success' for s in steps)!=1
+        or sum(s.get('name')=='Hold existing publication mutex for native Mac' and s.get('status')=='in_progress' for s in steps)!=1):
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_HOLD_UNPROVEN')
+    try: age=now-datetime.datetime.fromisoformat(holds[0]['started_at'].replace('Z','+00:00')).timestamp()
+    except (KeyError,ValueError,TypeError): age=-1
+    if not 0<=age<6000:
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_HOLD_EXPIRED')
+    return run
+
+
+def native_completed_schema_admission(repository, owner, observation, bundle_digest, token):
+    """Consume the existing accepted schema baseline for a distinct native suffix.
+
+    Old UNKNOWN execution stays UNKNOWN. This proves current physical state and
+    a different pending prefix, never an old success or permission to replay SQL.
+    """
+    import datetime
+    assert_native_mac_execution(repository,owner,token)
+    revision=owner['applicationRevision']
+    try: age=time.time()-datetime.datetime.fromisoformat(observation['observedUtc'].replace('Z','+00:00')).timestamp()
+    except (KeyError,ValueError,TypeError): age=-1
+    if (not 0<=age<900 or observation.get('mutationActivity')!='settled' or observation.get('ready') is not False
+        or type(observation.get('pendingCount')) is not int or observation['pendingCount']<1
+        or observation.get('databaseIdentity')!=_fast_track_policy().STABLE_BASELINE_ADOPTION['databaseIdentity']
+        or any(not re.fullmatch('[a-f0-9]{64}',str(value)) for value in (bundle_digest,observation.get('schemaIdentity'),observation.get('baselineIdentity')))):
+        raise ReleaseOperationHistoryUnproven('NATIVE_SCHEMA_OBSERVATION_UNPROVEN')
+    contract=completed_resource_contract(revision)
+    reference=contract['resources'].get('schema') if contract else None
+    if reference is None or not _applied_migration_prefix_separate(reference['sourceRevision'],revision,
+            observation.get('firstPendingMigrationId'),observation.get('lastAppliedMigrationId')):
+        raise ReleaseOperationHistoryUnproven('NATIVE_SCHEMA_PENDING_PREFIX_UNPROVEN')
+    historical_app_holds = {}
+    with recovery_material_reuse(), recovery_admission_proof():
+        proof=completed_resource_receipt(repository,'schema',reference,token)
+        current=completed_resource_currentness(repository,revision,contract,{'schema':proof},token,
+            required_resources={'schema'},native_owner=owner,native_schema_observation=observation,resource_holds=historical_app_holds)
+    if current.get('schema')!=reference:
+        raise ReleaseOperationHistoryUnproven('NATIVE_SCHEMA_BASELINE_CHANGED')
+    assert_native_mac_execution(repository,owner,token)
+    if time.time()-datetime.datetime.fromisoformat(observation['observedUtc'].replace('Z','+00:00')).timestamp()>=900:
+        raise ReleaseOperationHistoryUnproven('NATIVE_SCHEMA_OBSERVATION_EXPIRED')
+    material=hashlib.sha256(json.dumps(dict(schemaIdentity=observation['schemaIdentity'],bundleDigest=bundle_digest),sort_keys=True).encode()).hexdigest()
+    partition=hashlib.sha256(json.dumps(dict(resourceGroup='masterapp-rg',authority='masterapp-protect'),sort_keys=True).encode()).hexdigest()
+    return dict(state='proven',candidate=revision,controlRevision=owner['controlRevision'],ownerRunId=owner['runId'],
+        ownerRunAttempt=owner['runAttempt'],observedUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        materialIdentity=material,partitionIdentity=partition,
+        dependencyIdentity=direct_child_operation_identity('migrations',owner['controlRevision'],material),
+        completedResourceProof=proof,historicalExecution='UNKNOWN_PRESERVED_DISTINCT_SUFFIX',
+        historicalApplicationHolds=historical_app_holds,physicalSchemaObservation=observation)
 
 
 def completed_resource_execution(resource, revision=None):
@@ -8634,7 +8835,7 @@ def fast_track_selector_attempts_proven_nonentry(repository, run, revision, toke
         if not same_run(read(f"actions/runs/{run['id']}"), run['run_attempt']):
             return False
         source = _release_history_source(repository, run['head_sha'], path, token)
-        if not source or source != git_show_file(revision, path):
+        if not source or not historical_recovery_workflow_matches(source, git_show_file(revision, path)):
             return False
         evidence_remaining(1)
         seen = set()
@@ -15220,6 +15421,18 @@ def _release_history_runs(repository, token):
 
 def _release_nonentry_observers(jobs, source):
     """Authenticate observers with no capability to publish within this attempt."""
+    blocks = _job_blocks(source) if isinstance(source, str) else {}
+    native = [job for job in jobs if job.get('name') == 'native-mac-ownership']
+    if 'native-mac-ownership' in blocks or native:
+        # A native mutex run may accompany external Mac writes. Only explicit
+        # skipped/no-step evidence proves this lane never entered; an omitted,
+        # active, successful or otherwise ambiguous holder is not non-entry.
+        if ('native-mac-ownership' not in blocks or len(native) != 1 or
+                native[0].get('status') != 'completed' or
+                native[0].get('conclusion') != 'skipped' or native[0].get('steps') != []):
+            return None
+        jobs = [job for job in jobs if job is not native[0]]
+        blocks.pop('native-mac-ownership')
     names = {'release-state-receipt', 'target-release-receipts (${{ matrix.app }})',
              'wake-release-lifecycle-after-terminal-release'}
     present = [job for job in jobs if job.get('name') in names]
@@ -15228,7 +15441,6 @@ def _release_nonentry_observers(jobs, source):
     if (not isinstance(source, str) or {job['name'] for job in present} != names
         or len(present) != len(names)):
         return None
-    blocks = _job_blocks(source)
     legacy_jobs = {'admission', 'discover-live', 'preserve-rollback', 'release',
                    'release-state-receipt', 'target-release-receipts',
                    'wake-release-lifecycle-after-terminal-release'}
@@ -15251,6 +15463,9 @@ def _release_nonentry_observers(jobs, source):
     contracts = {
         'ce5e7dfe3d4100116bae366833687d6055dd51b91357cc268c73d33105b999c7': legacy_jobs,
         'f49cf05a452c901b015e69a58697b108b24694cee0763448d3a3a3672e4d04c2': legacy_jobs | {'migration-readiness'},
+        # Native coordination suppresses these same observers; their permissions
+        # and commands are unchanged. Explicit skipped native evidence is required above.
+        '4b4234ebc49d8332cac27072422ec631483ed24cd7db4b500622e2197a9b2d2b': legacy_jobs | {'migration-readiness'},
     }
     if contracts.get(hashlib.sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest()) != set(blocks):
         return None

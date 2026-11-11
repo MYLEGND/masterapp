@@ -329,3 +329,65 @@ User reports translation delivery absent and Azure tracking blank. Read-only pro
 - CONFIRMED authenticated Founder reproduction: AgentPortal Edit Protect Website supplies an edit handoff, but the public page has neither Save Live nor the editor panel. Live Protect HTML supplies the intentional apiBase empty string; the delivered shared legend-public-cms.js returns immediately on that value. The later absolute URL constructors also require a resolved origin, so removing the guard alone is insufficient.
 - Bounded authority: normalize the existing shared CMS API base for same-origin Protect while preserving the static LEGEND site's explicit base. Ticket protection, owner scope, expiry, content controller and persistence remain unchanged. No new editor, service, data migration or native changes.
 - Existing approved direct release authority receives a focused CMS regression test alongside its unchanged gates. Exact candidate review, direct release outcome and authenticated post-deployment editor proof remain pending at this entry. No public website content was changed during the initial reproduction.
+
+
+## 2026-11-10 continuation — capability, quality and performance
+
+The current implementation/release state lives in
+`LEGEND-REVENUE-LAUNCH-CHECKPOINT.md`; historical baselines and staffing above are
+not current branch or deployment authority. The Founder added the shared capability,
+quality and performance assignment to the existing Mac release flow. Its standing
+standard is AGENTS.md section15; this documentation is not scheduled automation.
+
+Continue existing service ownership, preserve the bundle and business-assistant
+foundation checkpoints, and finish the in-flight accounting work before changing
+provider execution. Next inspect/map all entry points and actual deployment/provider
+identities, reproduce the reported five-minute simple-answer delay with stage timing,
+then correct demonstrated bottlenecks. Verify full-path text streaming/cancellation,
+model/effort support and actual organization availability. Use the required evaluation
+matrix and measured p95 targets; neither an Astra label nor a prompt establishes
+quality parity. No latency, image, live-model or capability acceptance is claimed by
+recording this assignment.
+
+Capability work must connect the existing upload/retrieval, image/provider, tenant
+media/Studio draft, research, export, CRM and booking owners through the current tool
+authority. Settings, allocations and receipts extend current authorities. Preserve
+Founder rollout, explicit business/agent scope, no retail access, Shayla intake-only
+privacy, existing cash/service/provider caps and reload OFF. No new paid testing
+allocation is inferred from this instruction. Unknown integrations remain explicitly
+unavailable until verified. The latest assignment requests the existing authorized
+Azure flow after exact-candidate gates; deployment remains blocked by unmet gates,
+not implied by a source checkpoint or a saved instruction.
+
+### Shared LEGEND AI role/channel clarification (2026-11-10)
+
+Shayla names the public receptionist persona/channel of LEGEND AI. Existing
+`Receptionist*` types are retained incremental voice/lifecycle owners, not authority
+to build a second assistant stack or to replace working integrations. Existing
+conversation/message history remains the private authenticated history owner;
+public call/intake records remain scoped by the pinned business/call identity.
+Sharing voice/persona never authorizes attaching a caller to private history.
+
+Server-side policy is supplied by existing owners, not a new role registry:
+
+| Actor/channel | Existing authority | Allowed boundary |
+| --- | --- | --- |
+| Public receptionist | Verified provider ingress or published-site grant; pinned configuration capabilities; fenced action claim | Approved public knowledge, confirmed inquiry service operation, separately admitted booking; no private account/CRM reads |
+| Authenticated business/member or agent | Authenticated actor, BusinessWorkspaceAccess and existing feature rollout/entitlement | Only that actor's authorized workspace/context/tools; membership alone does not grant billing/admin or retail assistant access |
+| Founder administration | Existing FounderOnly and exact proposal/approval authority | Administrative tools retain their guards; a public voice cannot invoke them |
+
+Public intake goes directly from `ReceptionistApplicationServices.CanonicalActions`
+to `ReceptionistInquiryAuthority` and the transactional `WebsiteLeadSubmission`/
+`WebsiteLifeLeadCaptureService` owners. No employee HttpContext, cookie, interactive
+AgentPortal login or browser automation is required. Canonical CRM ownership and
+verified call/action/facts must still resolve. Missing notification recipients must
+not prevent durable intake; existing WebsiteLeadNotificationRecoveryWorker owns
+later delivery. Intake readback is required before claiming saved, and booking
+failure is not permission to erase or duplicate the inquiry.
+
+The existing voice worker has bounded session/owner admission, per-call backend
+work, independent watchdog work and a dedicated named HTTP transport without
+provider retries. Keep long-running assistant/image work off that queue. Shared
+funding admission still applies; this source design does not prove measured
+latency/capacity isolation on the deployed host. Exact candidate/live acceptance
+and remaining work stay in LEGEND-REVENUE-LAUNCH-CHECKPOINT.md.

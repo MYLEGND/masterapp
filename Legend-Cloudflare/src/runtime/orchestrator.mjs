@@ -18,7 +18,7 @@ async function opaqueId(value) {
 }
 
 function validate(envelope, budget) {
-  if (envelope.version !== 'legend-cloudflare.v1' || typeof envelope.requestId !== 'string' || !envelope.scope) throw new RuntimeFailure('invalid_envelope');
+  if (!['legend-cloudflare.v1', 'legend-cloudflare.v2'].includes(envelope.version) || typeof envelope.requestId !== 'string' || !envelope.scope) throw new RuntimeFailure('invalid_envelope');
   if (!budget?.reserve || !budget?.settle) throw new RuntimeFailure('atomic_budget_unavailable');
   const l = envelope.limits;
   const bounds = { maxOutputTokens: 16384, maxIterations: 8, maxModelCalls: 8, maxToolCalls: 24, maxCostMicrousd: 1000000000 };
@@ -38,7 +38,7 @@ function failure(error) {
 /** Only call after createSecuritySession has authenticated scope and durably claimed replay. */
 export async function orchestrate({ envelope, context, env, signal: parentSignal, budget, toolBroker, onEvent,
   registry = MODEL_REGISTRY, circuit = health }) {
-  const result = { version: 'legend-cloudflare.v1', requestId: envelope?.requestId ?? null, status: 'failed', text: '', toolResults: [],
+  const result = { version: envelope?.version ?? 'legend-cloudflare.v1', requestId: envelope?.requestId ?? null, status: 'failed', text: '', toolResults: [],
     provider: null, registryVersion: REGISTRY_VERSION,
     usage: { inputTokens: 0, outputTokens: 0, costMicrousd: 0, costEvidence: 'provider_usage' }, error: null,
     cognition: null };
@@ -61,6 +61,7 @@ export async function orchestrate({ envelope, context, env, signal: parentSignal
     let modelCalls = 0;
     let toolCalls = 0;
 
+    if (envelope.task.requestedModel != null && (envelope.version !== 'legend-cloudflare.v2' || typeof envelope.task.requestedModel !== 'string' || !/^@cf\/[A-Za-z0-9_./-]{1,195}$/.test(envelope.task.requestedModel))) throw new RuntimeFailure('requested_model_invalid');
     const executeModelCall = async ({ routingTask, callMessages, callTools, stage }) => {
       if (signal.aborted) throw signal.reason;
       if (++modelCalls > envelope.limits.maxModelCalls) throw new RuntimeFailure('model_call_limit');

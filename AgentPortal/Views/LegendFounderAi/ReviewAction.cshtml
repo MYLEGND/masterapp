@@ -3,11 +3,11 @@
     <h1 id="action-review-title">Review exact action</h1>
     @if (ViewData["State"] as string == "Proposed")
     {
-        <p>This proposal has not changed GitHub. Approval stages only the displayed changes; it does not approve deployment.</p>
+        <p>This proposal has not changed the target. Approval executes only the exact operation shown below. Website draft edits, website publication and application deployment are separate permissions.</p>
     }
     else
     {
-        <p>This proposal is no longer awaiting approval. Inspect the recorded operation and GitHub batch for its outcome; no rollback is implied.</p>
+        <p>This proposal is no longer awaiting approval. Inspect the recorded operation for its outcome; no rollback is implied.</p>
     }
     <dl>
         <dt>Operation</dt><dd>@ViewData["Tool"]</dd>
@@ -15,9 +15,9 @@
         <dt>Review expires (UTC)</dt><dd>@ViewData["ExpiresUtc"]</dd>
         <dt>Review fingerprint</dt><dd><code>@ViewData["ReviewDigest"]</code></dd>
     </dl>
-    <h2>Repository and revision binding</h2>
+    <h2>Target and revision binding</h2>
     <pre>@ViewData["Binding"]</pre>
-    <h2>Exact file replacements</h2>
+    <h2>Exact proposed changes</h2>
     <pre>@ViewData["Arguments"]</pre>
     @if (ViewData["CanApprove"] is true)
     {
@@ -27,7 +27,7 @@
             <input type="hidden" name="reviewDigest" value="@ViewData["ReviewDigest"]" />
             <input type="hidden" name="expectedLastMessageId" value="@ViewData["ExpectedLastMessageId"]" />
             <input type="hidden" name="operationId" value="@ViewData["OperationId"]" />
-            <button type="submit" class="btn btn-primary">Approve and stage these exact changes</button>
+            <button type="submit" class="btn btn-primary">Approve this exact operation</button>
         </form>
     }
     else

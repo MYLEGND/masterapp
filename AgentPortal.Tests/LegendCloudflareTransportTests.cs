@@ -39,6 +39,21 @@ public sealed class LegendCloudflareTransportTests
         }).Build(), NullLogger<LegendConnectModelInferenceTransport>.Instance);
 
     [Fact]
+    public async Task ManualSelectionRequiresWorkerUpgradeWithoutBreakingRegistryRoute()
+    {
+        var handler = new Handler();
+        var transport = Transport(handler);
+        var task = TaskRequest(LegendConnectExternalProviderPolicy.CloudflareFoundation);
+        var blocked = await transport.GenerateAsync("@cf/fixture", task);
+        Assert.False(blocked.Succeeded);
+        Assert.Equal("cloudflare_manual_model_update_required", blocked.ErrorCode);
+        Assert.Equal(0, handler.Calls);
+        Assert.True((await transport.GenerateAsync("cloudflare:registry", task)).Succeeded);
+        Assert.Equal(1, handler.Calls);
+        Assert.Equal("legend-cloudflare.v1", handler.Payload.GetProperty("version").GetString());
+    }
+
+    [Fact]
     public async Task RejectedProviderReceiptsRetainCostWithoutReturningAnswer()
     {
         foreach (var replacement in new[]

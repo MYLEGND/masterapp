@@ -74,6 +74,7 @@ public sealed class SubscriptionActivationNoticeViewModel
 
 public sealed class ClientSubscriptionManagementViewModel
 {
+    public bool IsInheritedMembership { get; set; }
     public Guid? ClientSubscriptionId { get; set; }
     public string ClientName { get; set; } = "Member";
     public string CurrentPlanDisplay { get; set; } = "Not selected";

@@ -32,6 +32,28 @@ public sealed class WebsiteContentEditorRoundTripTests
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Fact]
+    public async Task AssistantPreviewDoesNotSaveAndExactApprovalCannotRebase()
+    {
+        using var fixture = new Fixture("business");
+        var ticket = fixture.Ticket(DateTime.UtcNow.AddMinutes(10));
+        await SeedCanonicalDraftAsync(fixture, ticket, CanonicalDocument(), revision: 1);
+        var before = await fixture.Db.Set<WebsiteContentState>().SingleAsync();
+        var original = before.DraftJson;
+        var operation = new WebsiteMutationOperation { Type = "insertNode", Scope = "shell.footer",
+            Node = new WebsiteCompositionNode { Id = "assistant.copy", Type = "text", Tag = "p", Text = "Reviewed copy" } };
+        var request = new WebsitePlatformController.WebsiteMutationRequest(ticket, 1, [operation]);
+        var preview = Assert.IsType<OkObjectResult>(await fixture.CreateController().ReviewAssistantMutations(request, true));
+        Assert.True(JsonSerializer.SerializeToElement(preview.Value, JsonOptions).GetProperty("previewOnly").GetBoolean());
+        Assert.Equal(original, before.DraftJson);
+        Assert.Equal(1, before.Revision);
+        Assert.IsType<OkObjectResult>(await fixture.CreateController().ReviewAssistantMutations(request, false));
+        Assert.Equal(2, before.Revision);
+        Assert.IsType<ConflictObjectResult>(await fixture.CreateController().ReviewAssistantMutations(request, false));
+        Assert.IsType<UnauthorizedResult>(await fixture.CreateController().ReviewAssistantMutations(
+            new("invalid-ticket", 2, [operation]), true));
+    }
+
+    [Fact]
     public async Task StandaloneReceptionist_UsesExistingMutationAndReadbackAuthority()
     {
         using var fixture = new Fixture("business");

@@ -16,6 +16,22 @@ class FounderAiMobileContractTest {
     private val json = Json { ignoreUnknownKeys = true }
 
     @Test
+    fun `business history binding survives a native follow-up request`() {
+        val thread = json.decodeFromString(com.mylegnd.legend.registered.core.model.FounderAiHistoryThread.serializer(),
+            """{"id":"conversation","assistantWorkspaceKey":"agent:11111111111111111111111111111111","assistantProvider":"openai","assistantConfigurationRevision":"revision"}""")
+        val request = FounderAiChatRequest("business", false, messages = listOf(FounderAiChatMessage("user", "Continue")),
+            conversationId = thread.id, assistantWorkspaceKey = thread.assistantWorkspaceKey,
+            assistantProvider = thread.assistantProvider, assistantConfigurationRevision = thread.assistantConfigurationRevision)
+        val restored = json.decodeFromString(FounderAiChatRequest.serializer(), json.encodeToString(request))
+        assertEquals(thread.assistantWorkspaceKey, restored.assistantWorkspaceKey)
+        assertEquals("openai", restored.assistantProvider)
+        assertEquals("revision", restored.assistantConfigurationRevision)
+        val delta = json.decodeFromString(FounderAiProgressEnvelope.serializer(),
+            """{"type":"progress","progress":{"stage":"answer_delta","message":"","answerDelta":"Answer"}}""")
+        assertEquals("Answer", delta.progress?.answerDelta)
+    }
+
+    @Test
     fun `teacher request preserves the canonical mode and never enables native-only`() {
         val request = FounderAiChatRequest(
             mode = "teacher",

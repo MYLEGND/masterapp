@@ -13,6 +13,50 @@ from release_policy import read_request, staging_only
 ROOT = Path(__file__).resolve().parent
 
 
+class NativeMacPublicationOwnership(unittest.TestCase):
+    def setUp(self):
+        self.workflow = (ROOT.parent / '.github/workflows/legend-fast-track-ui.yml').read_text()
+        import textwrap
+        self.validation = textwrap.dedent(self.workflow.split("python3 - <<'PYOWNERSHIP'\n", 1)[1].split('          PYOWNERSHIP', 1)[0])
+        self.environment = dict(GITHUB_REPOSITORY='MYLEGND/masterapp', GITHUB_EVENT_NAME='workflow_dispatch',
+            GITHUB_REF='refs/heads/isolation/test', GITHUB_SHA='a'*40, NATIVE_REVISION='a'*40,
+            NORMAL_INPUTS=json.dumps(dict(native_mac_revision='a'*40, original_run='', application_revision='')), GH_TOKEN='synthetic')
+
+    def validate(self, remote='a'*40):
+        import io
+        with patch.dict(os.environ, self.environment, clear=True), patch('urllib.request.urlopen', return_value=io.BytesIO(json.dumps({'object': {'sha': remote}}).encode())):
+            exec(compile(self.validation, '<native-ownership>', 'exec'), {})
+
+    def test_exact_request_and_remote_head(self):
+        self.validate()
+        with self.assertRaises(AssertionError):
+            self.validate(remote='b'*40)
+
+    def test_mixed_release_and_untrusted_context_rejected(self):
+        for key, value in [('GITHUB_REPOSITORY','other/repo'), ('GITHUB_EVENT_NAME','push'),
+                           ('GITHUB_REF','refs/heads/Legend/fast-track-release'), ('GITHUB_SHA','b'*40),
+                           ('NATIVE_REVISION','short'), ('NORMAL_INPUTS',json.dumps({'original_run': '123'})),
+                           ('NORMAL_INPUTS',json.dumps({'application_revision':'b'*40}))]:
+            with self.subTest(key=key, value=value):
+                original = self.environment[key]
+                self.environment[key] = value
+                with self.assertRaises(AssertionError): self.validate()
+                self.environment[key] = original
+
+    def test_coordination_cannot_publish_or_wake_lifecycle(self):
+        hold = self.workflow.split('  native-mac-ownership:',1)[1].split('  select-targets:',1)[0]
+        self.assertNotIn('native_mac_revision', (ROOT.parent / '.github/workflows/all-intentional-direct-release-20260918.yml').read_text())
+        self.assertIn('timeout-minutes: 120', hold)
+        self.assertNotIn('uses:',hold)
+        self.assertNotIn('id-token:',hold)
+        self.assertNotIn('secrets.',hold)
+        self.assertNotIn('checkout',hold)
+        self.assertIn('group: legend-approved-release\n  cancel-in-progress: false',self.workflow)
+        for job in ('recover-fast-track',):
+            section = self.workflow.split('\n  '+job+':',1)[1].split('    runs-on:',1)[0]
+            self.assertIn("inputs.native_mac_revision == ''",section)
+
+
 class FounderCloudflareCommandExecution(unittest.TestCase):
     def setUp(self):
         spec = importlib.util.spec_from_file_location(

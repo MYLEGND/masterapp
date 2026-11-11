@@ -7,6 +7,7 @@
      aria-hidden="true"
      data-chat-url="@Url.Action("Chat", "LegendFounderAi")"
      data-history-url="@Url.Action("Conversations", "LegendFounderAi")"
+     data-models-url="@Url.Action("Models", "LegendFounderAi")"
      data-user-avatar-url="@Model.AvatarUrl"
      data-user-initials="@Model.Initials">
 
@@ -39,6 +40,11 @@
                             <h2 id="legendFounderAiTitle">
                                 Legend<sup>®</sup> Ai
                             </h2>
+                            <label class="visually-hidden" for="legendFounderAiModelSelection">Model</label>
+                            <select id="legendFounderAiModelSelection" class="form-select form-select-sm" aria-label="LEGEND AI model">
+                                <option value="auto">Auto</option>
+                            </select>
+                            <span id="legendFounderAiModelStatus" class="visually-hidden" role="status"></span>
                         </div>
                     </div>
                 </div>
@@ -77,28 +83,35 @@
                          aria-label="@Shared.Branding.LegendBrand.RegisteredTitle Ai conversation controls">
 <div id="legendFounderAiModebar"
                              class="legend-founder-ai-modebar">
-                            <div class="legend-founder-ai-mode-tabs"
-                                 role="tablist"
-                                 aria-label="Conversation mode">
-                                <button type="button"
-                                        class="legend-founder-ai-mode is-active"
-                                        data-legend-ai-mode="legend"
-                                        role="tab"
-                                        aria-selected="true">
-                                    <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
-                                    Legend<sup>®</sup> Ai
-                                </button>
-
-                                <button type="button"
-                                        class="legend-founder-ai-mode"
-                                        data-legend-ai-mode="teacher"
-                                        role="tab"
-                                        aria-selected="false">
-                                    <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
-                                    OpenAI
-                                    <span class="visually-hidden">Direct OpenAI mode; native LEGEND responder bypassed</span>
-                                </button>
-                            </div>
+                            <details id="legendBusinessAssistantSettings">
+                                <summary>Business assistant</summary>
+                                <label for="legendBusinessAssistantWorkspace">Business or agent suite</label>
+                                <select id="legendBusinessAssistantWorkspace" class="form-select"><option value="">Select a workspace</option></select>
+                                <label for="legendBusinessAssistantProvider">Provider</label>
+                                <select id="legendBusinessAssistantProvider" class="form-select">
+                                    <option value="openai">OpenAI API</option>
+                                    <option value="cloudflare">Cloudflare</option>
+                                    <option value="legend-native">LEGEND native</option>
+                                </select>
+                                <p id="legendBusinessAssistantReadiness" role="status">Choose a workspace to inspect its connection and funding readiness.</p>
+                                <details id="legendBusinessAssistantConfigurationEditor">
+                                    <summary>Connection and funding settings</summary>
+                                    <p>Use the API project and existing funding accounts approved for this workspace. Saving settings does not verify provider access or grant spending authority.</p>
+                                    <div id="legendBusinessAssistantConfigurationFields"></div>
+                                    <label for="legendBusinessAssistantCredential">Replace project API key</label>
+                                    <input id="legendBusinessAssistantCredential" type="password" class="form-control" autocomplete="new-password" spellcheck="false" />
+                                    <small>Leave blank to retain the current key. Changing the project clears its old key. Keys are stored encrypted and never returned.</small>
+                                    <button type="button" id="legendBusinessAssistantSave" class="btn btn-outline-primary">Save settings</button>
+                                    <button type="button" id="legendBusinessAssistantInspectModels" class="btn btn-outline-secondary">Check model access (no generation)</button>
+                                    <p id="legendBusinessAssistantSaveStatus" role="status"></p>
+                                </details>
+                                <button type="button" id="legendBusinessAssistantStart" class="btn btn-outline-primary">Start scoped conversation</button>
+                                <label class="d-block"><input id="legendBusinessAssistantGenerateImage" type="checkbox" /> Generate or edit an image from my next message</label>
+                                <label for="legendBusinessAssistantImageReferences">Reference images from this workspace (up to four)</label>
+                                <select id="legendBusinessAssistantImageReferences" class="form-select" multiple></select>
+                                <p>Image requests send the selected references to your configured provider and save the result privately in the existing media library. Select the saved image in Studio to use it in a draft. Publication requires its existing review.</p>
+                                <p>Provider connections and funding must be configured and reviewed for this workspace. ChatGPT sign-in does not connect an API account. Recommendations require review; this mode cannot execute changes.</p>
+                            </details>
 
                             <label class="legend-founder-ai-native-only"
                                    for="legendFounderAiNativeOnly">
@@ -163,7 +176,7 @@
 
                         <button type="button" class="legend-founder-ai-setting" data-legend-ai-setting="model">
                             <span class="legend-founder-ai-setting-icon" aria-hidden="true">◉</span>
-                            <span class="legend-founder-ai-setting-summary"><strong>Model</strong><small>Choose response mode</small></span>
+                            <span class="legend-founder-ai-setting-summary"><strong>Model</strong><small>Choose model in chat</small></span>
                             <span class="legend-founder-ai-setting-chevron" aria-hidden="true">›</span>
                         </button>
                         <button type="button" class="legend-founder-ai-setting" data-legend-ai-setting="tools">
@@ -298,12 +311,14 @@
                                 <button type="button"
                                         id="legendFounderAiVoiceFocus"
                                         class="legend-founder-ai-voice-focus"
-                                        aria-label="Focus message field for device dictation">
+                                        aria-label="Record dictation" aria-pressed="false">
                                     <svg viewBox="0 0 24 24" aria-hidden="true">
                                         <path d="M12 15.25a3.75 3.75 0 0 0 3.75-3.75V6.25a3.75 3.75 0 1 0-7.5 0v5.25A3.75 3.75 0 0 0 12 15.25Z"></path>
                                         <path d="M5.75 11.25a6.25 6.25 0 0 0 12.5 0M12 17.5V21M8.75 21h6.5"></path>
                                     </svg>
                                 </button>
+
+                                <button type="button" id="legendFounderAiVoiceCancel" hidden>Cancel recording</button>
 
                                 <button type="submit"
                                         id="legendFounderAiSend"
@@ -313,6 +328,7 @@
                                 </button>
                             </div>
 
+                            <p id="legendFounderAiVoiceStatus" role="status" aria-live="polite"></p>
                         </form>
                     </footer>
                 </section>

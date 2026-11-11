@@ -1,5 +1,5 @@
 name: LEGEND Fast Track — Affected Web Apps
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('LEGEND retained recovery original={0} application={1}', inputs.original_run, inputs.application_revision) || github.event.head_commit.message }}
+run-name: ${{ inputs.native_mac_revision != '' && format('LEGEND native Mac coordination candidate={0}', inputs.native_mac_revision) || github.event_name == 'workflow_dispatch' && format('LEGEND retained recovery original={0} application={1}', inputs.original_run, inputs.application_revision) || github.event.head_commit.message }}
 
 # One affected-app fast track. Every publication requires exact source checks.
 # Backend publication additionally requires
@@ -13,13 +13,17 @@ run-name: ${{ github.event_name == 'workflow_dispatch' && format('LEGEND retaine
 on:
   workflow_dispatch:
     inputs:
+      native_mac_revision:
+        description: Exact reviewed task HEAD; reserve the existing publication mutex for direct Mac deployment only
+        type: string
+        default: ''
       original_run:
         description: Original admitted fast-track run whose exact packages are retained
-        required: true
+        required: false
         type: string
       application_revision:
         description: Exact original application revision, not the promoted tool revision
-        required: true
+        required: false
         type: string
   push:
     branches:
@@ -96,6 +100,52 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  native-mac-ownership:
+    if: inputs.native_mac_revision != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Verify native ownership request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_REVISION: ${{ inputs.native_mac_revision }}
+          NORMAL_INPUTS: ${{ toJSON(inputs) }}
+        run: |
+          python3 - <<'PYOWNERSHIP'
+          import json, os, re, urllib.request
+          revision = os.environ['NATIVE_REVISION']
+          values = json.loads(os.environ['NORMAL_INPUTS'])
+          assert os.environ['GITHUB_REPOSITORY'] == 'MYLEGND/masterapp'
+          assert os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch'
+          assert os.environ['GITHUB_REF'].startswith('refs/heads/isolation/')
+          assert re.fullmatch(r'[0-9a-f]{40}', revision)
+          assert revision == os.environ['GITHUB_SHA']
+          assert all(value in ('', False) for key, value in values.items()
+                     if key != 'native_mac_revision')
+          request = urllib.request.Request(
+              'https://api.github.com/repos/MYLEGND/masterapp/git/ref/' + os.environ['GITHUB_REF'][5:],
+              headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                       'Accept': 'application/vnd.github+json'})
+          with urllib.request.urlopen(request, timeout=20) as response:
+              assert json.load(response)['object']['sha'] == revision
+          print('Native ownership validated for ' + revision)
+          PYOWNERSHIP
+      - name: Hold existing publication mutex for native Mac
+        run: |
+          echo 'Coordination only. No validation, credentials, migration or deployment runs here.'
+          echo 'Mac must observe this step in progress before writing and before each new mutation.'
+          echo 'Stop native writes before minute 100; cancel this run only after operations reconcile.'
+          python3 - <<'PYHOLD'
+          import time
+          for minute in range(115):
+              print(f'Native publication mutex held: minute {minute}/115', flush=True)
+              time.sleep(60)
+          raise SystemExit('Native ownership window expired; reconcile before another write')
+          PYHOLD
+
   select-targets:
     if: github.event_name == 'push'
     name: Select exact affected applications
@@ -547,7 +597,7 @@ jobs:
 
   recover-fast-track:
     name: Recover retained fast-track application materials
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.native_mac_revision == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: Production

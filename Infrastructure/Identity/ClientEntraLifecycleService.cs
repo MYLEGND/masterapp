@@ -40,6 +40,9 @@ public interface IClientEntraLifecycleService
         string email,
         CancellationToken cancellationToken = default);
 
+    Task<ClientEntraIdentityResult> EnsureExistingClientIdentityAsync(
+        Guid clientProfileId, CancellationToken cancellationToken = default);
+
     Task<ClientEntraIdentitySynchronizationResult> SynchronizeClientIdentityAsync(
         Guid clientProfileId,
         CancellationToken cancellationToken = default);
@@ -77,10 +80,12 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
 
     private readonly MasterAppDbContext _db;
     private readonly ILogger<ClientEntraLifecycleService> _logger;
-    private readonly GraphServiceClient _graph;
-    private readonly string _inviteRedirectUrl;
-    private readonly string _clientApplicationId;
-    private readonly Guid _clientAppRoleId;
+    private sealed record ProvisioningContext(GraphServiceClient Graph, string InviteRedirectUrl, string ClientApplicationId, Guid ClientAppRoleId);
+    private readonly Lazy<ProvisioningContext> _provisioning;
+    private GraphServiceClient _graph => _provisioning.Value.Graph;
+    private string _inviteRedirectUrl => _provisioning.Value.InviteRedirectUrl;
+    private string _clientApplicationId => _provisioning.Value.ClientApplicationId;
+    private Guid _clientAppRoleId => _provisioning.Value.ClientAppRoleId;
 
     public ClientEntraLifecycleService(
         MasterAppDbContext db,
@@ -89,7 +94,13 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
     {
         _db = db;
         _logger = logger;
+        // Resolving a CRM controller must not require downstream provisioning credentials.
+        // Validate the complete provider configuration on first actual identity operation.
+        _provisioning = new Lazy<ProvisioningContext>(() => CreateProvisioningContext(configuration));
+    }
 
+    private static ProvisioningContext CreateProvisioningContext(IConfiguration configuration)
+    {
         var tenantId = GetRequired(
             configuration,
             "GraphProvisioning:TenantId",
@@ -107,7 +118,7 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
             "GraphProvisioning:ClientSecret",
             "GraphProvisioning__ClientSecret");
 
-        _clientApplicationId = GetRequired(
+        var clientApplicationId = GetRequired(
             configuration,
             "GraphProvisioning:ClientApplicationId",
             "GraphProvisioning__ClientApplicationId");
@@ -117,14 +128,15 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
             "GraphProvisioning:ClientAppRoleId",
             "GraphProvisioning__ClientAppRoleId");
 
+        var clientAppRoleId = Guid.Empty;
         if (!string.IsNullOrWhiteSpace(configuredRole) &&
-            !Guid.TryParse(configuredRole, out _clientAppRoleId))
+            !Guid.TryParse(configuredRole, out clientAppRoleId))
         {
             throw new InvalidOperationException(
                 "GraphProvisioning:ClientAppRoleId must be a GUID.");
         }
 
-        _inviteRedirectUrl =
+        var inviteRedirectUrl =
             GetSetting(
                 configuration,
                 "GraphProvisioning:InviteRedirectUrl",
@@ -138,7 +150,7 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
         var cacheKey =
             $"{tenantId}|{provisioningClientId}|{provisioningSecret}";
 
-        _graph = GraphClients.GetOrAdd(cacheKey, _ =>
+        var graph = GraphClients.GetOrAdd(cacheKey, _ =>
         {
             var credential = new ClientSecretCredential(
                 tenantId,
@@ -149,6 +161,7 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
                 credential,
                 new[] { "https://graph.microsoft.com/.default" });
         });
+        return new ProvisioningContext(graph, inviteRedirectUrl, clientApplicationId, clientAppRoleId);
     }
 
     public async Task<ClientEntraIdentityResult> EnsureBusinessTeamIdentityAsync(string firstName, string lastName,
@@ -234,11 +247,22 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
         return result;
     }
 
-    public async Task<ClientEntraIdentityResult> EnsureExternalIdentityAsync(
-        string firstName,
-        string lastName,
-        string email,
-        CancellationToken cancellationToken = default)
+    public Task<ClientEntraIdentityResult> EnsureExternalIdentityAsync(
+        string firstName, string lastName, string email, CancellationToken cancellationToken = default) =>
+        EnsureExternalIdentityCoreAsync(firstName, lastName, email, null, cancellationToken);
+
+    public async Task<ClientEntraIdentityResult> EnsureExistingClientIdentityAsync(Guid clientProfileId, CancellationToken cancellationToken = default)
+    {
+        var profile = await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == clientProfileId, cancellationToken)
+            ?? throw new InvalidOperationException("The existing client profile was not found.");
+        var expected = NormalizeToken(profile.ExternalIdentityObjectId);
+        if (string.IsNullOrWhiteSpace(expected)) throw new InvalidOperationException("The existing login requires identity reconciliation.");
+        return await EnsureExternalIdentityCoreAsync(profile.FirstName, profile.LastName,
+            profile.NormalizedEmail ?? profile.Email, expected, cancellationToken);
+    }
+
+    private async Task<ClientEntraIdentityResult> EnsureExternalIdentityCoreAsync(
+        string firstName, string lastName, string email, string? expectedObjectId, CancellationToken cancellationToken)
     {
         var normalizedEmail = NormalizeEmail(email);
         if (string.IsNullOrWhiteSpace(normalizedEmail))
@@ -249,7 +273,11 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
 
         var existing = await FindByEmailAsync(
             normalizedEmail,
-            cancellationToken);
+            cancellationToken,
+            requireUnique: expectedObjectId is not null);
+
+        if (expectedObjectId is not null && !string.Equals(expectedObjectId, NormalizeToken(existing?.Id), StringComparison.Ordinal))
+            throw new InvalidOperationException("The existing login identity changed. Reconcile it before accepting a household invitation.");
 
         var created = false;
         string? redemptionUrl = null;

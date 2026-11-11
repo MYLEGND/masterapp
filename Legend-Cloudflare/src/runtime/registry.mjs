@@ -204,6 +204,7 @@ export function routeModel({ task, accountId, inputTokens, maxOutputTokens, rema
     : model.enabled === true && typeof accountId === 'string' && model.qualification?.accountId === accountId
       && model.qualification?.accountCanaryPassed === true && model.qualification?.heldOutPassed === true && model.qualification?.expiresAt > now;
   const eligible = registry.filter(model => qualified(model) && model.provider === 'cloudflare-workers-ai' && model.hosting === 'cloudflare'
+    && (task.requestedModel == null || model.id === task.requestedModel)
     && !excluded.includes(model.id)
     && [...capabilities].every(capability => model.capabilities.includes(capability))
     && inputTokens + maxOutputTokens <= model.contextTokens

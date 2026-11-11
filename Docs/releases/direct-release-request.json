@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
-  "authorization": "Founder authorized the bounded linked-product bundle repair and conditional direct Mac deployment after required gates. This request preserves reviewed source only; it authorizes no production mutation.",
-  "purpose": "Integrate reviewed canonical linked-product bundles while rendered localhost acceptance remains blocked; do not publish production applications.",
-  "requestId": "source-integration-linked-product-bundles-20261110-v1",
+  "authorization": "Founder authorized source-only fast-track integration after completed direct Mac deployment; no production mutation is authorized by this request.",
+  "purpose": "Preserve reviewed LEGEND AI source and completed Azure deployment checkpoint without replaying app deployments; Cloudflare remains deferred.",
+  "requestId": "source-integration-legend-ai-azure-dd7255398-20261111",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -78,7 +78,7 @@
   },
   "sourceIntegration": {
     "schemaVersion": 1,
-    "baseRevision": "29181bd859fc54a3603c9f893576c2f35e802161",
-    "sourceRevision": "e38aa2fa39d9a79c89b2b5f0c3c59250459e440b"
+    "baseRevision": "4e6554d8a34ca89ef7f98f77773be5fa75f92835",
+    "sourceRevision": "9ce4e9cfc886bc3cfff8a8f36314b8a856f629dc"
   }
 }

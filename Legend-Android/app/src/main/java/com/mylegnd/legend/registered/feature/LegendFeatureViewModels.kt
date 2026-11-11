@@ -55,11 +55,16 @@ data class FounderAiTranscriptMessage(
 )
 
 data class FounderAiConversationState(
+    val businessWorkspaces: List<BusinessAssistantWorkspace> = emptyList(),
+    val assistantWorkspace: String? = null,
+    val assistantProvider: String = "openai",
+    val assistantConnection: BusinessAssistantConnection? = null,
     val availability: LoadState<Boolean> = LoadState.Idle,
     val messages: List<FounderAiTranscriptMessage> = emptyList(),
     val isSending: Boolean = false,
     val operationId: String? = null,
     val progress: String? = null,
+    val provisionalAnswer: String = "",
     val failure: String? = null,
     val conversations: List<FounderAiHistoryThread> = emptyList(),
     val hasMoreConversations: Boolean = false,
@@ -88,6 +93,7 @@ class FounderAiViewModel(
     private var retired = false
     private var visible = false
     private var historySkip = 0
+    private var assistantRevision: String? = null
     private data class Pending(val id: String, val request: FounderAiChatRequest, val userMessageId: String? = null)
     private var pending: Pending? = null
 
@@ -143,7 +149,7 @@ class FounderAiViewModel(
         refreshJob = viewModelScope.launch {
             fun current() = !retired && epoch == generation && thread == conversationId
             if (!older) {
-                when (val list = repository.conversations(role, if (more) historySkip else 0)) {
+                when (val list = repository.conversations(role, if (more) historySkip else 0, _state.value.assistantWorkspace)) {
                     is LoadState.Data -> if (current()) {
                         if (!list.value.succeeded) { _state.update { it.copy(failure = list.value.errorMessage) }; return@launch }
                         if (list.value.conversations.any { it.id == conversationId }) persisted = true
@@ -158,7 +164,7 @@ class FounderAiViewModel(
             if (!current() || !persisted) return@launch
             val cursor = _state.value.messages.firstOrNull().takeIf { older }
             // Original server timestamp strings preserve SQL sub-millisecond ticks.
-            when (val result = repository.conversation(role, thread, cursor?.sentUtc, cursor?.id)) {
+            when (val result = repository.conversation(role, thread, cursor?.sentUtc, cursor?.id, _state.value.assistantWorkspace)) {
                 is LoadState.Data -> if (current()) {
                     val detail = result.value.conversation
                     if (!result.value.succeeded || detail == null) { _state.update { it.copy(failure = result.value.errorMessage) }; return@launch }
@@ -195,10 +201,52 @@ class FounderAiViewModel(
 
     fun openConversation(id: String) {
         if (_state.value.isSending || retired) return
+        val row = _state.value.conversations.firstOrNull { it.id == id }
+        if (row?.assistantWorkspaceKey != _state.value.assistantWorkspace) return
+        if (row?.assistantWorkspaceKey != null && row.assistantProvider != _state.value.assistantProvider) {
+            _state.update { it.copy(failure = "Select the conversation's provider before opening it.") }; return
+        }
+        assistantRevision = row?.assistantConfigurationRevision
         generation++; refreshJob?.cancel(); refreshJob = null
         conversationId = id; persisted = true; lastMessageId = null; pending = null
         _state.update { it.copy(messages = emptyList(), failure = null, hasOlderMessages = false, hasNewerMessages = false, canRetry = false) }
         refresh()
+    }
+
+    fun selectBusinessWorkspace(workspace: String?, provider: String = "openai") {
+        if (retired || _state.value.isSending || pending != null || provider !in setOf("openai", "cloudflare", "legend-native")) return
+        if (workspace != null && _state.value.businessWorkspaces.none { it.workspace == workspace }) return
+        startNewConversation()
+        assistantRevision = null; historySkip = 0
+        _state.update { it.copy(assistantWorkspace = workspace, assistantProvider = provider, assistantConnection = null,
+            conversations = emptyList(), hasMoreConversations = false) }
+        val epoch = generation
+        if (workspace == null) { refresh(); return }
+        viewModelScope.launch {
+            val result = repository.businessConfiguration(role, workspace, provider)
+            if (retired || epoch != generation) return@launch
+            when (result) {
+                is LoadState.Data -> {
+                    if (result.value.workspaceKey != workspace) { _state.update { it.copy(failure = "Workspace binding could not be verified.") }; return@launch }
+                    assistantRevision = result.value.revision
+                    _state.update { it.copy(assistantConnection = result.value) }
+                    refresh()
+                }
+                is LoadState.Error -> historyFailure(result)
+                else -> Unit
+            }
+        }
+    }
+
+    fun loadBusinessWorkspaces() {
+        if (retired || (_state.value.availability as? LoadState.Data)?.value != true) return
+        val epoch = generation
+        viewModelScope.launch {
+            val result = repository.businessWorkspaces(role)
+            if (retired || epoch != generation) return@launch
+            if (result is LoadState.Data) _state.update { it.copy(businessWorkspaces = result.value) }
+            else if (result is LoadState.Error) historyFailure(result)
+        }
     }
 
     fun send(rawText: String, mode: String, nativeOnly: Boolean, externalAnsweringBlocked: Boolean = false,
@@ -208,9 +256,16 @@ class FounderAiViewModel(
             (_state.value.availability as? LoadState.Data)?.value != true) return false
         if (_state.value.hasNewerMessages) { _state.update { it.copy(failure = "Load newer messages before sending a reply.") }; return false }
         if (pending != null) { _state.update { it.copy(failure = "Check the pending request before sending another message.") }; return false }
-        val submission = Pending(UUID.randomUUID().toString(), FounderAiChatRequest(mode,
-            mode == "legend" && nativeOnly, mode == "legend" && externalAnsweringBlocked, sourceLanguageCode,
-            listOf(FounderAiChatMessage("user", text)), conversationId, lastMessageId))
+        val selected = _state.value
+        val business = selected.assistantWorkspace != null
+        if (business && (selected.assistantConnection?.configuration?.enabled != true ||
+            selected.assistantConnection?.readiness != "funding_admission_required" || assistantRevision == null)) {
+            _state.update { it.copy(failure = "The selected business provider is not ready. Configure it in the portal.") }; return false
+        }
+        val submission = Pending(UUID.randomUUID().toString(), FounderAiChatRequest(if (business) "business" else mode,
+            (business || mode == "legend") && nativeOnly, (business || mode == "legend") && externalAnsweringBlocked, sourceLanguageCode,
+            listOf(FounderAiChatMessage("user", text)), conversationId, lastMessageId,
+            selected.assistantWorkspace, if (business) selected.assistantProvider else null, if (business) assistantRevision else null))
         pending = submission
         execute(submission)
         return true
@@ -222,14 +277,19 @@ class FounderAiViewModel(
         refreshJob?.cancel(); refreshJob = null
         val epoch = generation
         _state.update { it.copy(isSending = true, operationId = submission.id, canRetry = false,
-            progress = "Preparing governed conversation…", failure = null) }
+            progress = "Preparing governed conversation…", provisionalAnswer = "", failure = null) }
         operation = viewModelScope.launch {
             fun current() = !retired && epoch == generation && _state.value.operationId == submission.id
             try {
                 when (val result = repository.chat(role, submission.id, submission.request) { envelope ->
                     if (current()) {
-                        _state.update { it.copy(progress = envelope.progress?.message) }
-                        if (persisted) refresh()
+                        val update = envelope.progress
+                        if (update?.stage == "answer_delta" && update.answerDelta != null) {
+                            _state.update { it.copy(provisionalAnswer = it.provisionalAnswer + update.answerDelta) }
+                        } else {
+                            _state.update { it.copy(progress = update?.message) }
+                            if (persisted) refresh()
+                        }
                     }
                 }) {
                     is LoadState.Data -> if (current()) {
@@ -252,7 +312,7 @@ class FounderAiViewModel(
                 // Cancellation does not imply that an earlier tool action was rolled back.
             } finally {
                 if (current()) {
-                    _state.update { it.copy(isSending = false, operationId = null, progress = null, canRetry = pending != null) }
+                    _state.update { it.copy(isSending = false, operationId = null, progress = null, provisionalAnswer = "", canRetry = pending != null) }
                     refresh()
                 }
             }
@@ -271,6 +331,7 @@ class FounderAiViewModel(
         if (_state.value.isSending || retired) return
         generation++; refreshJob?.cancel(); refreshJob = null
         conversationId = UUID.randomUUID().toString(); lastMessageId = null; persisted = false; pending = null
+        assistantRevision = _state.value.assistantConnection?.revision
         _state.update { it.copy(messages = emptyList(), failure = null, progress = null, canRetry = false, hasOlderMessages = false, hasNewerMessages = false) }
     }
 

@@ -5,13 +5,15 @@ using AgentPortal.Services.Tracking;
 using Infrastructure.Analytics;
 using Shared.Analytics;
 using Shared.Diagnostics;
+using Shared.Auth;
 
 namespace AgentPortal.Services;
 
 internal sealed record LegendMasterAppReadRequest(
     string? Preset,
     string? TimeZoneId,
-    int? TimeZoneOffsetMinutes);
+    int? TimeZoneOffsetMinutes,
+    string? AssistantWorkspaceKey = null, string? BusinessGoal = null);
 
 internal interface ILegendMasterAppReadProjection
 {
@@ -121,8 +123,15 @@ internal sealed class LegendMasterAppReadAuthority(
 
 internal sealed class WebsiteAnalyticsLegendReadProjection(
     WebsiteAnalyticsAiDataBuilder dataBuilder,
-    IAgentTrackingService tracking) : ILegendMasterAppReadProjection
+    IAgentTrackingService tracking,
+    Infrastructure.Data.MasterAppDbContext db,
+    IMarketingManagerService marketing, MarketingConnectionStore connections,
+    Infrastructure.Reception.ReceptionistOperatorService receptionist) : ILegendMasterAppReadProjection
 {
+    internal static object? Observe<T>(AiSafeAnalyticsPayload payload, string section, T value) =>
+        payload.Warnings.Any(warning => warning.StartsWith(section + " unavailable;", StringComparison.Ordinal))
+            ? null : value;
+
     public string Key => "agent-portal.website-analytics";
     public string Application => "AgentPortal";
     public IReadOnlyList<string> Routes => ["/WebsiteAnalytics", "/website-analytics"];
@@ -135,8 +144,24 @@ internal sealed class WebsiteAnalyticsLegendReadProjection(
         CancellationToken cancellationToken)
     {
         FounderGuard.EnsureFounderOrThrow(founder);
-        var profile = await tracking.GetByUserIdAsync(FounderGuard.FounderOid, cancellationToken)
-            ?? throw new InvalidOperationException("Founder analytics scope is unavailable.");
+        MarketingOwnerScope owner;
+        ScopeContext scope;
+        if (request.AssistantWorkspaceKey is { } workspace)
+        {
+            var actor = founder.GetCanonicalUserId();
+            if (actor is null || !await Infrastructure.Businesses.BusinessWorkspaceAccess.CanReadAssistantWorkspaceAsync(db, actor, workspace, cancellationToken))
+                throw new ForbidResultException();
+            Shared.Workspaces.WorkspaceKey.TryParse(workspace, out var key);
+            owner = key!.Kind == "business" ? MarketingOwnerScope.Business(key.OwnerId!.Value) : MarketingOwnerScope.Agent(key.OwnerId!.Value);
+            scope = key.Kind == "business" ? ScopeContext.ForBusiness(key.OwnerId.Value) : ScopeContext.ForAgent(key.OwnerId.Value);
+        }
+        else
+        {
+            var profile = await tracking.GetByUserIdAsync(FounderGuard.FounderOid, cancellationToken)
+                ?? throw new InvalidOperationException("Founder analytics scope is unavailable.");
+            owner = MarketingOwnerScope.Founder;
+            scope = ScopeContext.ForFounder(profile.Id);
+        }
 
         var normalizedPreset = request.Preset?.Trim().ToLowerInvariant();
         if (normalizedPreset is not ("today" or "7d" or "30d" or "month" or "year"))
@@ -146,19 +171,57 @@ internal sealed class WebsiteAnalyticsLegendReadProjection(
             request.TimeZoneId,
             request.TimeZoneOffsetMinutes);
         var range = TimeRangeRequest.FromPreset(normalizedPreset, viewerTz: viewerTimeZone);
-        var scope = ScopeContext.ForFounder(profile.Id);
-        var payload = await dataBuilder.BuildAsync(
-            range,
-            scope,
-            range.Label,
-            "Founder Personal",
-            "All Traffic",
-            TrafficType.All,
-            cancellationToken);
+        var plan = request.AssistantWorkspaceKey is null ? null : await marketing.PlanAsync(owner, scope, range,
+            new MarketingManagerGoalRequest(request.BusinessGoal ?? "Assess the sales funnel and recommend reviewable next actions."), cancellationToken);
+        var payload = plan?.AnalyticsContext ?? await dataBuilder.BuildAsync(
+            range, scope, range.Label, "Founder Personal", "All Traffic", TrafficType.All, cancellationToken, owner);
+        object? businessProfile = null;
+        object? publishedWebsite = null;
+        object? receptionistStatus = null;
+        if (request.AssistantWorkspaceKey is { } selected)
+        {
+            var actor = founder.GetCanonicalUserId();
+            if (owner.CommerceBusinessId is { } businessId)
+            {
+                var business = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SingleAsync(
+                    db.CommerceBusinesses.Where(x => x.Id == businessId), cancellationToken);
+                businessProfile = new { source = "CommerceBusiness", business.Id, business.DisplayName, business.BusinessType, business.PrimaryDomain, business.UpdatedUtc };
+                if (await Infrastructure.Businesses.BusinessWorkspaceAccess.CanReadAssistantWorkspaceAsync(db, actor, selected, cancellationToken, "website"))
+                {
+                    var published = await Infrastructure.WebsiteEditing.WebsiteContentStore.PublishedBusinessAsync(db, businessId, cancellationToken);
+                    publishedWebsite = published is null ? (object)new { status = "unavailable", source = "WebsiteContentStore" }
+                        : new { status = "published_revision_observed", source = "WebsiteContentStore", published.Id, published.Revision, published.CreatedUtc,
+                            content = Infrastructure.WebsiteEditing.WebsiteContentStore.ProjectPublishedText(published.DocumentJson) };
+                }
+                else publishedWebsite = new { status = "permission_unavailable" };
+            }
+            if (await Infrastructure.Businesses.BusinessWorkspaceAccess.CanReadAssistantWorkspaceAsync(db, actor, selected, cancellationToken, "settings"))
+            {
+                var voice = await connections.GetReceptionistConfigurationAsync(owner, "openai", cancellationToken);
+                if (voice.ConfigurationId is { } configurationId)
+                {
+                    var preparation = await receptionist.PrepareAsync(owner.Key, configurationId, cancellationToken);
+                    receptionistStatus = new { source = "ReceptionistOperatorService", preparation.ObservedUtc, preparation.Status,
+                        preparation.ConfigurationId, preparation.ConfigurationVersion, preparation.ConfigurationSha256,
+                        preparation.AdmissionEnabled, preparation.CurrentBindingAccepted,
+                        coverage = "configuration_observation_only_not_live_call_acceptance" };
+                }
+                else receptionistStatus = new { status = "not_configured", source = "ReceptionistOperatorService" };
+            }
+            else receptionistStatus = new { status = "permission_unavailable" };
+        }
 
         return new
         {
             ok = true,
+            workspace = owner.Key,
+            businessProfile,
+            publishedWebsite,
+            receptionistStatus,
+            recommendations = plan?.Recommendations,
+            advertising = plan?.Advertising,
+            guardrails = plan?.Guardrails,
+            crmCoverage = "record_level_crm_and_retention_not_exported",
             schemaVersion = 1,
             authority = nameof(WebsiteAnalyticsAiDataBuilder),
             surface = Key,
@@ -171,12 +234,12 @@ internal sealed class WebsiteAnalyticsLegendReadProjection(
             scopeLabel = payload.ScopeLabel,
             qualityMode = payload.QualityMode,
             trafficFilter = payload.TrafficFilter,
-            pageViews = payload.PageViews,
-            uniqueVisitors = payload.UniqueVisitors,
-            sessions = payload.Sessions,
-            verifiedLeads = payload.VerifiedLeads,
-            sessionConversionRate = payload.SessionConversionRate,
-            intentConversionRate = payload.IntentConversionRate,
+            pageViews = Observe(payload, "Summary", payload.PageViews),
+            uniqueVisitors = Observe(payload, "Summary", payload.UniqueVisitors),
+            sessions = Observe(payload, "Summary", payload.Sessions),
+            verifiedLeads = Observe(payload, "Summary", payload.VerifiedLeads),
+            sessionConversionRate = Observe(payload, "Summary", payload.SessionConversionRate),
+            intentConversionRate = Observe(payload, "Summary", payload.IntentConversionRate),
             intentAvailable = payload.IntentAvailable,
             totalConversions = payload.TotalConversions,
             topPage = payload.TopPage,
@@ -186,8 +249,20 @@ internal sealed class WebsiteAnalyticsLegendReadProjection(
             topPages = payload.TopPages.Take(10).ToArray(),
             topSources = payload.TopSources.Take(10).ToArray(),
             topCampaigns = payload.TopCampaigns.Take(10).ToArray(),
-            pagePerformance = payload.PagePerformance.Take(10).ToArray(),
-            channels = payload.Channels.Take(10).ToArray(),
+            pagePerformance = Observe(payload, "PagePerf", payload.PagePerformance.Take(20).ToArray()),
+            channels = Observe(payload, "ChannelPerformance", payload.Channels.Take(20).ToArray()),
+            paidCampaigns = Observe(payload, "ChannelPerformance", payload.PaidCampaigns.Take(30).ToArray()),
+            channelCoverage = payload.ChannelCoverageNotes,
+            quoteFunnel = Observe(payload, "QuoteFunnel", new { payload.QuoteStarts, payload.QuoteFormStarts,
+                payload.QuoteFormSubmits, payload.DropOffStartsToFormStarts, payload.DropOffFormStartsToSubmits }),
+            formAbandonment = Observe(payload, "Abandon", payload.FormAbandonment.Take(20).ToArray()),
+            abandonedFields = Observe(payload, "Abandon", payload.TopAbandonedFields.Take(20).ToArray()),
+            journey = Observe(payload, "Journey", new { payload.PagesBeforeLead, payload.CommonDropOffPages }),
+            ctaPerformance = Observe(payload, "CTA", payload.CtaPerformance.Take(20).ToArray()),
+            sourcePerformance = Observe(payload, "Source", payload.SourcePerformance.Take(20).ToArray()),
+            devices = Observe(payload, "Devices", payload.Devices.Take(12).ToArray()),
+            marketingHealth = Observe(payload, "MarketingHealth", payload.MarketingHealth),
+            outcomeCalibration = Observe(payload, "OutcomeCalibration", payload.OutcomeCalibration),
             warnings = payload.Warnings.Take(20).ToArray(),
             privacy = new
             {

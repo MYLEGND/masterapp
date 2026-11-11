@@ -420,6 +420,98 @@ public sealed class HouseholdMembershipServiceTests
         Assert.Equal(HouseholdMembershipStatus.Active, Assert.Single(db.HouseholdMemberships).Status);
     }
 
+    [Fact]
+    public async Task ExistingPartnerKeepsPersonalProfileAndLoginIdentifiers()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = await AddOwnerAsync(db);
+        await AddActiveSubscriptionAsync(db, owner.Id);
+        var partner = new ClientProfile { ClientUserId = "legacy-person-key", ExternalIdentityObjectId = "partner-entra-id",
+            FirstName = "Personal", LastName = "Name", Email = "partner@example.com", NormalizedEmail = "partner@example.com" };
+        db.Add(partner); await db.SaveChangesAsync();
+        var lifecycle = new Mock<IClientEntraLifecycleService>(MockBehavior.Strict);
+        lifecycle.Setup(x => x.EnsureExistingClientIdentityAsync(partner.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ClientEntraIdentityResult("partner-entra-id", "partner@example.com", false, false));
+        var service = new HouseholdMembershipService(db, lifecycle.Object, NullLogger<HouseholdMembershipService>.Instance);
+        var invite = await service.IssuePartnerInvitationAsync(new(owner.Id, "Partner", "One", "partner@example.com", "agent-1"));
+        var accepted = await service.AcceptPartnerInvitationAsync(invite.PlainTextToken, new("Overwrite", "Attempt", "partner@example.com"));
+        Assert.False(accepted.ProfileCreated);
+        Assert.Equal(partner.Id, accepted.Profile.Id);
+        Assert.Equal("Personal", partner.FirstName); Assert.Equal("Name", partner.LastName);
+        Assert.Equal("legacy-person-key", partner.ClientUserId);
+        Assert.Equal("partner-entra-id", partner.ExternalIdentityObjectId);
+        Assert.True((await service.ResolveActiveAccessAsync(partner.Id)).HasActiveMembership);
+    }
+
+    [Fact]
+    public async Task ExistingPartnerSubscriptionRequiresReconciliationBeforeIdentityProvisioning()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = await AddOwnerAsync(db); await AddActiveSubscriptionAsync(db, owner.Id);
+        var service = BuildService(db, "partner-entra-id");
+        var invite = await service.IssuePartnerInvitationAsync(new(owner.Id, "Partner", "One", "partner@example.com", "agent-1"));
+        var partner = new ClientProfile { ClientUserId = "partner-entra-id", ExternalIdentityObjectId = "partner-entra-id",
+            Email = "partner@example.com", NormalizedEmail = "partner@example.com" };
+        db.Add(partner); await db.SaveChangesAsync(); await AddActiveSubscriptionAsync(db, partner.Id);
+        var lifecycle = new Mock<IClientEntraLifecycleService>(MockBehavior.Strict);
+        var guarded = new HouseholdMembershipService(db, lifecycle.Object, NullLogger<HouseholdMembershipService>.Instance);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => guarded.AcceptPartnerInvitationAsync(invite.PlainTextToken,
+            new("Partner", "One", "partner@example.com")));
+        lifecycle.VerifyNoOtherCalls();
+        Assert.Equal(HouseholdInvitationStatus.Pending, invite.Invitation.Status);
+        Assert.Null(invite.Membership.ClientProfileId);
+        Assert.Equal(2, db.ClientSubscriptions.Count());
+    }
+
+    [Fact]
+    public async Task PartnerReconciliationReportsBillingConflictWithoutChangingAccessOrCharges()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = await AddOwnerAsync(db); await AddActiveSubscriptionAsync(db, owner.Id);
+        var service = BuildService(db, "partner-entra-id");
+        var invite = await service.IssuePartnerInvitationAsync(new(owner.Id, "Partner", "One", "partner@example.com", "agent-1"));
+        var accepted = await service.AcceptPartnerInvitationAsync(invite.PlainTextToken, new("Partner", "One", "partner@example.com"));
+        await AddActiveSubscriptionAsync(db, accepted.Profile.Id);
+        var reconcile = new HouseholdReconciliationService(db, service, NullLogger<HouseholdReconciliationService>.Instance);
+        var result = await reconcile.RunAsync(dryRun: true);
+        var review = Assert.Single(result.PartnerReviews);
+        Assert.Equal("EXISTING_PAYER_RECONCILIATION_REQUIRED", review.Classification);
+        Assert.False(review.BillingChangeProposed);
+        Assert.Equal(HouseholdMembershipStatus.Active, accepted.Membership.Status);
+        Assert.Equal(2, db.ClientSubscriptions.Count());
+        Assert.Single(db.HouseholdAccounts);
+        Assert.Empty(db.SubscriptionPayments);
+    }
+
+    [Fact]
+    public async Task DirectoryDerivesPartnerAccessWithoutCopiedEntitlementAndHonorsGraceAndRemoval()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var owner = await AddOwnerAsync(db); await AddActiveSubscriptionAsync(db, owner.Id);
+        var service = BuildService(db, "partner-entra-id");
+        var invite = await service.IssuePartnerInvitationAsync(new(owner.Id, "Partner", "One", "partner@example.com", "agent-1"));
+        var partner = await service.AcceptPartnerInvitationAsync(invite.PlainTextToken, new("Partner", "One", "partner@example.com"));
+        Assert.Contains(Infrastructure.Mobile.LegendMemberDirectory.ActiveSubscribedProfiles(db), x => x.Id == partner.Profile.Id);
+        Assert.Empty(db.ClientEntitlements);
+        var subscription = db.ClientSubscriptions.Single();
+        subscription.Status = ClientSubscriptionStatus.PastDue;
+        subscription.CurrentPeriodEndUtc = DateTime.UtcNow.AddDays(-1);
+        subscription.GracePeriodEndsUtc = DateTime.UtcNow.AddHours(1);
+        await db.SaveChangesAsync();
+        Assert.Contains(Infrastructure.Mobile.LegendMemberDirectory.ActiveSubscribedProfiles(db), x => x.Id == partner.Profile.Id);
+        subscription.GracePeriodEndsUtc = DateTime.UtcNow.AddMinutes(-1); await db.SaveChangesAsync();
+        Assert.DoesNotContain(Infrastructure.Mobile.LegendMemberDirectory.ActiveSubscribedProfiles(db), x => x.Id == partner.Profile.Id);
+        subscription.Status = ClientSubscriptionStatus.Active;
+        db.Add(new ClientSubscription { Id = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff"), ClientProfileId = owner.Id,
+            AcceptedOfferId = Guid.NewGuid(), OwnerAgentUserId = "agent-1", Status = ClientSubscriptionStatus.Canceled,
+            CreatedUtc = subscription.CreatedUtc, UpdatedUtc = subscription.UpdatedUtc });
+        await db.SaveChangesAsync();
+        Assert.False((await service.ResolveActiveAccessAsync(partner.Profile.Id)).HasActiveMembership);
+        Assert.DoesNotContain(Infrastructure.Mobile.LegendMemberDirectory.ActiveSubscribedProfiles(db), x => x.Id == partner.Profile.Id);
+        partner.Membership.Status = HouseholdMembershipStatus.Removed; await db.SaveChangesAsync();
+        Assert.DoesNotContain(Infrastructure.Mobile.LegendMemberDirectory.ActiveSubscribedProfiles(db), x => x.Id == partner.Profile.Id);
+    }
+
     private static HouseholdMembershipService BuildService(MasterAppDbContext db, string partnerObjectId)
     {
         var lifecycle = new Mock<IClientEntraLifecycleService>();

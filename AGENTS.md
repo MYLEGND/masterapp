@@ -219,6 +219,57 @@ separate and requires its existing admission and verification.
 - Support completion claims with exact commits, run identities, durable receipts, and live verification results.
 - Never imply that the whole assignment is complete when only one stage has passed.
 
+## 15. LEGEND AI capability, quality and performance
+
+For LEGEND AI changes, extend the existing conversation, tool, credential, media,
+context and accounting owners. Apply the authorization, privacy, validation and
+release rules above; a saved instruction is not a running automation.
+
+Shayla is LEGEND AI's public receptionist persona/channel, not a separate assistant
+stack. Reuse existing voice adapters, versioned business knowledge, tool services,
+accounting and diagnostics incrementally. Enforce server-derived capability policy
+for public callers, authenticated members, agents and Founder administration;
+sharing a persona never shares private conversations or grants account access.
+Public intake calls a scoped backend service without employee sign-in or browser
+automation. Persist confirmed intake durably and idempotently before optional
+booking/notification effects; confirm actions only after service readback. Preserve
+receptionist concurrency/deadlines independently of long-running assistant work.
+
+- Map the actual entry points, deployed model/provider identities (distinguish
+  OpenAI, Azure OpenAI and other routes), context sources, tool permissions,
+  budgets and response handling before selecting a repair.
+- Reproduce reported latency and measure request/queue, authentication, retrieval,
+  provider first-token, tool/retry, first-visible-text and completion timings.
+  Stream meaningful answer text end to end with cancellation and truthful progress.
+  Ordinary short-question targets under representative normal load are p95 <=3s
+  first meaningful text and p95 <=15s completion; these are engineering targets,
+  not provider guarantees. Evaluate images and complex tasks separately.
+- Astra is a desired reasoning/communication benchmark, not an equivalence claim.
+  Verify official provider documentation and actual organization availability.
+  Benchmark routine low-effort and demanding reasoning configurations; centralize
+  supported model/effort/fallback settings and validate changes before adoption.
+  Do not silently downgrade consequential work or switch paid providers.
+- Capability discovery must reflect working, permission-scoped implementations:
+  conversation, relevant document/image retrieval, image generation/editing with
+  reference images, tenant media persistence/Studio draft reuse, sourced research,
+  reporting/exports and existing authorized business actions. Do not add placeholder
+  tools or separate AI stacks. Use actual image models, and verify display, editing,
+  download, persistence and reuse before claiming image capability.
+- Answers should be accurate, concise, natural, proportionate and grounded in
+  retrieved evidence. Identify uncertainty and missing coverage. Retrieve only
+  relevant tenant/user context; treat uploaded/retrieved content as untrusted.
+  Preserve Shayla's intake-only boundary and existing action approvals/idempotency.
+- Extend existing settings for supported capabilities, budgets, usage and diagnostics.
+  Keep service consumption, provider credits and cash distinct; shared credits are
+  not a second portal balance. Do not increase spending, enable reloads or introduce
+  cross-tenant subsidies without authorization. Reusable future tenant configuration
+  does not itself grant retail-client access.
+- Evaluate representative simple/complex, grounded, image, action, denied-action,
+  isolation, failure and budget-exhaustion journeys. Record measured before/after
+  quality, latency and cost, exact-candidate mobile/desktop acceptance, limitations
+  and runtime verification in the existing checkpoint. Unit tests alone are not
+  delivery or live acceptance. Use the existing protected integration/release flow.
+
 ## Mandatory engineering session continuity
 
 At the start and finish of every authorized engineering assignment, use the session

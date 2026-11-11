@@ -1741,6 +1741,14 @@ class SelectorAttemptNonentryTests(unittest.TestCase):
              patch.object(m,'git_show_file',return_value=(ROOT/self.run['path']).read_text()):
             return m.fast_track_selector_attempts_proven_nonentry(
                 self.repository,self.run,self.revision,'placeholder',clock=lambda:self.now)
+    def test_reviewed_historical_observer_definition_retains_nonentry_only(self):
+        import subprocess
+        self.source=subprocess.check_output(['git','show','8a82468b4b2ad7a3f0ae3add5491dcdd7614721a:'+self.run['path']],text=True)
+        self.assertTrue(self.invoke())
+        original=self.source;self.source+='\n# unknown edit'
+        self.assertFalse(self.invoke());self.source=original
+        self.responses[self.jobpath(1)]['jobs'][2]['conclusion']='success'
+        self.assertFalse(self.invoke())
     def test_single_attempt_complete_nonentry(self):
         self.run['run_attempt']=1
         self.responses[self.endpoint]=self.clone(self.run)
@@ -2452,6 +2460,25 @@ class ReceptionistReleaseImpactTests(unittest.TestCase):
                 self.assertFalse(result['schema'])
                 self.assertFalse(result['routing'])
                 self.assertNotIn('releaseAdmission', result)
+
+    def test_shared_ai_inputs_select_all_managed_consumers(self):
+        for path in ('Domain/Messaging/MessagingInterfaces.cs',
+                     'Infrastructure/Messaging/LegendConnectCloudflareTransport.cs',
+                     'Infrastructure/Messaging/LegendConnectModelEvaluation.cs'):
+            with self.subTest(path=path):
+                result = m.fast_track_scope([path])
+                self.assertEqual(self.managed, set(result['impacts'][path]))
+                self.assertFalse(result['schema'])
+                self.assertNotIn('website', result['impacts'][path])
+
+    def test_worker_inputs_reuse_canonical_founder_dependency_owner(self):
+        for path in ('Legend-Cloudflare/src/contracts/protocol.mjs',
+                     'Legend-Cloudflare/src/runtime/orchestrator.mjs',
+                     'Legend-Cloudflare/src/runtime/registry.mjs',
+                     'Legend-Cloudflare/src/security/authenticate.mjs'):
+            with self.subTest(path=path):
+                self.assertTrue(m.founder_cloudflare_release_required([path]))
+                self.assertEqual(['portal'], m.fast_track_scope([path])['impacts'][path])
 
     def test_actual_ef_model_mapping_requires_schema_readiness_without_admission(self):
         result = m.fast_track_scope([self.model])
@@ -5883,6 +5910,16 @@ class ReleaseAttemptNonentryTests(unittest.TestCase):
         source=(ROOT / '.github/workflows' / m.DIRECT_RELEASE_WORKFLOW).read_text()
         jobs=self.observer_jobs()+[dict(name='migration-readiness',status='completed',conclusion='skipped',steps=[])]
         self.assertTrue(m.release_attempt_never_entered(jobs,source))
+        import subprocess
+        source=subprocess.check_output(['git','show','dae42b7503cd95867bcb44005158c38a85adf9e7:.github/workflows/'+m.DIRECT_RELEASE_WORKFLOW],text=True)
+        self.assertFalse(m.release_attempt_never_entered(jobs,source))
+        native=dict(name='native-mac-ownership',status='completed',conclusion='skipped',steps=[])
+        jobs=[native]+jobs
+        self.assertTrue(m.release_attempt_never_entered(jobs,source))
+        for mutation in ({'status':'in_progress'}, {'conclusion':'success'}, {'conclusion':'failure'},
+                         {'steps':[{'conclusion':'success'}]}):
+            self.assertFalse(m.release_attempt_never_entered([native | mutation]+jobs[1:],source))
+        self.assertFalse(m.release_attempt_never_entered([native]+jobs,source))
         self.assertFalse(m.release_attempt_never_entered(jobs[:-1],source))
         for before,after in (
             ('run: python3 scripts/wake-release-lifecycle.py','run: python3 scripts/deploy-approved-app.py'),
@@ -6750,7 +6787,12 @@ class HistoricalRecoveryWorkflowTests(unittest.TestCase):
     def test_observer_preparation_preserves_exact_predecessors_only(self):
         current=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
         condition="        if: inputs.original_run == '41131223973' && inputs.application_revision == '3243221ae661b53d60f78cc2dab108a93bad7632'\n"
-        old=current.replace('      - name: Install read-only schema observer runtime\n',
+        import subprocess
+        predecessor=subprocess.check_output(['git','show','dae42b7503cd95867bcb44005158c38a85adf9e7:.github/workflows/legend-fast-track-ui.yml'],text=True)
+        self.assertEqual(hashlib.sha256(predecessor.encode()).hexdigest(),'c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c')
+        self.assertTrue(m.historical_recovery_workflow_matches(predecessor,current))
+        self.assertFalse(m.historical_recovery_workflow_matches(current,predecessor))
+        old=predecessor.replace('      - name: Install read-only schema observer runtime\n',
             '      - name: Install read-only schema observer runtime\n'+condition).replace(
             '      - name: Build read-only retained schema observer without application packages\n',
             '      - name: Build read-only retained schema observer without application packages\n'+condition)
@@ -6772,9 +6814,9 @@ class HistoricalRecoveryWorkflowTests(unittest.TestCase):
         from types import SimpleNamespace
         current=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
         self.assertEqual(hashlib.sha256(current.encode()).hexdigest(),
-            'c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c')
+            '3ce7bd341a900629957325a0324fe1ca08c1c37c1625e1b89009e4d9eab9f43e')
         self.assertTrue(m.historical_recovery_workflow_matches(current,current))
-        values={b'current':'c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c',
+        values={b'current':'3ce7bd341a900629957325a0324fe1ca08c1c37c1625e1b89009e4d9eab9f43e',
                 b'old':'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd',b'unknown':'f'*64}
         with patch.object(m.hashlib,'sha256',side_effect=lambda value:SimpleNamespace(hexdigest=lambda:values[value])):
             self.assertTrue(m.historical_recovery_workflow_matches('old','current'))
@@ -10267,6 +10309,63 @@ class LegacyQueuedRunDispositionTests(unittest.TestCase):
                     m._fast_track_policy().initial_completed_resource_baselines(),{},'token',required_resources=set())
 
 
+class NativeHistoricalSchemaPrefixTests(unittest.TestCase):
+    def fixture(self):
+        import datetime
+        revision='5fc8da4527bac36cb74fd71d69e9c018ced6318e'
+        original=dict(run=dict(head_sha='f2841ef8d0871ed69be01484024424eb3f63f121',status='completed'))
+        run=dict(head_sha='3f4953ee733d44bd566f3d1e997f065473dc06d6',status='completed')
+        observation=dict(observedUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(),mutationActivity='settled',ready=False,
+            databaseIdentity=m._fast_track_policy().STABLE_BASELINE_ADOPTION['databaseIdentity'],baselineIdentity='a'*64,
+            schemaIdentity='b'*64,knownCount=241,appliedCount=239,pendingCount=2,firstPendingMigrationId='20261110222649_AddBusinessAssistantScopeAndFunding',
+            lastAppliedMigrationId='20261110000000_AddCommerceBundleInventory')
+        context=dict(observation=observation,owner=dict(applicationRevision=revision),applicationRevision=revision,packageDigest='c'*64)
+        operation=m.retained_operation_id('portal',original['run']['head_sha'],'c'*64)
+        return run,original,operation,context
+    def invoke(self,run,original,operation,context,*,prefix=True):
+        with patch.object(m,'assert_native_mac_execution'),patch.object(m,'_applied_migration_prefix_separate',return_value=prefix):
+            return m.native_recovery_schema_prefix_compatible('MYLEGND/masterapp',run,original,'portal',operation,context,'fixture')
+    def test_exact_terminal_generation_and_fresh_physical_prefix(self):
+        self.assertTrue(self.invoke(*self.fixture()))
+        self.assertFalse(self.invoke(*self.fixture(),prefix=False))
+    def test_unknown_source_active_history_changed_material_or_physical_state_rejects(self):
+        import copy
+        changes=[lambda r,o,p,c:r.update(head_sha='d'*40),lambda r,o,p,c:r.update(status='in_progress'),
+            lambda r,o,p,c:o['run'].update(head_sha='d'*40),lambda r,o,p,c:c.update(packageDigest='d'*64),
+            lambda r,o,p,c:c['observation'].update(mutationActivity='active'),
+            lambda r,o,p,c:c['observation'].update(baselineIdentity=''),
+            lambda r,o,p,c:c['observation'].update(observedUtc='2000-01-01T00:00:00+00:00'),
+            lambda r,o,p,c:c['observation'].update(databaseIdentity='d'*64)]
+        for change in changes:
+            values=copy.deepcopy(self.fixture());change(*values)
+            with self.subTest(change=change):self.assertFalse(self.invoke(*values))
+    def test_hosted_or_application_consumer_cannot_supply_native_schema_context(self):
+        for owner,required in [(None,{'schema'}),({}, {'portal'})]:
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'NATIVE_SCHEMA_SCOPE_REQUIRED'):
+                m.completed_resource_currentness('MYLEGND/masterapp','a'*40,dict(resources={}),{},'fixture',
+                    required_resources=required,native_owner=owner,native_schema_observation={})
+
+
+class SchemaObservationOnlyHistoryTests(unittest.TestCase):
+    def invoke(self, *, sql='skipped', valid=True, missing=False, intent=False, second=False):
+        owner=dict(name='Reconcile production schema before publication',status='completed',conclusion='success',steps=[
+            dict(name='Apply or reconcile the exact rehearsed migration bundle',status='completed',conclusion=sql),
+            dict(name='Reconcile fresh already-ready schema without SQL bundle or mutation',status='completed',conclusion='success')])
+        attempts={1:[] if missing else [owner]}
+        if second:attempts[2]=[dict(owner,steps=[dict(owner['steps'][0],conclusion='failure'),owner['steps'][1]])]
+        with patch.object(m,'completed_resource_contract',return_value=dict(resources=dict(schema={'runId':1}))), \
+             patch.object(m,'completed_resource_receipt',return_value=dict(record=dict(observation={}))), \
+             patch.object(m,'_release_history_json',return_value=dict(child='migrations')), \
+             patch.object(m,'attested_fast_track_no_write_observation',return_value=valid):
+            return m.completed_resource_schema_observation_only('MYLEGND/masterapp',dict(id=2,head_sha='a'*40,run_attempt=len(attempts)),attempts,
+                [dict(name='legend-release-child-intent-x')] if intent else [],'test-only')
+    def test_authenticated_observation_is_not_a_mutation(self):
+        self.assertTrue(self.invoke())
+    def test_every_attempt_and_no_conflicting_migration_evidence_required(self):
+        for changes in (dict(sql='success'),dict(sql='failure'),dict(valid=False),dict(missing=True),dict(intent=True),dict(second=True)):
+            with self.subTest(changes=changes):self.assertFalse(self.invoke(**changes))
+
+
 class CompletedResourceBaselineTests(unittest.TestCase):
     def contract(self):
         return m._fast_track_policy().initial_completed_resource_baselines()
@@ -10432,6 +10531,16 @@ class CompletedResourceBaselineTests(unittest.TestCase):
             with patch.object(m,'fast_track_selector_attempts_proven_nonentry',return_value=False):
                 with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'RESOURCE_BASELINE_RECORDED_SCOPE_CHANGED'):
                     m.completed_resource_currentness('MYLEGND/masterapp','d'*40,contract,{},'token')
+            fake.tool_promotion_requested=lambda sha:True
+            with patch.object(m,'fast_track_promotion_parent',side_effect=ValueError('PROMOTION_REQUIRED')) as promotion:
+                with patch.object(m,'fast_track_selector_attempts_proven_nonentry',return_value=True):
+                    self.assertEqual({k:v for k,v in contract['resources'].items() if v is not None},
+                        m.completed_resource_currentness('MYLEGND/masterapp','d'*40,contract,{},'token'))
+                    promotion.assert_not_called()
+                with patch.object(m,'fast_track_selector_attempts_proven_nonentry',return_value=False):
+                    with self.assertRaisesRegex(ValueError,'PROMOTION_REQUIRED'):
+                        m.completed_resource_currentness('MYLEGND/masterapp','d'*40,contract,{},'token')
+
 
     def test_no_change_tooling_does_not_advance_any_resource(self):
         value=self.contract();before=json.dumps(value,sort_keys=True)
@@ -10556,6 +10665,19 @@ class CompletedResourceBaselineTests(unittest.TestCase):
              patch.object(m,'attested_recovery_target_hold',return_value=False):
             with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'UNJOURNALED'):
                 m.completed_resource_recovery_attempts('MYLEGND/masterapp',original,'client','b'*64,'fixture')
+            holds={}
+            run['run_attempt']=2
+            with patch.object(m,'native_recovery_schema_prefix_compatible',side_effect=[True,False]) as compatibility:
+                with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'UNJOURNALED'):
+                    m.completed_resource_recovery_attempts('MYLEGND/masterapp',original,'client','b'*64,'fixture',
+                        native_schema_context={'fixture':True},resource_holds=holds)
+                self.assertEqual(2,compatibility.call_count)
+                self.assertEqual({'client':'RESOURCE_RECOVERY_PRIOR_UNJOURNALED_ENTRY'},holds)
+            with patch.object(m,'native_recovery_schema_prefix_compatible',return_value=True) as compatibility:
+                self.assertIsNone(m.completed_resource_recovery_attempts('MYLEGND/masterapp',original,'client','b'*64,'fixture',
+                    native_schema_context={'fixture':True},resource_holds=holds))
+                self.assertEqual(2,compatibility.call_count)
+            run['run_attempt']=1
             nonentry.return_value=True
             self.assertIsNone(m.completed_resource_recovery_attempts('MYLEGND/masterapp',original,'client','b'*64,'fixture'))
             run['display_title']='LEGEND retained recovery original=11 application='+'a'*40
@@ -10799,6 +10921,94 @@ class ExactSharedSchemaHistoricalFailureTests(unittest.TestCase):
         for options in cases:
             # Prevent fallback consumers from granting unrelated fixture evidence.
             with self.subTest(options=options),patch.object(m,'_recovery_preflight_source_contract',return_value=False):self.assertFalse(self.invoke(**options))
+
+
+class NativeCompletedSchemaAdmissionTests(unittest.TestCase):
+    def setUp(self):
+        import datetime
+        self.owner=dict(runId=123,runAttempt=1,controlRevision='b'*40,applicationRevision='a'*40)
+        self.reference=dict(sourceRevision='c'*40,artifactId=42)
+        self.contract=dict(resources=dict(schema=self.reference))
+        self.observation=dict(observedUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(),mutationActivity='settled',ready=False,pendingCount=2,databaseIdentity='d'*64,schemaIdentity='e'*64,baselineIdentity='f'*64,firstPendingMigrationId='20261110222649_AddBusinessAssistantScopeAndFunding',lastAppliedMigrationId='20261110000000_AddCommerceBundleInventory')
+    def invoke(self, *, receipt_error=None, current_error=None, current=None, prefix=True, owner_error=None):
+        import contextlib
+        with patch.object(m,'assert_native_mac_execution',side_effect=owner_error) as ownership, \
+             patch.object(m,'_fast_track_policy',return_value=SimpleNamespace(STABLE_BASELINE_ADOPTION=dict(databaseIdentity='d'*64))), \
+             patch.object(m,'completed_resource_contract',return_value=self.contract), \
+             patch.object(m,'_applied_migration_prefix_separate',return_value=prefix), \
+             patch.object(m,'recovery_admission_proof',side_effect=contextlib.nullcontext), \
+             patch.object(m,'completed_resource_receipt',return_value=dict(reference=self.reference),side_effect=receipt_error), \
+             patch.object(m,'completed_resource_currentness',return_value=current or dict(schema=self.reference),side_effect=current_error) as currentness, \
+             patch.object(m,'direct_child_operation_identity',return_value='1'*64):
+            result=m.native_completed_schema_admission('owner/repo',self.owner,self.observation,'2'*64,'synthetic')
+            self.assertEqual(2,ownership.call_count)
+            self.assertEqual(self.owner,currentness.call_args.kwargs['native_owner'])
+            self.assertEqual({'schema'},currentness.call_args.kwargs['required_resources'])
+            return result
+    def test_material_reuse_is_scoped_to_this_native_decision(self):
+        def current(*args, **kwargs):
+            self.assertIsNotNone(m._RECOVERY_PACKAGE_DIGESTS.get())
+            self.assertIsNotNone(m._RECOVERY_RECEIPT_BYTES.get())
+            return dict(schema=self.reference)
+        result=self.invoke(current_error=current)
+        self.assertEqual(self.observation,result['physicalSchemaObservation'])
+        self.assertEqual({},result['historicalApplicationHolds'])
+        self.assertIsNone(m._RECOVERY_PACKAGE_DIGESTS.get())
+        self.assertIsNone(m._RECOVERY_RECEIPT_BYTES.get())
+    def test_native_owner_is_reauthenticated_at_proof_close(self):
+        with patch.object(m,'_completed_resource_other_writers',return_value=dict(activeWriters=[])) as read:
+            with m.recovery_admission_proof():m.completed_resource_other_writers('owner/repo','synthetic',native_owner=self.owner)
+            self.assertEqual(2,read.call_count)
+            for call in read.call_args_list:self.assertEqual(self.owner,call.kwargs['native_owner'])
+    def test_existing_receipt_currentness_and_distinct_prefix_are_reused(self):
+        result=self.invoke()
+        self.assertEqual('proven',result['state'])
+        self.assertEqual('UNKNOWN_PRESERVED_DISTINCT_SUFFIX',result['historicalExecution'])
+        self.assertEqual(self.reference,result['completedResourceProof']['reference'])
+    def test_changed_expired_artifact_and_competing_writers_remain_blocking(self):
+        for kwargs in (dict(receipt_error=RuntimeError('artifact changed')),dict(receipt_error=RuntimeError('artifact expired')),dict(current_error=RuntimeError('active writer')),dict(current_error=RuntimeError('stale currentness')),dict(owner_error=RuntimeError('owner changed'))):
+            with self.subTest(kwargs=kwargs),self.assertRaises(RuntimeError):self.invoke(**kwargs)
+    def test_modified_or_overlapping_applied_prefix_rejected(self):
+        with self.assertRaisesRegex(RuntimeError,'PENDING_PREFIX'):self.invoke(prefix=False)
+    def test_wrong_database_stale_or_nonsettled_observation_rejected(self):
+        for key,value in [('databaseIdentity','0'*64),('observedUtc','2000-01-01T00:00:00+00:00'),('mutationActivity','not-observed'),('ready',True),('pendingCount',0)]:
+            prior=self.observation[key];self.observation[key]=value
+            with self.subTest(key=key),self.assertRaisesRegex(RuntimeError,'OBSERVATION'):self.invoke()
+            self.observation[key]=prior
+    def test_later_schema_reference_cannot_be_ignored(self):
+        with self.assertRaisesRegex(RuntimeError,'BASELINE_CHANGED'):self.invoke(current=dict(schema=dict(sourceRevision='4'*40)))
+
+class NativeMacExecutionTests(unittest.TestCase):
+    def setUp(self):
+        import datetime
+        self.owner=dict(runId=123,runAttempt=1,controlRevision='b'*40,applicationRevision='a'*40)
+        self.run=dict(id=123,run_attempt=1,head_sha='b'*40,path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,event='workflow_dispatch',status='in_progress',head_branch='isolation/test',head_repository=dict(full_name='owner/repo'),display_title='LEGEND native Mac coordination candidate='+'b'*40)
+        self.hold=dict(id=1,run_id=123,head_sha='b'*40,run_attempt=1,name='native-mac-ownership',status='in_progress',started_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),steps=[dict(name='Verify native ownership request',conclusion='success'),dict(name='Hold existing publication mutex for native Mac',status='in_progress')])
+        self.jobs=[self.hold]+[dict(id=i,run_id=123,head_sha='b'*40,run_attempt=1,name='skipped-'+str(i),status='completed',conclusion='skipped',steps=[]) for i in range(2,8)]
+        self.source=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
+    def invoke(self):
+        def api(repo,path,token):
+            if '/jobs?' in path:return dict(total_count=len(self.jobs),jobs=self.jobs)
+            if path.startswith('git/ref/'):return dict(object=dict(sha='b'*40))
+            return self.run
+        with patch.object(m,'_api_get_uncached',side_effect=api),patch.object(m,'_release_history_source',return_value=self.source),patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            return m.assert_native_mac_execution('owner/repo',self.owner,'synthetic')
+    def test_exact_read_only_hold(self):self.assertEqual(123,self.invoke()['id'])
+    def test_changed_owner_workflow_or_expired_hold_rejected(self):
+        for key,value in [('head_sha','c'*40),('event','push'),('head_branch','Legend/fast-track-release'),('status','completed')]:
+            old=self.run[key];self.run[key]=value
+            with self.subTest(key=key),self.assertRaises(RuntimeError):self.invoke()
+            self.run[key]=old
+        self.hold['started_at']='2000-01-01T00:00:00+00:00'
+        with self.assertRaisesRegex(RuntimeError,'EXPIRED'):self.invoke()
+    def test_hosted_publication_or_incomplete_inventory_rejected(self):
+        self.jobs[1]['conclusion']='success'
+        with self.assertRaisesRegex(RuntimeError,'PUBLISHER_ENTERED'):self.invoke()
+        self.jobs[1]['conclusion']='skipped';self.jobs.pop()
+        with self.assertRaisesRegex(RuntimeError,'JOBS_INCOMPLETE'):self.invoke()
+    def test_unknown_workflow_bytes_rejected(self):
+        self.source+='\n# changed'
+        with self.assertRaisesRegex(RuntimeError,'WORKFLOW_CHANGED'):self.invoke()
 
 
 if __name__ == "__main__":

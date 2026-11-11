@@ -9,6 +9,20 @@
         : "https://sandbox.web.squarecdn.com/v1/square.js";
 }
 
+@if (Model.IsInheritedMembership)
+{
+    <div class="dashboard-page-shell membership-billing-page">
+        <section class="dashboard-surface-panel">
+            <h1>@Model.ClientName</h1>
+            <h2>Household partner membership</h2>
+            <p>Membership access: @Model.EntitlementStatus</p>
+            <p>Your membership comes from your household's primary subscription. You do not need a separate subscription or activation purchase.</p>
+            <p>Your login and personal profile remain your own. The primary payer manages membership payments and billing changes.</p>
+        </section>
+    </div>
+}
+else
+{
 <div class="dashboard-page-shell membership-billing-page">
     <section class="dashboard-surface-panel membership-billing-hero">
         <div class="dashboard-hero-copy membership-billing-hero-copy">
@@ -375,6 +389,8 @@
         </aside>
     </div>
 </div>
+
+}
 
 @section Scripts {
     @if (Model.CanManagePaymentMethods && Model.BrowserPaymentReady)

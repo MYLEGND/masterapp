@@ -15,7 +15,7 @@ function environment(fetch) {
   const conversation = { id: 'thread', persisted: true, messages: [], lastMessageId: null, mode: 'legend' };
   const c = { AbortController, URLSearchParams, Set, Map, TextDecoder, DOMException, crypto: { randomUUID: () => 'new-id' },
     HISTORY_URL: '/founder/legend-ai/conversations', HISTORY_REFRESH_MS: 20000,
-    busy: false, historyRequest: null, historyTimer: null, historySkip: 0, historyHasMore: false,
+    busy: false, dictation: null, historyRequest: null, historyTimer: null, historySkip: 0, historyHasMore: false,
     accountGeneration: 0, activeRequest: null, state: { activeConversationId: 'thread', conversations: [conversation] },
     document: { hidden: false }, modalElement: { dataset: { chatUrl: '/chat' }, classList: { contains: () => true } },
     window: { crypto: { randomUUID: () => 'new-id' }, clearTimeout() {}, setTimeout() { return 1; } },
@@ -28,7 +28,7 @@ function environment(fetch) {
     updateThinkingStatus(message = '') { c.status.textContent = message; },
   };
   vm.createContext(c);
-  for (const name of ['createId', 'newConversationRecord', 'stopHistoryRefresh', 'clearAuthenticatedHistory', 'readHistory', 'storedMessage',
+  for (const name of ['createId', 'newConversationRecord', 'stopHistoryRefresh', 'cancelDictation', 'clearAuthenticatedHistory', 'readHistory', 'storedMessage',
     'loadConversationPage', 'refreshHistory', 'scheduleHistoryRefresh', 'structuredFailureMessage',
     'consumeChatResultStream', 'executeConversationRequest']) vm.runInContext(implementation(name), c);
   return c;

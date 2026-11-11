@@ -4955,3 +4955,1186 @@ Implementation and evidence are preserved on the remote task branch at
 The current source-only request binds that implementation to baseline29181 above,
 with validate-only mode and no publication targets. This is not production admission.
 Protected fast-track integration and rendered acceptance remain pending.
+
+#### Bundle repair release preservation and current blocker
+
+Exact green application candidate: `186de854d4339ae18f4cb314a1a6f08e1ede5b0f`.
+Implementation remains `723e27e7bb25fda2bee5e64fe0d81c34a4498143`.
+PR771 merged source-only at `4e6554d8a34ca89ef7f98f77773be5fa75f92835`;
+fast-track run42846601423 succeeded without publishing. Security42843864875,
+architecture42843864707 and isolated build/contracts42843864679 all passed.
+These exact results are preserved; do not rerun unchanged application checks.
+
+Founder subsequently waived the remaining rendered localhost gate for this candidate:
+"We do not need the local test, we can deploy as soon as it is green. Do not re run
+everything, preserve non redundantly". This is WAIVED_BY_FOUNDER, not rendered PASS.
+No other admission, recovery, package or live-verification gate was waived.
+
+All three exact packages are built and canonically verified under
+`/private/tmp/legend-linked-bundle-release-186de854d/`. Manifest `packages.json`
+SHA256 `322993414f1d756de52cf17bfbd539db3645ca4a70ce096cbd93eed34090b08c`.
+Portal and Protect successful artifacts were retained. The first Parfait build was
+killed by confirmed Docker OOM during parallel packaging; only that failed package
+was retried serially and passed. No passing application test suite was rerun.
+
+The existing historical Mac mutex mode had been absent from consolidated workflow
+bytes. Its exact reviewed restoration and three focused ownership tests passed,
+preserved remotely at `ee618cef17a24ab572bb9de6b1242d79bea37ee9`. It is coordination
+only and holds the existing legend-approved-release mutex; no hosted deployment.
+This control restoration still needs source-only fast-track incorporation. The
+application code itself is already integrated. Preserve the same task branch;
+reconcile its control commits with the merge ancestry, never reset/recreate history.
+The existing native owner was independently reviewed for three-target scope,
+healthy baseline, zero-migration admission, candidate-specific waiver/authorization,
+exact running mutex observation, bounded async upload reconciliation and full phase
+chains. Its prior version remains beside completed five-app receipts. Before dispatch,
+bind its control revision to the actual current reviewed task head; application
+candidate/packages remain186de854d. Never dispatch the old control SHA as current head.
+
+Fresh provider observation: all five apps Running at
+`ea128c942b7d8bd4452b5ec6abc591ee624111fc`; journals terminal and configuration
+fingerprints retained. Existing recovery ZIP hashes verified. No production app
+was stopped, uploaded, restarted or migrated for this bundle repair.
+
+BLOCKED before shutdown: Azure SQL rejected the read-only migration-metadata query
+because this Mac's IP is not allowed. User decision requested and still pending:
+temporarily allow only the current Mac public IP in the existing SQL firewall,
+read migration metadata, then remove that rule; no database writes/customer reads.
+Do not bypass this denial or infer schema readiness. No firewall rule was changed.
+Local browser access remains disabled; its localhost acceptance gap is now explicitly
+waived above. Authenticated rendered live behavior remains unverified.
+Receipts: `AgentPortal/App_Data/linked-bundle-release-20261110/admission/`.
+Next: resolve the scoped firewall decision, verify zero pending schema, bind and
+hold the existing mutex, obtain final exact admission, then stop/upload/restart only
+portal/protect/parfait and verify runtime identities and affected live behavior.
+Preserve all completed packages/checks; never replay the previous five-app release.
+
+## 2026-11-10 — LEGEND AI foundation continuation (in progress, no deployment)
+
+Founder expanded the retained release scope with the tenant-scoped LEGEND AI
+business-assistant foundation and explicitly prohibited production deployment for
+this assignment. The preceding bundle deployment instructions are on hold; its
+packages, review, CI receipts and candidate186de854d remain preserved, not deployed.
+The bundle-only localhost waiver does not cover the new AI candidate.
+
+Actual fast-track base reconciled: `4e6554d8a34ca89ef7f98f77773be5fa75f92835`.
+The existing task branch `isolation/ad-measurement-canonical-20261109` retained its
+history through content-identical ancestry merge
+`33652c25355307956a3839b46191683f0e9ab3a4`, independently reviewed and read back on
+its remote. No additional checkout, database, credential or service was created.
+
+Current foundation edits remain uncommitted and NOT accepted for publication.
+Implemented so far: immutable workspace/provider/connection-revision conversation
+bindings in the existing messaging owner; scoped web/mobile history; Founder-only
+business configuration endpoints using settings authorization; the existing modal's
+workspace/provider selector; server-owned analytics/marketing recommendations and
+versioned receptionist status; encrypted tenant/project API credentials; one bounded
+OpenAI request through the existing transport, with no paid retry/fallback or mutation
+tools; aggregate cash/service and feature allocation reservations through the existing
+accounting owner; confirmed growth-tool classification/disclosure correction.
+Native/Cloudflare business bindings explicitly remain unavailable; existing Founder
+routes remain. Provider credits are unknown. Unknown assistant costs retain full holds;
+no authoritative assistant cost-settlement adapter is implemented yet. CRM record-level
+and retention data and published website content are not exported (publication identity
+is available). These are genuine remaining scope gaps, not completed capabilities.
+
+Astra reviewed incremental security/accounting corrections and independently accepted
+only the exact synthetic local migration rehearsal. New migration
+`20261110222649_AddBusinessAssistantScopeAndFunding` source SHA256
+`309802b6b893ac64abeb49c728f04a9aeeefe25f27cc15dcfda148781dffdde8` applied successfully
+ONLY to existing `MasterAppLocalTest` on `127.0.0.1:14339`, persistent container/volume
+`legend-masterapp-local-test`, identity verified. No customer data was imported.
+The first attempt stopped before application at manual review; its receipt is retained.
+The existing local database owner now supports explicit focused validation/output roots
+and one exact independently reviewed migration digest; default validate/bundle gates
+remain unchanged. Down migration refuses destructive rollback after assistant data exists.
+Application rollback must retain additive schema and all history/credentials/holds;
+use a reviewed forward repair after use, never delete reservations to restore a budget.
+
+Passed evidence (not rendered/live acceptance): isolated AgentPortal builds; 7 focused
+foundation/workspace/growth regressions; 4 persistent SQL funding regressions (concurrent
+duplicates, cross-owner shared cap, tampering, rollover/unknown holds, revocation, opening
+attribution and evidence expiry); 2 scoped-history/mocked-HTTP regressions (service-instance
+continuity, retail/cross-agent denial, immutable provider binding, disabled-agent denial,
+project headers/default tier/no tools/no retry). Six local database-owner script checks
+pass; JavaScript syntax and diff whitespace pass. No real model calls occurred.
+Logs: `/private/tmp/legend-assistant-foundation-` prefixes `tests-run.log`,
+`tests-current.log`, `local-migrate.log`, `local-migrate-reviewed.log`, `sql-tests.log`,
+`history-tests.log`; builds use `/private/tmp/legend-assistant-foundation-build`.
+NuGet vulnerability-feed lookup emitted NU1900; this is NOT a passed vulnerability gate.
+
+Remaining: complete or explicitly resolve unsupported provider/funding/context/setup
+capabilities, remaining focused acceptance coverage, final independent exact-candidate
+review, required architecture/security/PR checks, source-only fast-track integration.
+No new PR/commit/merge, provider configuration, paid usage or production mutation is
+claimed. Previous bundle candidate/packages remain preserved and undeployed.
+
+The old Library router reference did not resolve to current document content.
+Founder was informed and instructed continuation with repository authority. It is
+not an enforced repository access denial. Rendered localhost browser access was
+rechecked: Work settings disable local browsers and the Mac is locked. Founder is away
+from the Mac and cannot unlock it now. Rendered acceptance is BLOCKED, not waived.
+Continue independent work; no prior visual waiver transfers.
+
+
+## 2026-11-10 — added capability/quality/performance continuation
+
+The Founder added this work to the SAME release flow; do not start a second checkout,
+branch, assistant/tool stack, database or register. Standing requirements are now in
+AGENTS.md section15 and the existing pretrained implementation ledger. They are
+instructions, not an active scheduler. Codex remains sole implementor; Astra audits.
+
+Source preservation is VERIFIED on the existing task branch at
+`f8f92785f7695f5e809fc96507372045d405a25e`, parent33652c253. Astra verified all36paths
+against manifest SHA256 `2c436631657e0887bf345086b295dee9b9f57b803719eb0676e8e06706b8bdca`
+and accepted preservation only. Continuity finish read back exact GitHub HEAD.
+Fast-track remains4e6554d8, not merged with this foundation. A read-verified host-local
+archive also exists at `~/.codex/legend-mac/recovery/legend-ai-foundation-uncommitted-20261110T224330Z.tar.gz`,
+SHA256 `5e356ff2ca692a8f6cc63435a6388b1a898d33d341ff718b46a899038b678ba5`.
+This archive is host-local recovery, not cloud backup or feature acceptance.
+
+Current dirty continuation extends the existing operator preview/approval and dated
+cost postings with authoritative assistant receipt settlement and an immutable
+reservation binding. It is NOT reviewed/validated yet. The first schema migration
+is already locally applied; never rewrite/replay it. Receipt-target/binding additions
+need a separate reviewed migration and focused local tests. No production effects.
+
+After this in-flight work: map all actual entry points/providers/deployed identities;
+reproduce and instrument latency; connect missing shared upload/image/media/Studio,
+research/report/export and authorized action capabilities; expose truthful settings;
+run representative quality/latency/cost and mobile/desktop evaluation. Initial simple
+question targets p95<=3s first meaningful text and p95<=15s completion remain UNMEASURED.
+Actual Astra/model availability and equivalence are UNVERIFIED. No paid test budget,
+new service, limit increase, reload or retail-client access is inferred.
+
+The latest command requests deployment through the existing authorized Azure process
+once the combined candidate passes its gates, superseding the preceding assignment's
+no-deploy outcome. It does NOT waive exact review, provider/funding evidence, rendered
+acceptance, migration admission, release locks, selective packages or live verification.
+Mac locked/browser disabled and Founder away: rendered localhost gate remains BLOCKED.
+Keep independent implementation moving and preserve successful compatible evidence.
+
+### Continuation: receipt settlement and incremental response delivery
+
+Second additive migration `20261110230942_AddAssistantCostReceiptSettlement`, SHA256
+`c14874542426f7ec03f2712a1e56b56ef78f825b667b6aa88ead86a77d41fc51`, independently
+accepted by Astra for synthetic local rehearsal only and applied successfully through
+`scripts/db.sh local migrate` to the existing verified MasterAppLocalTest. No production
+schema effect. Log: `/private/tmp/legend-assistant-settlement-local-migrate.log`.
+The existing accounting/operator owners now retain immutable reservation bindings,
+preview exact dated receipt amounts, and settle cash/service independently with replay
+protection. Unknown costs remain reserved. Down refuses to discard recorded evidence.
+
+Focused local checks passed 9/9: five assistant SQL accounting cases (including partial
+and final settlement/replay), three incremental parser checks, and one mocked provider
+transport isolation/no-retry case. Log:
+`/private/tmp/legend-assistant-settlement-stream-tests.log`. No paid provider calls.
+Subsequent timing/terminal validation changes still require an exact final build/check.
+JS syntax and diff whitespace checks passed at this stage. NU1900 remains a failed
+vulnerability-feed lookup, not security acceptance.
+
+Confirmed source-level latency contributor: existing HTTP NDJSON streams status only;
+provider responses previously waited for full JSON. New dirty continuation adds Responses
+SSE parsing in the existing conversation owner, business-mode answer deltas through the
+existing progress transport, and untrusted provisional plain text in the web transcript.
+Only terminal completed responses enter saved assistant history. Interruption removes
+provisional UI and retains existing outcome-unknown reconciliation. Sanitized stage
+elapsed timings cover authorization/context/provider dispatch/first text/terminal and
+saved completion. This is not a measured five-minute root cause, a production latency
+benchmark, or mobile/native streaming acceptance. Legacy/native routes still need their
+own consumer integration and actual tracing; p95 targets remain unmeasured.
+
+Official references inspected: https://developers.openai.com/api/docs/guides/streaming-responses
+and https://developers.openai.com/api/docs/models/gpt-6-astra . Catalog existence does
+not verify organization access or authorize model changes/billable evaluation.
+
+Astra capability inventory found existing WebsiteMediaService + ISocialMediaStorage +
+UploadValidator and WebsitePlatformController library/draft owners; no image generation
+or editing executor was found. Existing AgentDocuments holds sensitive compliance
+records and is not blanket assistant disclosure permission. Research exists via
+LegendFounderToolAuthority.ResearchAsync; website portable export via WebsiteImportService;
+ad proposals via IAdvertisingCommandCenterService and existing approval endpoints.
+Business attachment/reference authorization, image adapter/funding, media/Studio wiring,
+scoped research/export/action wiring and configuration UI remain incomplete. Do not
+advertise these as delivered. Current business assistant remains recommendation-only.
+
+Streaming follow-up: bounded chunk/line/event/aggregate reads now reject oversized
+provider output before whole-line allocation. Final focused parser/transport tests
+passed 5/5 (`/private/tmp/legend-assistant-stream-bounded-tests.log`). Mobile consumers
+now decode and render provisional answer text separately from saved history; iOS
+`swiftc -frontend -parse` passed (syntax only), and existing Android FounderAiChatStreamTest
+and FounderAiMobileContractTest passed via offline Gradle (39s). No simulator/device or
+rendered acceptance is claimed. Native business-workspace selection remains unwired.
+
+Fresh Azure read-only inventory: all five existing apps Running. Portal explicitly sets
+`LegendConnect__Foundation__HostKind=Cloudflare`; allowlisted OpenAI model/effort/timeout
+settings were absent, so deployed effective defaults still require package/runtime
+verification. No credentials were printed or used. Cloudflare transport explicitly
+sends stream=false; its worker adapter also buffers model output. Adaptive Founder
+execution includes a planner before final synthesis and may use serial specialists.
+This evidence identifies additional tracing targets, not measured five-minute causality.
+No Cloudflare routing/model/budget changes or worker deployment have been made.
+
+## Non-browser completion continuation after 36b194213
+
+Founder requests completing independent implementation/checks/review/preparation now,
+with one consolidated rendered run on return. Deployment remains held for that gate.
+Continuity preflight PASS at exact clean task/remote36b194213; fast-track4e6554d8 unchanged.
+Current continuation is DIRTY and not yet independently accepted/preserved.
+
+Implemented in current dirty work: existing-modal connection/funding settings editor;
+optional reviewed reasoning/image configuration preserving historical serialized hashes
+through omitted null/default additions; bounded immutable published-page text projection;
+explicit image generation/edit requests using selected tenant credential/project and
+existing shared reservation (one attempt), canonical website permission and media owner,
+up to4 scoped references, PNG output and private existing media-library save/read/download.
+No publication path is invoked; Studio uses its existing media-library/draft flow.
+References and generated bodies are bounded; invalid reference metadata rejected before
+funding admission, permissions/credential revision rechecked before dispatch/persistence.
+Image requests no longer retrieve unrelated analytics/history or apply text-context limits.
+New image API contract based on official OpenAI image-generation documentation; catalog
+support is not organization access, real output quality or cost acceptance.
+
+Automated evidence: context/settings5passed; image/configuration/accounting12passed;
+expanded media/history13passed; final image orchestration/configuration/history7passed.
+The latter uses mocked HTTP and synthetic persistent SQL and checks selected project,
+model/quality/count, actual multipart reference bytes, wrong/missing reference rejection,
+revocation before storage, provider failure/no retry, and private media persistence.
+Logs: `/private/tmp/legend-assistant-context-settings-tests.log`,
+`legend-assistant-media-tests.log`, `legend-assistant-media-exact-tests.log`,
+`legend-assistant-image-orchestration-tests.log`. Existing no-duplicate admission and
+unknown-cost hold tests reused; full real-provider/history/image browser journey pending.
+No billable calls, production/customer data, provider changes or production migration.
+
+Native workspace selection/history-binding implementation in progress: shared mobile
+workspaces/configuration routes call existing authority; Android and iOS preserve selected
+workspace/provider/configuration in requests and scope history reads. Android initial
+focused build/tests PASS53s before later small selection changes; iOS syntax parse PASS,
+full build/testing pending. New exact native tests and independent review remain required.
+
+Founder delegates choosing an EXISTING non-production OpenAI project and approved budget
+by inspecting browser/settings; this does not authorize new credentials, limits or reloads.
+Browser recheck remains: local browser disabled in Work settings; native Mac locked and
+automatic unlock unavailable. Project/funding inspection and real provider benchmarks
+therefore remain BLOCKED. Continue independent work; do not infer test funding or waive
+browser/real-provider acceptance. Outstanding broad capabilities include attachment/
+document retrieval, scoped research/export/action wiring, live Cloudflare latency repair,
+remaining native flows and exact final architecture/security/release gates.
+
+### Consolidated acceptance preparation (current unfinished increment)
+
+Final focused evidence added: model metadata/image integration1passed using mocked
+HTTP, exact selected project/org/model headers and synthetic persistent SQL;
+`/private/tmp/legend-assistant-model-metadata-final-tests.log`. Metadata inspection
+performs no inference, exposes no credential, checks exact revision before each
+request and before returning, and labels model metadata separately from readiness,
+funding, quality and latency. Astra's malformed-body finding corrected with input
+validation; targeted regression result recorded below when complete.
+Android final provider-selection/history tests PASS39s in
+`/private/tmp/legend-assistant-android-provider-final-tests.log`. iOS focused10tests
+PASS in `/private/tmp/legend-assistant-ios-business-final-tests.log`; these are native
+contract tests, not rendered acceptance. Retail-role/shared transport3passed in
+`/private/tmp/legend-assistant-mobile-role-final-tests.log`.
+
+Read-only existing Application Insights searches returned no matching chat request
+or stage traces over7days. This is missing telemetry evidence, not zero latency or
+proof the reported delay is fixed. No before/after p95 or actual organization model
+availability is established. Browser/project inspection remains blocked as above.
+
+One combined browser run, after final candidate is committed and independent checks
+pass, must use `bash scripts/db.sh local status` then supported
+`bash scripts/db.sh local run portal` (and affected store apps through the same owner).
+Record the actual emitted localhost URLs and exact candidate; do not substitute a
+fixture host. Keep the persistent synthetic database and existing synthetic actors.
+The acceptance sequence is:
+1. Desktop and phone: Founder legacy conversation remains functional; select own
+   business/agent, inspect truthful provider/project/readiness, switch scope and
+   reopen history. Confirm a retail actor and foreign workspace cannot enter/read.
+2. Settings: stale revision rejects save; optional absent image settings survive
+   unchanged saves; password fields clear and responses/network logs expose no key.
+   Do not save real provider configuration merely to exercise these states.
+3. Stream: meaningful provisional text, cancellation, provider error and unknown
+   outcome; reopen on web/iOS/Android and verify durable conversation identity and
+   no duplicate completion. Mocked transport is not real-provider latency evidence.
+4. Images, only with an established approved non-production project and existing
+   allocation: generate, edit with multiple own references, preview, download,
+   reopen in tenant media library and reuse in Studio draft without publication.
+   Check revocation/cross-tenant rejection using synthetic data. Record limitations
+   separately for native image flows not yet implemented.
+5. Shared linked bundles: no orphan picker; create/edit multi-product links, common
+   normalized sizes, unmatched explanations, zero-stock unavailable sizes, preserved
+   quantities, save/reopen/cancel and ordinary individual-product editing.
+6. Run actual quality/latency samples only after provider funding admission; capture
+   first meaningful text, completion, stage timings and authoritative cost evidence.
+   Never claim p95 from mocked responses or model catalog metadata.
+
+This is a prepared acceptance sequence, not a completed run. Document/research/
+action/export connections and Cloudflare performance repair remain independent
+implementation work; browser unavailability does not explain those unfinished items.
+No production deployment, schema application, provider configuration or spend has
+occurred. Source preservation is separate from fast-track merge/release acceptance.
+
+Implementation committed as a9ac333a44b0833701dfc0835200a76abe18633b.
+Astra accepted exact24-path manifest df8644171101c751786e60ea0166581e49cbdfb7b436af7e9638fa303bf80c61
+for unfinished source preservation ONLY. Malformed-input regression PASS1/1
+(`/private/tmp/legend-assistant-model-input-tests.log`); JavaScript syntax and diff
+whitespace PASS. Remote preservation for this increment is PENDING until canonical
+session finish readback; fast-track synchronization, rendered and release acceptance
+remain pending. Previous completed source receipts and bundle packages are retained.
+
+## Voice continuation on preserved base 1b6ae69756ab475791405c232c6f0a94f407fdd9
+
+Founder adds dictation, separate live conversation and authenticated inbound telephone
+access to this same capability/release flow. No number purchase, new paid service,
+outbound call/message, raised cap or production activation authorized. Session preflight
+PASS at exact task/remote base. Prior source-preservation receipt confirmed that base;
+prior iOS final provider-selector build also PASS (`legend-assistant-ios-provider-final-build.log`).
+
+Verified microphone cause: `legendFounderAiVoiceFocus` click only focused textarea;
+there was no capture or transcription. Current unfinished replacement records bounded
+mono audio through AudioWorklet, requests microphone permission, shows recording/
+transcribing/errors, supports stop/cancel and cancels on background/modal close or
+authentication clear. It preserves current typed text, adds transcript for review,
+blocks Send while recording/transcribing, and binds callbacks to conversation/account/
+configuration. No browser SpeechRecognition fallback or hidden provider is used.
+Selected business OpenAI dictation must be explicitly enabled; legacy/unconfigured
+conversations show an actionable unavailable explanation instead of a silent click.
+
+Backend extends existing conversation service and MarketingConnection configuration,
+credential and ReceptionistAdmission shared funding owners. Canonical WAV validation
+independently bounds 16kHz mono PCM to0.1..60seconds; no trusted client duration.
+One operation reservation permits one transcription attempt, project/org/revision
+remain server-derived, and unknown provider cost retains the hold. No raw audio or
+unsent draft persistence. Optional configuration fields omitted by default preserve
+historical hashes; enabling dictation changes the reviewed cost-bound configuration.
+No real provider configuration or inference was performed.
+
+Official source verified: OpenAI file transcription guide (gpt-transcribe,
+/v1/audio/transcriptions); current Live SIP guide uses signed incoming events,
+/v1/live/sessions and sideband ownership. Repository already implements those provider
+primitives in IOpenAiReceptionistClient and canonical browser/SIP lifecycle owners.
+Public browser sessions are anonymous Shayla intake; owner browser sessions are
+controlled QA only. Neither grants private assistant access. Astra identified missing
+explicit assistant-session purpose, actor/workspace/conversation/revocation binding,
+and phone-caller authentication. Caller ID and signed provider events are not caller
+identity. Existing carrier/number/account pricing and actual route remain unverified;
+no recurring or per-call quote can yet be represented as approved or exact.
+
+Astra dictation findings corrected: authentication clearing now stops microphone and
+account generation fences upload/append; cancellation after upload explicitly says
+provider may have received audio and cost hold remains, rather than claiming discard.
+Focused JS3tests PASS (WAV conversion/bounds and typed-text preservation); C#7tests PASS
+(dictation envelope/input rejection and historical configuration tests) before the
+additional enabled-dictation hash/provider assertions. No real microphone, Safari,
+audible response, interruption, reconnect, native backgrounding or latency acceptance.
+
+Remaining voice implementation: authenticated live-session purpose and lifecycle,
+shared conversation/tool delegation, native dictation/voice adapters, authenticated
+inbound caller linking, carrier configuration/cost inventory and reviewed setup.
+These are unfinished implementation, not browser-only blockers. Existing Shayla
+privacy/limits and live routing are unchanged. The combined browser run must add
+permission denial, microphone stop/cancel, backgrounding/account switch, typed-draft
+preservation, no duplicate send, real transcription, live interruption/mute/end,
+text/voice continuity, denied unauthenticated calls and exhausted budgets. No phone
+number or voice service is claimed active. Current voice diff remains uncommitted
+until exact independent source-preservation review.
+
+Voice implementation commit d499d671c7202cf33f41b726e4367d76bf8af7aa.
+Final focused C#3/3 PASS (`/private/tmp/legend-assistant-dictation-final-tests.log`),
+including enabled dictation configuration hash/provider assertions; earlier focused7
+and JS3 retained. Astra accepted exact10-path manifest
+88ba311ac6d3cd42cd52f721bf73a9bf33fd189af190d487ec9285850a350ed4 for
+source preservation only. No rendered, real-provider, live-voice or release acceptance.
+Canonical finish/remote readback for this increment remains pending. No schema change.
+
+## Household partner continuation on preserved base361ce0f4c
+
+Founder adds spouse/partner membership, pricing and separate individual/shared
+experiences to the same checkout/release. Session preflight PASS at full base
+361ce0f4c2f0bd3f5665aabe20a9d4ea8ee70110; prior AI/voice work retained. No new
+checkout/database/provider/service or production mutation. Actual process read
+showed no Git writer; no process stopped and historical PID48937 not acted on.
+
+Explicit pricing decisions: partner50% of primary ACTUAL recurring price AFTER
+applicable discounts, including retained legacy terms; fractional cents ROUND UP.
+10000+5000=15000cents;9999+5000=14999cents. Existing offer pricing owner now calculates
+those components with checked arithmetic. This pure calculation DOES NOT change
+existing offers/subscriptions, create charges or constitute a payer quote.
+
+Implemented: existing household invitation owner checks conflicting independent
+membership subscriptions/household ownership before external provisioning. Existing
+profiles retain personal names, user IDs and identity binding; new pinned identity
+entry point in existing ClientEntraLifecycleService verifies unique lookup against
+stored objectID before Graph invitation/sync/assignment. Mismatches/missing identity
+require reconciliation rather than silent merging. New-person invitation/sign-in
+flow remains existing owner; an entered email alone grants no household access.
+
+Canonical BillingStateMapper now shares usable-subscription expression with directory
+projection. Active household partners inherit the latest owner's eligible membership
+without duplicate entitlement rows/subscriptions. Directory, household and billing
+evaluator use identical UpdatedUtc/CreatedUtc/Id ordering; grace expiry and scheduled
+cancellation rules remain canonical. Existing personal CRM/member classification is
+preserved. Partner subscription page returns a read-only inherited-membership model
+before payer card/history queries; profile membership indicator recognizes inherited
+access without cancellation authority. EffectiveClientContext retains individual IDs.
+
+Existing HouseholdReconciliationService dry-run now reports partner identity,
+inactive-link and independent payer conflicts separately, with BillingChangeProposed
+false. It does not silently reactivate suspended/removed records, cancel subscriptions,
+merge identities, issue invoices or charge listed partners. Only synthetic reconciliation
+was executed; production inventory and entitlement corrections remain NOT_RUN.
+
+Scope map for remaining rendered/access audit:
+- Individual: ClientProfile/login/name/photo/preferences, personal messaging/Journey,
+  mobile actor/session and notification settings. Do not replace partner profile ID.
+- Shared financial: existing HouseholdAccountId/FinancialScopeOwnerClientProfileId in
+  FinanceController, FinanceToolStatesController and MobileFinancialOperatingSystemProjectionService.
+- Payer-private: subscription payment history/cards and billing mutations. Partner view
+  exposes membership status only; ownership is not granted by household relationship.
+This map is not proof that every individual/shared page has completed acceptance.
+
+Validation: first focused identity run32pass/1fail was an incomplete mock for the
+existing invitation provisioning step; corrected via pinned identity owner. Subsequent
+focused50pass, then pricing/directory8pass, then final exact implementation59pass/0fail
+(`/private/tmp/legend-household-reviewed-tests.log`). Final includes inherited view
+with zero card/billing service calls, existing identity preservation, own-subscription
+conflict, shared-finance revocation, grace/removal/tied latest subscription, arithmetic
+and nonmutating reconciliation. In-memory/synthetic tests are not provider sandbox
+charge verification, relational query acceptance or rendered web/mobile proof. NU1900
+feed warnings remain and do not constitute a passed package security gate.
+
+Unfinished billing work: payer-reviewed recurring/proration quote, durable consent and
+idempotent application through existing billing orchestrator, signup/later addition,
+plan/renewal changes and sandbox provider verification. Current membership model and
+activation policy are monthly; annual arithmetic test does NOT implement annual plans.
+Training promotion coupons are separately scoped and must not become membership rules.
+Current LEGEND-managed Square Payments price-change owner takes effect at next renewal;
+legacy provider-managed subscription changes are explicitly rejected pending migration.
+Square Subscriptions documentation says proration depends on plan variation can_prorate,
+not a universal payment-provider behavior. No existing midcycle partner quote found.
+Founder decision CONFIRMED: partner addition starts charging at the NEXT RENEWAL,
+with NO IMMEDIATE charge. Payer confirmation must show the revised recurring total
+and effective renewal date; no retroactive charge for listed partners. Securely
+verified eligible partner access does not wait for a second activation or purchase. Trials/annual/provider-specific terms still require full
+implementation reconciliation; no price exception or trial charge inferred.
+
+No production charge, data reconciliation, migration, merge, deployment or live
+acceptance. Remaining browser suite includes separate logins/photos/mobile sessions,
+shared financial views, private conversations, billing ownership, signup/later partners,
+removal/cancellation and exact payer confirmation. AI/voice and bundle gates remain open.
+
+Implementation commit 927965d03fdd2eddf2945a047c81f155939fd569.
+Astra accepted14-path manifest5c26efd0537883e3ceb10197217a6424dbf3a19942d280db0bee91f69ce6f81d
+for source preservation only. Checkpoint/remote finish pending; full feature and release
+acceptance explicitly not granted. No schema change in this increment.
+
+### Shared LEGEND AI public receptionist role and durable intake — 2026-11-10
+
+Continues the same checkout/branch from b581e10ac832f48872920b82d614c580d5810685.
+Session preflight PASS with exact local/remote equality and no dirty work before this
+increment. Previous household checkpoint was preserved at that remote SHA; its older
+pending-finish wording above is superseded by this verified continuation.
+
+Shayla is the public receptionist persona/channel of LEGEND AI. AGENTS.md and the
+existing implementation ledger now record the shared-owner/role-policy architecture.
+Existing conversation, voice, accounting, capability and diagnostics owners remain;
+no second assistant, history store, permission registry or background synchronizer.
+Public call records do not grant access to private authenticated conversations.
+Public intake uses provider-verified ingress, pinned business/configuration and fenced
+canonical service actions, independently of employee login or browser automation.
+
+Corrected ReceptionistInquiryAuthority: a missing optional notification recipient no
+longer blocks transactional canonical lead/CRM persistence. Canonical CRM ownership,
+tenant/call/action/confirmation validation and independent readback remain mandatory.
+Existing notification recovery retains delivery-pending inquiries for later repair.
+Booking runs after saved intake; uncertain booking outcomes do not repeat the action.
+Existing bounded receptionist worker, backend tasks, deadlines and named HTTP transport
+remain distinct from long-running assistant requests. This is source evidence, not a
+measured capacity or latency guarantee. No cause is claimed for the reported live call.
+
+Validation: 84 existing application-service tests passed with this production change.
+The added SQL fixture initially failed for omitted required budget/call fields, then
+missing storefront preferences; fixture setup corrected without production changes.
+Final focused run 2 PASS/0 FAIL/0 SKIP, log
+/private/tmp/legend-shared-intake-final-tests.log, using supported db.sh local test and
+only persistent synthetic MasterAppLocalTest. SQL test verifies no employee context,
+missing recipient -> committed inquiry/pending delivery -> replay once -> repaired
+recipient delivered once through existing notification authority with a fake sender.
+It does not execute the recovery background worker or live SIP/provider admission.
+The second test verifies downstream booking failure retains saved intake and does not
+repeat an uncertain booking. Synthetic fixtures are cleaned by their exact IDs.
+NU1900 vulnerability-feed warnings remain; no package-security pass is inferred.
+
+Astra accepted exact five-path manifest
+ce32f616efe1eb8262e8ed45c86ec81f82df9240f91712674b1381a800876bf8 for source preservation
+only; no blocking defect found. Implementation a3b36b249 (full identity in Git).
+No migration, production data change, provider call, purchase, merge or deployment.
+Rollback is the bounded source change; no schema reversal is required.
+Combined browser/mobile/microphone/live-call acceptance, real-provider funding and
+latency evidence, remaining AI/voice/household implementation, required release checks,
+fast-track integration and deployment remain open. Do not reuse an earlier visual
+waiver or replay successful prior deployments. Next: preserve this checkpoint through
+the existing session finish owner, then continue the outstanding combined work.
+
+### Local portal Microsoft callback repair — 2026-11-10
+
+Continuation base aa4860db5bd6ed403aa17ca103ccbae3521b854c; session preflight PASS.
+User reproduced AADSTS50011 at http://127.0.0.1:6206/signin-oidc through the supported
+local launcher. Read-only Azure application metadata for
+c0165351-c30f-475c-8af9-a4713a304b76 confirms the existing web redirect
+http://localhost:5000/signin-oidc and logout http://localhost:5000/Account/LoggedOut.
+Corrected only the portal URL in scripts/local-test-database.py to
+http://localhost:5000. Existing persistent SQL identity/127.0.0.1:14339 and credential
+isolation are unchanged. No Azure registration, database or production change.
+Six existing local launcher Python tests PASS; diff whitespace check PASS.
+Actual browser sign-in remains to be verified after restarting with
+bash scripts/db.sh local run portal and opening http://localhost:5000.
+Do not use the old 127.0.0.1 browser tab. This is not combined release acceptance.
+
+### Clients Copy shortcut and combined deployment request — 2026-11-10
+
+Founder requests removal of the Clients modal opening on Command+C/Control+C and
+direct deployment of the accumulated checkout. Same branch, base
+2149f5cc66fd72b679f7639e94c00b6e02bc7a74; clean preflight PASS.
+Confirmed home-clients-hub.js explicitly intercepted either modifier plus C,
+prevented Copy and called openHub. Removed that binding and the redundant K no-op;
+explicit Clients button, return URL and Escape handling remain unchanged.
+Node syntax and diff checks PASS. Full-script VM regression PASS for both Copy
+modifiers leaving the modal closed without preventDefault, button opening and
+Escape closing (DOM fixture, not browser acceptance). Local HTTP serves the fixed
+script. Native Chrome can now be inspected; browser extension host remains unavailable.
+Fresh localhost page stayed closed after both Copy key commands, but native input
+and AX updates were inconsistent, so full rendered shortcut acceptance is not claimed.
+Screenshot/reproduction also shows lookup HTTP500; its cause is not yet established.
+
+Requested combined deployment is authorized, NOT performed. Conservative canonical
+impact plan /private/tmp/legend-combined-impact.json compares committed checkout to
+prior ea128c942b7d8bd4452b5ec6abc591ee624111fc baseline and includes all five web apps,
+shared dependencies and mobile consumers. Rebind impact to final candidate and fresh
+live baselines before admission. Existing native owner remains pinned to the earlier
+three-target bundle release and its exact waiver/no-migration receipts; it must not
+be invoked for this candidate. Combined candidate CI/security/architecture acceptance,
+two assistant migrations' production admission, exact packages/digests, recovery and
+rendered acceptance remain outstanding. Prior source-preservation reviews are not
+release acceptance. No app stop/upload/restart, production SQL or provider mutation.
+
+Additional Founder scope: LEGEND AI must be available inside the canonical shared
+internal store banner and use the existing assistant for the selected business.
+This is NOT yet implemented. Shared owner is ParfaitApp/Views/Shared/_InternalLayout.cshtml,
+used by shared commerce managers; current assistant controller/orchestration/modal live
+in AgentPortal. Store authentication explicitly must not issue a full Portal session
+(AccountController store login). Preserve that separation, server-derive business scope,
+retain Founder rollout and tool guards, and exclude retail shoppers. Do not insert a
+decorative button, copy an assistant stack, weaken frame policy or claim a plain Portal
+link provides embedded store management. Extend the existing transport/session authority
+with focused tenant/role/continuity tests before the combined release.
+Fresh Azure read-only inventory confirms all five masterapp web apps Running.
+
+### Combined candidate release checks initiated — 2026-11-10
+
+Founder reiterated DEPLOY EVERYTHING and LEGEND subscription selection. Existing Azure
+sign-in verified; selected enabled subscription a543b54e-8a42-4a4b-bd4d-bc13573b1c48.
+Preflight PASS at a2379b8210b8c800558b4f3eac8400237de07ebf; actual fast-track remains
+4e6554d8a34ca89ef7f98f77773be5fa75f92835. Opened draft PR772 for required combined
+validation: https://github.com/MYLEGND/masterapp/pull/772. Not merged or deployed.
+
+Exact source run42952690607 failed canonical carry-diff admission because14 accumulated
+paths were unmapped. Corrected existing validation-resume.py explicit ownership:
+12 shared Domain/Infrastructure/SHARED inputs select all four .NET hosts; two Android
+files remain native-only and do not imply Azure/mobile-store publication. Unknown
+siblings still reject. Added focused mapping regression. Actual previously failing
+carry-diff test and new regression each PASS. Independent review accepted exact policy/test diff
+for source preservation, not production admission. Full local suites initially used
+Mac Python3.9 and encountered unsupported hashlib.file_digest and historical fixture
+failures; installed Python3.13 rerun PASS:211 impact/admission tests and117 migration
+operation tests, logs /private/tmp/legend-combined-impact-py313-tests.log and
+/private/tmp/legend-combined-release-children-py313-tests.log. These are local policy
+checks, not production migration or whole-feature acceptance.
+
+PR security42954306374 and architecture42954306364 started; migration probe PASS at
+last observation, security/architecture still running. Source-only/draft package and
+migration rehearsal jobs were skipped, not accepted. Packaging, exact final candidate
+checks/review, production schema admission and store assistant work remain outstanding.
+No production mutation. Existing direct-release request still preserves source-only
+integration; do not repurpose stale native deployment receipts or bypass admission.
+
+Security run42954306374 subsequently failed the release build on CS8629 in
+LegendMemberDirectory inherited membership projection. Kept its existing HasValue
+filter and projected nullable ClientProfileId directly (Contains lifts profile.Id),
+removing the unsafe Value dereference without changing entitlement eligibility.
+Independent review accepted this bounded correction. Existing household tests34PASS,
+0FAIL/0SKIP via supported persistent local configuration; log
+/private/tmp/legend-combined-directory-fix-tests.log. Rebuild completed without CS8629;
+NU1900 feed warnings remain. Exact updated remote CI must still pass.
+Fresh public runtime readback confirms all five apps still at
+ea128c942b7d8bd4452b5ec6abc591ee624111fc; receipt
+/private/tmp/legend-combined-live-baselines.json. No production mutation.
+
+### Package completion and remaining combined admission — 2026-11-10
+
+Application candidate9a2977c2341509044eecf65b3555e691acacc833 is preserved remotely.
+All five app packages and migration bundle built using release-package.py in
+/private/tmp/legend-combined-release-9a2977c23; canonical verify PASS.
+Package identity56a4f62ff7b564c20979acbc8434221283473e6ae276d5d4e25d3148a68d206b,
+contract256cd7c021b0c142152778431782eca35f464bab0988ae5ff0c90f138a970fd1.
+Preserve these bytes; subsequent workflow/test/checkpoint edits do not change app
+source, but exact compatibility/admission must be recorded before reuse.
+
+User explicitly approved read-only production migration-history metadata access.
+Azure SQL initially denied the Mac IP. User then explicitly approved existing
+ZacLocalDev-AutoSync single-IP update via scripts/sync-local-azure-sql-firewall.sh;
+script succeeded with matching readback. Rule remains as authorized. Subsequent
+read-only history inventory succeeded:239 applied, exactly two pending:
+20261110222649_AddBusinessAssistantScopeAndFunding and
+20261110230942_AddAssistantCostReceiptSettlement. Receipt
+/private/tmp/legend-combined-schema-inventory.json. No SQL/schema/customer-data writes.
+
+Security42955784465 PASS. Architecture42955784424 FAILED and contract42955784497 FAILED.
+Concrete remaining findings: migration rehearsal rejects the new assistant suffix
+as MIGRATION_COMPATIBILITY_UNPROVEN; hosted CRM browser POST/session timed out.
+Do not relax migration allowlists or call this rehearsal accepted.
+Corrected two other demonstrated validation defects: reordered the existing direct
+release job AND terms to preserve equivalent approved-branch/native-exclusion guards
+and satisfy its trusted integrity literal; history test harness now loads real
+cancelDictation with inactive dictation state instead of throwing ReferenceError.
+History9PASS. Lifecycle231 ran with228PASS and3missing-PyYAML errors; reran the3
+affected tests using installed Azure CLI Python3.13 (with its existing YAML module),
+all PASS (SingleBranchTopology4PASS plus targeted guard1PASS). No new dependencies.
+No production app stop/upload/restart. Required migration-rehearsal extension,
+independent combined release acceptance, remaining rendered journeys and native-owner
+rebinding remain outstanding. Shared internal-store assistant remains unimplemented.
+
+### Combined release continuation — non-entry evidence repair
+
+Resumed from exact remote/local398f94f523ea13951f9a415c2de6f56eea0d5f47;
+session preflight PASS, no local-only/remote-only commits or dirty work at entry.
+Corrected validation-resume.py's non-entry classifier for the existing native Mac
+mutex lane. Requires exactly one explicit completed/skipped/no-step native job;
+missing, active, successful, failed, duplicate or contradictory evidence rejects.
+The new exact observer hash differs only by native-input suppression on two
+always() observers; commands, permissions and ambient environment remain unchanged.
+ReleaseAttemptNonentryTests14PASS; independent reviewer accepted the exact two-file
+diff for source preservation only, not release admission. Original five packages
+at9a2977c2341509044eecf65b3555e691acacc833 remain unchanged and retain provenance.
+
+Current CI at398f94f52: security42960525385 PASS, architecture42960525289 FAIL,
+contracts42960525204 FAIL. Remaining demonstrated failures are assistant migration
+suffix/physical rehearsal support and CRM browser POST/session startup timeout.
+Migration support has not been loosened, no old acceptance has been relabeled, and
+no production migration or app stop/upload/restart occurred in this continuation.
+Shared internal-store assistant remains unimplemented. Combined release is NOT
+admitted; preserve existing receipts and resume only these outstanding stages.
+
+### Assistant migration validation repair — 2026-11-10
+
+Base3cc5088097124cb88183a7d77da8c7d6fcfa52a4; canonical session preflight PASS.
+Implemented exact tool-owned contracts for20261110222649_AddBusinessAssistantScopeAndFunding
+and20261110230942_AddAssistantCostReceiptSettlement. No migration history, schema
+operation, application source or production data changed. Existing coordination
+owns observed reservation/receipt schema transitions; original descriptor hashes
+remain unchanged. Unknown/edited/reordered operations and noncontiguous assistant
+history reject. No generic AlterColumn/DropIndex/DropCheck waiver was introduced.
+Extended the existing fixture, not a second migration mechanism: preserved legacy
+call reservations/receipts/conversations, owner-period FK, filtered uniqueness,
+exclusive receipt targets, legacy writes, cross-owner operations, exact constraint
+rejections and guarded Down refusal. Catalog mismatch diagnostics expose only a
+bounded schema object identifier in the synthetic fixture, never SQL or credentials.
+
+Zac explicitly approved the existing disposable synthetic SQL rehearsal because
+its prior-schema construction must not mutate persistent MasterAppLocalTest.
+Four SQL scenarios passed initialize/precondition/migrate/verify/adversarial:
+assistant-both, assistant-settlement, payment-and-successors, receptionist-guide-only.
+The both-pending path also verifies physical schema after the first migration before
+the second. Existing disposable owner removed each container; no production SQL or
+persistent local test DB was used. Independent source review accepted exact nine
+code paths conditional on broader SQL passing; both broader scenarios now PASS.
+Contract executable PASS (including assistant metadata/history negatives and existing
+catalog suites); trusted contract compatibility PASS; Python probe57PASS; both probe
+and rehearsal builds0warnings/0errors. A test-only presence guard and deterministic
+synthetic marketing revision followed the focused SQL successes; broader SQL then
+passed. These changes preserve the focused schema/operation evidence; no application
+or migration bytes changed and no successful production operation was repeated.
+
+Receipts retained under existing AgentPortal/App_Data/linked-bundle-release-20261110/admission/:
+migration-repair-contract-tests.log, migration-repair-probe-tests.log,
+migration-repair-focused-sql.log, migration-repair-predecessor-sql.log.
+Application packages at9a2977c2341509044eecf65b3555e691acacc833 remain preserved;
+new observer/contract tooling needs exact-candidate CI/admission binding, not relabeling
+old package provenance. Production migrations NOT APPLIED. No app stop/upload/restart.
+Remaining combined release work: current required CI/admission, unresolved CRM
+browser startup acceptance, unfinished canonical internal-store assistant integration,
+remaining rendered journeys, native deployment-owner rebinding, then governed
+migration/application deployment and live provenance verification/source integration.
+
+### CRM local Graph configuration repair — 2026-11-10
+
+Resumed clean at40e8eee8a0977ffde42f3e3cddc218355110a3d0; session preflight PASS.
+User reported ClientsController activation failing on missing GraphProvisioning
+ClientSecret. Its canonical Entra lifecycle dependency and legacy provisioning
+facade both validated credentials during construction, before CRM reads ran.
+Deferred canonical Graph/context initialization until actual identity access;
+moved the legacy facade's unchanged required-setting checks into GetGraphClient.
+Legacy personal-email lookup resolves that client before its provider-error catch,
+so missing configuration cannot be misreported as an absent external identity.
+No credentials, fallbacks, permissions, migrations or other feature files changed.
+
+Focused supported local-test run22PASS/0FAIL/0SKIP: new real-service/no-secret
+owned-client lookup and cross-owner exclusion; canonical provisioning and legacy
+lookup reject missing secret before provider access; existing ClientsController,
+quick-view security and Entra recovery regressions. Used the existing isolated
+legend-assistant-foundation-build outputs and scripts/db.sh local test. Receipt
+/private/tmp/legend-crm-configuration-tests.log. Existing NU1900 vulnerability-feed
+availability and obsolete test-host warnings remain; no checks were suppressed.
+No Microsoft Graph request, real identity mutation, customer message or production
+change occurred. Browser access host unavailable, so rendered acceptance is NOT_RUN.
+The earlier migration repair and its SQL receipts remain preserved and compatible;
+this identity-service change invalidates affected application package bytes and
+requires normal impact/admission evaluation before deployment. Do not relabel the
+old app packages or replay any successful production effects.
+
+### Combined release admission continuation — 2026-11-10
+
+Founder explicitly deferred unfinished internal-store LEGEND AI integration and
+requested direct Mac admission/deployment of the existing combined candidate,
+reusing compatible evidence and the stop/deploy/restart sequence. No deferred
+integration implementation is part of this continuation. Clean session preflight
+verified local and task-remote5fc8da4527bac36cb74fd71d69e9c018ced6318e.
+
+At that candidate, security and validated-migration-probe passed. Architecture
+run42969270475 (601PASS/1FAIL) and commerce run42969270488 failed the same stale
+TrainingEnrollmentDependencyResolutionTests constructor-exception expectation.
+Updated that test to use the existing synthetic fixture and assert entitlement
+reads deny absent membership without Graph credentials, while actual canonical
+identity provisioning still rejects missing configuration. Focused supported local
+tests7PASS/0FAIL/0SKIP; log/private/tmp/legend-admission-dependency-tests.log.
+Independent reviewer accepted the exact test diff, SHA256
+f955472f36a4f48647fefdde95dc0b329f79be0a26ea16cbbd78bae673d5a451.
+This test/document-only correction changes no application or migration bytes;
+previous CRM22PASS and migration repair evidence remain compatible. Required
+failed CI lanes still need current-candidate success. Rendered acceptance remains
+NOT_RUN, not waived by a prior candidate. No production mutation or app shutdown.
+
+### Native release route correction and retained admission — 2026-11-10
+
+Founder explicitly waived remaining rendered localhost checks for application
+5fc8da4527bac36cb74fd71d69e9c018ced6318e and will perform rendered checks after
+deployment. This does not claim rendered or live acceptance. Source correction
+was preserved remotely asdae42b7503cd95867bcb44005158c38a85adf9e7.
+Architecture42971620955, security42971620974, focused commerce42971621003 and
+validated migration probe PASS. Exact retained migration bundle producer9a2977c23,
+SHA256993c44190734c4cba9faeb2cc42733f6380b2c5420e3851b89b5891e25d66f15,
+was independently accepted as migration-input compatible and passed canonical
+synthetic exact-bundle rehearsal: one mutation, one intent, two success receipt
+attempts, with lost acknowledgment recovered without repeating SQL. Existing
+synthetic owner disposed its container. Production metadata read confirms239
+applied/two pending; managed Azure restore-window evidence verified. Current live
+five-app identities remainea128c942b7d8bd4452b5ec6abc591ee624111fc; journals terminal.
+
+GitHub rejected native-lock dispatchHTTP422 because the legacy approved direct
+workflow is manually disabled. Founder explicitly refused re-enabling it and
+ordered removal of that native path, retaining fast-track as default source and
+Mac deployment BEFORE fast-track synchronization. Moved only the existing native
+ownership job/input into enabledlegend-fast-track-ui.yml, preserving its exact
+read-only verification and shared publication mutex. Native dispatch excludes
+hosted recovery and cannot enter push-only hosted deployment. Removed the old
+native mode from the disabled approved workflow. No branch merge is required for
+this task-branch coordination. Independent review accepted three paths; focused
+ownership3PASS. Native receipts remain essential: isolation dispatch is not a
+hosted fast-track producer, and absence from hosted history never proves no writes.
+
+Parfait and Portal application5fc packages completed and are preserved. Initial
+concurrent package builds encountered compilerexit137 under8GB Docker memory;
+only failed components are being recovered serially. Existing package receipts
+retain their original identities; no application-source change followed5fc.
+No production migration, stop, upload or restart has occurred. Native owner
+adaptations were independently reviewed and installed with previous bytes retained
+in existing admission/5fc8da452; their control/workflow binding must now follow this
+reviewed coordination move before any effect. All current evidence remains under
+existing admission and/private/tmp/legend-combined-* paths, not a new release lane.
+
+
+Native hold42975047565 is verified on enabled fast-track workflow at5554c5b4e;
+all hosted publishing/recovery jobs are skipped. Canonical history admission then
+rejected FAST_TRACK_RECOVERY_HISTORY_PRODUCER_UNPROVEN: moving the native job
+changed the current workflow digest, so previously accepted historical recovery
+workflow bytes no longer matched the closed directional compatibility table.
+Extended only that existing table with the exact reviewed current workflow digest
+and its four already-accepted predecessors; no live old execution, unknown bytes,
+reverse compatibility or ambiguous SQL is admitted. Updated existing history tests
+to use actual preserved predecessor bytes instead of deriving them from the changed
+current workflow. Focused history/producer10PASS. The earlier full fast-track suite
+ran211:210PASS and one old-host Python hashlib API error; the one failed test passed
+on installed Python3.13. No passing test was rerun for that interpreter correction.
+This metadata-only repair changes no app/package/migration inputs. Preserve all
+completed packages and rebind the existing native hold to the final control commit;
+no production effects have occurred. Required current integrity/security evidence
+and runtime migration admission remain mandatory, with rendered checks waived.
+
+
+### Native completed-schema consumer — 2026-11-11
+
+All four application5fc packages are complete, canonical component verification
+and embedded runtime provenance PASS. Manifestb0e146536c0e54d666eede971ef82d960a4b26bb03104799f21ef7ea975d804c;
+reviewed migration-plan3f047eb6973ab3b3b87921a1274245b13099a30fb778698ed7c0debf139821b8.
+Native hold42975767923 is active atf9df1f3af1608de2b4af2e2a23a600148df59f10;
+prior hold42975047565 cancelled with no production effects. Final f9 security,
+commerce and migration-probe passed; architecture found one stale nonentry test
+still expecting the native job in the disabled direct workflow. Updated that test
+to prove current no-native nonentry plus the preserved prior native-job negatives.
+
+Legacy first-write scanning rejected run41131223973 attempt2 as unresolved. Do not
+repeat that SQL or manufacture its success. The existing completed-resource schema
+baseline already owns later physical acceptance. Added an explicit native consumer
+of completed_resource_contract/receipt/currentness, retaining immutable applied-
+prefix separation, full fresh activity/database checks and old UNKNOWN history.
+Actual API-verified native hold, exact reviewed workflow source, task-ref identity,
+job inventory, ownership window and application ancestry are required. Only this
+verified native hold is excluded from competing writers; reauthenticate it again
+at proof closure. Hosted consumers retain their existing default behavior.
+Focused new/existing ownership, history nonentry and completed-resource tests46PASS.
+Native adapter proposal reuses this consumer while retaining exclusive local intent,
+no replay, full execution-boundary activity/ownership rechecks and canonical bundle
+reconciliation. Runtime completed-resource proof remains pending, not admitted.
+
+Read-only full production activity/physical observation passed. An initial currentness
+attempt encountered an absent historical reader path while unrelated validation
+was active; no permission or history gate was waived. It resumed after validators
+became terminal. Application packages, rehearsal, source and receipts remain intact.
+No production migration, shutdown, upload or restart has occurred. Direct Mac
+publication still precedes fast-track source integration as explicitly instructed.
+
+Native admission continuation: selector failures now use the existing closed
+historical workflow compatibility table; complete skipped downstream inventories
+and zero artifacts still required. Runtime then exposed observation-only schema
+history incorrectly requiring a mutation-success receipt. The existing no-write
+attestation now authenticates every attempt and rejects actual SQL entry or any
+migration child journal; it retains the saved schema baseline. Focused70PASS;
+Independent review accepted validator939eda0b14f2da14ab165473ae24e920f85283e3518a4634d58afe73b2976eeb
+and tests4fe0ff62110f64d4a58ab6feaac3a6211fb8d8b97b69a8651c40da9ee1f97ff3.
+Actual read-only proof now reaches historical recovery41352634254/job124985933054,
+then rejects RESOURCE_RECOVERY_PRIOR_UNJOURNALED_ENTRY for portal. Its existing
+exact preflight attestation is being diagnosed; no historical effect is assumed.
+Logs: /private/tmp/legend-native-observation-disposition-proof.log. All four5fc
+packages and rehearsal remain preserved. No new migration, stop, upload or restart.
+
+### Exact green control preserved; historical shared-schema boundary — 2026-11-11
+
+Control0231c588884532aa99406f049622fe3ee0d2ee4c is remotely preserved. Exact
+architecture42981681443, security42981681442 and commerce42981681510 passed;
+commerce push42981674607 also passed. All four application5fc packages remain
+unchanged. Native owners installed after independent review: deployment1330ed4cebf1ac6e7569c469dff6622eb9b7a5d7e763c01ad59ce724f981fb15,
+migrationd5131b97442fceac529f8d6d42b367d324a135e217e12812aff5369f4721917a.
+Updated migration plana4ea49326d097473668939b93f3300a8acec8f54f1a4e380ececc1377ae23377
+passed PLAN_ONLY against the retained exact bundle/rehearsal. Fresh Azure inventory
+confirmed all5 Running, terminal journals and exact ea128 runtime baselines. Fresh
+managed database recovery window verified. Single-IP firewall was updated through
+the already-authorized owner as egress alternated109.104.115.54/.57; no range added.
+
+Final history admission remains BLOCKED: RESOURCE_RECOVERY_PRIOR_UNJOURNALED_ENTRY.
+Narrow diagnostic identified inner recovery41356851410 attempt1/job124998650015,
+tool3f4953ee733d44bd566f3d1e997f065473dc06d6, original41336371077/applicationf2841ef8d0871ed69be01484024424eb3f63f121.
+A worker exhausted its deadline before upload intent; concurrent workers mean its
+traceback does not prove whole-run nonentry. Earlier41352634254 preflight passes
+its existing exact attestation and is not the actual remaining failing attempt.
+Independent audit identified indirect shared effects: historical deploy restarts
+apps, and historical AgentPortal supports Database:RunMigrationsOnStartup in
+Production. Skipped SQL jobs and five source hashes therefore cannot prove schema
+isolation. No exemption or synthetic success was added. Resolving this boundary
+requires authenticated evidence covering the retained package/startup configuration
+or accepted physical-schema/prefix evidence explicitly covering those effects.
+Keep historical application publication UNKNOWN until legitimately reconciled.
+
+Evidence remains in existing admission/5fc8da452, including ci.json, review.json,
+current-admission-blocker.json, current configuration/provider/runtime/recovery
+observations. Exact diagnostic: /private/tmp/legend-specific-recovery-diagnostic.log;
+full final proof: /private/tmp/legend-native-0231-network-reconciled-proof.log.
+Native hold42981848693 is being released with zero production effects. No apps
+were stopped; no new production migration, upload or restart occurred. Fast-track
+has not been merged: direct deployment still precedes source integration. Do not
+repeat package builds, accepted tests or prior successful releases. Next action is
+resolve only this shared-schema evidence boundary, then rebind final native owner
+and fresh admission before the authorized stop/migrate/deploy/restart sequence.
+This checkpoint-only continuation changes no application/control implementation.
+
+### Native schema compatibility refinement — 2026-11-11
+
+Resumed from clean remotely preserved24580fb384a951b42364883fa38c5bceb81d5b30;
+its architecture42985641963/security42985641824/commerce42985641774 are green.
+Independent historical-source audit confirmed possible SQL Server startup effects
+for retainedf284 are limited to its EF migrations: Portal MigrationHealth rejects
+pending migrations before configurable Migrate; Client Migrate is Development-only;
+Protect/Parfait bootstrappers independently require SQLite. No arbitrary SQL Server
+DDL owner outside the historical migration set was found. Recovery3f imports the
+migration owner but uses observations/recovery-window reads, not bundle execution.
+
+The canonical validator now supports only this exact audited tool/application pair
+for native/schema-only compatibility. Existing producer/material authorities still
+authenticate each attempt and exact package operation. Fresh full physical database
+observation, settled activity, counts, database identity, immutable applied prefix,
+strictly separate pending suffix and native owner are required. Unresolved app
+publication remains an explicit resource hold; no app/schema baseline advances,
+no old execution is relabeled success, and all later attempts remain inspected.
+Unknown sources/shared effects still block.36 focused regressions passed; independent
+review accepted validator4a2db9856859aa86747baafa4ac8f19dae56baf41443f280214b5c4bc39a05e3
+and tests2b5fa24b5e142af82856fb7577066063df53c25cdd9a92bf51a37d040048abb2.
+The native migration adapter is being updated to retain both canonical application
+holds and full physical observation in its durable admission proof. Actual runtime
+history proof and final release admission remain pending. Packages and successful
+checks are retained; no production migration, stop, upload or restart occurred.
+Native history admission also enters the existing recovery_material_reuse context
+for its one decision, retaining digest/receipt/log identities without another cache
+or extending mutable evidence lifetime.7 focused native-admission tests passed;
+new coverage verifies reuse is active only inside the decision and released after it.
+
+The b8 control is remotely preserved and exact architecture43028529533,
+security43028529687, commerce43028529740 are green. Native owner4cbc0378c536089612e7405f67f472f3acf6daab6dda5a661ab99b5a9a8c9412
+and migration adapter2adadb3fb8c4d225e1e8b5728ddf83adfbcebb3d4e054e803ddce95fa00176d0
+installed; plan e747f0999cb1f1b8af2196487a9a5a30bdb1f43e18ecc0b5a8ff60373c4f1f67
+validated PLAN_ONLY. Actual history proof passed the old recovery boundary and
+reached41414200795, a failed selector with all downstream jobs skipped and no
+artifacts. Currentness checked promotion success before its existing nonentry
+classifier. Moved that same complete-attempt nonentry check before source-mode
+classification; removed the later duplicate. It grants no promotion/publication
+and advances no baseline.43 focused tests pass; independent review accepted
+validator5b47047ac77d8cf78ae6786fa54bbea5aaf779202174e5f09e380855d728ed4b and
+tests5fe6e0b9424532ee2e801b40e57e3cec12b6b74cbea9bbfcf6f25af52d4ba681.
+All seven remaining failed selector runs (41414200795 through41600111853) passed
+the existing complete-attempt nonentry authority; log/private/tmp/legend-historical-selector-readback.log. Historical Protect
+artifact13095892226 was independently downloaded and SHA256 verified after a
+transient read failure; retained at/private/tmp/legend-historical-protect-artifact-13095892226.zip.
+No new application packages or schema bundle were built. Production effects remain
+zero. Fresh SQL observations remain required because the Mac egress IP has changed;
+only the previously authorized existing single-IP rule is used, never a range.
+
+
+## 2026-11-11 — manual upload reconciliation and production migration completed
+
+Founder manually deployed application revision `39bd1428d651e375f55bab0f40b649eb8f268bd3`
+to Portal, ClientApp, Protect and Parfait. Successful uploads were preserved and not
+replayed. Portal startup was blocked by the two pending AI migrations.
+
+The existing native migration adapter received independently accepted manual-upload
+reconciliation (adapter `bdc7e7e326d78d6d9fd4fd502320eb0345f5c28eda02623aabfaa3bd518f135d`;
+six focused validation checks passed). Intermittent GitHub DNS/artifact failures
+blocked earlier attempts before SQL; all apps were restarted after each failed
+admission. The full recovered admission passed, followed by execution-time checks.
+
+At 2026-11-11T15:18:26Z both `20261110222649_AddBusinessAssistantScopeAndFunding`
+and `20261110230942_AddAssistantCostReceiptSettlement` were applied and physically
+verified: 241 applied, zero pending. The canonical migration receipt is
+`AgentPortal/App_Data/linked-bundle-release-20261110/native-deployment-receipts/5fc8da452/migration-intent.json`,
+SHA-256 `7eb112b2ec925376443bda24bea77cf77590c89c67a6d937dd133675bc9b0aa7`.
+Do not replay this migration or any successful upload. All four apps were restarted;
+all returned HTTP200 runtime provenance for exact revision39bd1428 above, including
+`https://portal.mylegnd.com/api/runtime-provenance`. The unaffected website remains
+on `ea128c942b7d8bd4452b5ec6abc591ee624111fc`. Cold-start timeouts cleared on readback.
+Operational receipts remain in the existing admission/native-deployment directories.
+Rendered business-journey acceptance remains Founder-deferred, not claimed passed.
+
+Source-only fast-track integration is still pending. PR772 is green at39bd1428, but
+independent review confirmed its sourceIntegration marker still names e38aa2fa and
+would fail closed after merging. Correct only the existing request metadata to the
+reviewed source and fresh fast-track base, run required checks and merge normally;
+do not trigger a duplicate production deployment. This checkpoint addition is local
+and not yet remotely preserved.
+
+## 2026-11-11 — unified pretrained LEGEND AI and website action continuation
+
+Continuing the same checkout/branch from remotely preserved checkpoint
+`356b948eb25a3ab111babe436ad1d0c312a36408`. Production remains39bd1428;
+completed migration/upload receipts above are unchanged and must not be replayed.
+Founder authorized one assistant with Auto/manual OpenAI and Cloudflare selection,
+then expanded scope to privacy-safe website/form presentation edits and separately
+approved publication through existing Studio owners. Backend source/deployment
+writes remain unavailable to the assistant. Direct deployment is authorized once
+required exact-candidate checks/review pass. Founder explicitly declined further
+browser attempts and will verify deployed journeys; rendered acceptance is not
+claimed. Observed browser control: Mac locked, browser use disabled.
+
+Current uncommitted implementation extends the existing conversation/tool/history
+owners, signed Cloudflare model selection (v2), WebsitePlatformController mutation
+preview/exact-revision path, and existing FounderAiActionAuthorization ledger.
+No new database, provider credentials, funding limits, or background automation.
+Live read-only OpenAI model metadata returned200; provider credits/billable
+inference remain unverified. Production diagnostics showed governed tool timeouts,
+not demonstrated credit exhaustion. Direct pretrained conversations now bypass
+legacy native language/curriculum admission and expose read failures as unavailable
+evidence for truthful synthesis; tenant/identity/write controls remain enforced.
+
+Reusable checks: Cloudflare runtime/security151 passed; initial focused .NET206
+passed before subsequent review fixes; JS DOM rendering6 passed (not rendered
+browser acceptance). Astra found replay/config coupling, Auto privacy precedence,
+and legacy-thread privacy UI issues; corrected, new focused test run pending.
+Current focused log/private/tmp/legend-unified-ai-direct-tests.log; isolated build
+root/private/tmp/legend-unified-ai-tests. Website action approval/security audit
+and focused regressions remain pending. No acceptance, commit, deployment or
+fast-track synchronization of these new changes is claimed. Worker v2 must precede
+Azure manual Cloudflare selection. Resume exact tests/review, fix demonstrated
+issues, package/admit/deploy affected consumers, verify live, then source-only
+fast-track integration. Preserve this scope and all prior completed receipts.
+
+### Unified assistant source acceptance (supersedes pending test notes above)
+
+Astra accepted all28 changed source/test paths at manifest SHA256
+`7871c3e16d08afd2848da5b931c29f6b1c11b528b9cc644cf9ee8ce5a1804dec`.
+Exact sorted source hashes retained in/private/tmp/legend-unified-ai-source-manifest.txt.
+Focused run:330 passed and3 initial failures; corrected fixture identity/assertion
+issues, then all3 passed in targeted reruns. New SQL-compatible relational draft
+approval tests prove preview nonmutation, exact revision rejection, single-write
+replay, and closed-conversation denial. Publication-recovery regression identified
+a real OutcomeUnknown settlement gap: canonical receipt owner now permits only
+verified immutable website publication readback to complete that receipt, never
+reexecution. Entire affected action suite46/46 passed afterward. Additional
+missing-versus-zero analytics regression passed. JS8/8 passed; Cloudflare151/151
+passed. These are automated/synthetic checks, not provider-quality or browser
+acceptance. Logs reside under/private/tmp/legend-unified-ai-*, with final action
+suite/private/tmp/legend-canonical-action-recovery.log. Existing package advisory
+NU1903 for SignalR10.0.5 remains unchanged; no unrelated upgrade performed.
+
+Direct OpenAI AND Cloudflare now bypass legacy native curriculum/source-language
+classification. Existing structured read failures reach the same provider for
+truthful synthesis instead of rejecting every answer; no tenant/authorization or
+write approval is bypassed. Existing analytics projection now includes bounded
+campaign, funnel, form-abandonment and journey coverage. Missing section evidence
+is null, not zero. Website staging shares the existing action ledger and Studio
+validation; draft+receipt commit atomically, publication has its separate exact
+review and immutable request-ID recovery. No backend writes exposed. Same-origin
+review links are rendered safely in chat. New frontend capability is Founder-only
+with existing per-site authorization; no retail-client access added.
+
+Source acceptance does not grant deployment admission. Next: preserve exact source,
+reuse current PR checks, determine dependency impact, bind new packages/native owner
+and current healthy runtime39bd1428 (websiteea128c942), then stop/deploy/restart only
+affected applications plus the existing Cloudflare Worker v2 update. No migration
+is introduced. Founder latest instruction: "Do not waste time trying browser access,
+I need these deployed if done"; no further browser attempts. No new production
+mutation or live acceptance is claimed yet. Fast-track remains source-only afterward.
+
+### Unified assistant publication-host and release-scope correction
+
+Reviewed source c0ea660fa500d79ffc34150c0174576e06c8ba97 is remotely preserved
+on the existing isolation branch; fast-track integration remains pending. Final
+publication wiring now uses the existing Protect WebsiteContent API via configured
+HTTPS origin, existing protected ticket and one request ID. Redirects are disabled;
+only immutable PublicationStatus readback establishes success. HTTP200 alone leaves
+an uncertain receipt for reconciliation, never automatic repeat publication. Astra
+accepted these three affected files; focused publication transport tests2/2 PASS.
+
+Required CI on c0ea: security43076943794 PASS; architecture43076943893 and
+commerce43076943619 exposed the same missing fast-track dependency classification
+for the new shared messaging/Worker inputs. Canonical impact owner now explicitly
+maps the three shared server files to four .NET consumers and reuses the existing
+Founder Worker matcher for Portal dependency. Unknown paths still fail closed.
+Focused actual carrydiff plus two dependency tests3/3 PASS. Architecture additionally
+reported hosted CRM Chrome session timeout;109 other CRM tests passed. No claim of
+rendered acceptance; Founder instructed no further browser attempts.
+
+No new deployment, shutdown, migration or provider configuration change occurred.
+Current Azure baseline remains39bd1428 for four managed apps, ea128c942 for static
+Website. Final package/native admission and Worker v2 publication remain outstanding.
+Worker deployment owner currently enforces the old protected workflow identity;
+resolve through an authorized existing authority extension, never fabricated CI
+identity or bypass. Do not send manual v2 selections to an unupgraded Worker.
+
+### Exact unified assistant packages retained; no production mutation
+
+Application candidate3b78a234df16fdc09260b14dd3f1d8abbfcf61b2 is verified remotely
+preserved on the task branch. Existing native build owner was extended only for
+ancestor-bound canonical impact and conditional static packaging; Astra accepted
+owner SHA256c5e97e63f96539aa20eb61192044b2c2f12d37da1339b4ae46adcd5c6fa995b3.
+Four packages are complete at/private/tmp/legend-unified-ai-native-3b78a234d/packages.json.
+Manifest SHA256ee56fed47f054a03576a8e176a49bf88ca8613097b1f42d65a60c632970ff4b8.
+Astra independently accepted ZIP integrity, all package digests, exact target set,
+provenance markers and19 project assemblies. Reuse these exact packages; this
+checkpoint-only continuation does not change application bytes.
+
+Canonical scope: portal/client/protect/parfait; schema=false; routing=false;
+Founder Worker update=true. Static Website remains unaffected. Current candidate
+security43081371807 PASS; commerce43081361820 PASS; additional commerce43081371643
+and architecture43081371822 were still running at last observation. Do not call
+those pending checks successful or restart them. Reuse completed focused checks.
+
+Read-only production provenance reconfirmed all four managed apps at39bd1428d651e375f55bab0f40b649eb8f268bd3
+and static Website at ea128c942b7d8bd4452b5ec6abc591ee624111fc. No new release lock,
+shutdown, upload, migration, secret or funding mutation was performed.
+
+Exact remaining boundary: Cloudflare v2 must be published before enabling manual
+Cloudflare selection from this Azure candidate. Existing Worker deployment token
+is not in the Mac environment, known Wrangler configuration, or inspected Portal
+settings. Its established declaration is the GitHub CLOUDFLARE_WORKERS_API_TOKEN
+secret in the old Production workflow. Existing Worker deployment owner enforces
+that workflow and its deployment routine also rewrites secrets/policy/settings.
+Do not invoke it as a code-only update, fabricate Actions identity, copy secrets
+into logs/artifacts, or reactivate the rejected old release lane. A narrowly reviewed
+extension of the existing owner must preserve Worker bindings/routes/secrets/budgets
+and use an existing authorized deployment identity; no new key or broader access
+is assumed. Native Azure admission also needs rebinding to this candidate/current
+healthy baseline without replaying the completed241-migration history. No app
+should be stopped before that dependency and remaining required checks reconcile.
+Fast-track PR772 source-only synchronization remains pending after deployment.
+
+### Founder authorizes Azure first; Worker upgrade deferred
+
+Founder explicitly instructed: "deploy the apps first and add Cloudflare later".
+This supersedes the prior all-provider ordering hold. Existing Cloudflare registry
+v1 remains supported; new per-model Cloudflare choices are hidden and rejected
+server-side until the existing configuration
+LegendConnect:Foundation:Cloudflare:ProtocolVersion is admitted as legend-cloudflare.v2.
+Transport also rejects explicit @cf model calls before any provider request when
+v2 is absent. OpenAI Auto/manual and history remain available. No credential,
+provider limit, Worker deployment or production setting change is part of this
+staged rollout. Legacy answer gates remain bypassed for direct provider chats.
+
+Focused compatibility tests16/16 PASS in/private/tmp/legend-ai-deferred-worker-final.log;
+TRX/private/tmp/legend-unified-ai-results/deferred-worker-final.trx. Astra catalog
+finding corrected: provider readiness cannot revive a disabled model choice.
+The enabled-v2 test exposed an older manual-ID parser omission of @; corrected.
+Prior Worker151 and JS8 checks remain compatible. Four native packages must be
+rebuilt for the changed shared transport; preserve earlier3b78 receipts as history.
+Previous architecture43081371822 and commerce43081371643 were cancelled, not PASS.
+Required new-candidate checks remain mandatory; avoid checkpoint-only pushes while
+those checks run. No rendered browser attempt is authorized/requested here.
+
+
+### 2026-11-11 Azure-first LEGEND AI release completed
+
+Application candidate dd72553987c8cb2a2dd7900d9a6cab4fdcc3dc19 is deployed and
+runtime-verified on portal, client, protect and parfait. All four apps are Running;
+static Website remains unchanged at ea128c942b7d8bd4452b5ec6abc591ee624111fc.
+No Cloudflare Worker, credentials, model budgets or app settings changed. Existing
+v1 Cloudflare remains supported; new manual v2 choices stay unavailable until the
+separate Worker upgrade. Rendered/authenticated customer journeys were explicitly
+waived by Founder for this deployment and remain for live user acceptance. Runtime
+provenance is not proof of model answers, website publishing, or customer journeys.
+
+Exact native package manifest SHA256:
+cc85ef7c2d4efdace8b8883389f47b2abbbb23f53c7031b6d22bf930d8f6945b.
+Astra accepted final admission e4dc0afe9062d116e2311a8dcdfe34735f4a99300a8608102f6b52f35299cdad.
+Security43093321190 PASS; architecture43093321046 attempt2 PASS;
+commerce43093321168 attempt2 PASS. Same-run recovery reused successful validation
+after attempt1 artifact-upload/control-plane interruption; no application rebuild.
+Focused compatibility16/16 and prior compatible46 website/action,2 publication,
+8 JS,151 Worker checks retained. Production schema readback241 applied/0 pending,
+settled; no SQL migration was executed or replayed. Existing authorized single-IP firewall
+rule ZacLocalDev-AutoSync was refreshed; no broader network grant.
+
+Native stop/upload/restart/verify receipts and immutable admission evidence:
+AgentPortal/App_Data/linked-bundle-release-20261110/{admission,native-deployment-receipts}/dd7255398.
+Portal operation a59346d156de418e819a1d805a398845;
+Client e00a9f376d014beea6d85c6b4c84612d;
+Protect c896561a7822499db0ccc6b9237b15b4;
+Parfait a7f9d9f0819b46a49ef28dfc5928f984.
+A GitHub read reset before any upload was independently reconciled before one
+unchanged-owner retry. Client upload succeeded despite a later CLI network failure;
+SCM installed assembly hashes matched the exact package. Astra accepted existing
+recovery-owner continuation1683a84f9c19ba9f6e7c0b34b4f0e8601caaae4f2da9d4e232876b98106788ec,
+which preserved Portal/Client and uploaded only unattempted Protect/Parfait.
+No successful upload was repeated. Native mutex43100065298 release requested
+only after exact runtime verification. Prior-baseline39bd recovery packages retained.
+
+Source integration: PR772 into Legend/fast-track-release is the existing source-only
+path; prepare request-only metadata atop this checkpoint with actual fast-track
+base4e6554d8a34ca89ef7f98f77773be5fa75f92835. Integration must not redeploy.
+Task branch source preservation and merge readback remain distinct; record exact
+result in the final session receipt. Cloudflare setup and authenticated live UI/
+provider acceptance remain outstanding, not silently reported complete.

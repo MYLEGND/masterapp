@@ -40,6 +40,11 @@ public sealed class MarketingConnection
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public Guid Revision { get; set; } = Guid.NewGuid();
 
+    // Business assistant selection is independent of advertising and voice readiness.
+    public string? AssistantConfigurationJson { get; set; }
+    public string? AssistantCredentialCiphertext { get; set; }
+    public Guid AssistantControlRevision { get; set; } = Guid.NewGuid();
+
     // Voice extends this owner/provider authority without borrowing Ads credentials or readiness.
     public Guid? ReceptionistActiveConfigurationId { get; set; }
     public string? ReceptionistIngressKey { get; set; }

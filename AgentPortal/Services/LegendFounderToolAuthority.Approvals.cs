@@ -198,7 +198,7 @@ internal sealed partial class LegendFounderToolAuthority
     }
 
     private async Task<bool> RecordCloudActionOutcomeAsync(Guid approvalId, string claimRevision,
-        string idempotencyKey, string? result)
+        string idempotencyKey, string? result, bool verifiedWebsitePublication = false)
     {
         // Independent bounded recovery is needed after request cancellation.
         // If storage is unavailable the row stays Executing, which also denies
@@ -210,8 +210,12 @@ internal sealed partial class LegendFounderToolAuthority
             var db = services.ServiceProvider.GetRequiredService<MasterAppDbContext>();
             var row = await db.FounderAiActionAuthorizations.SingleOrDefaultAsync(
                 value => value.Id == approvalId, recovery.Token);
-            if (row is null || row.State != "Executing" || row.Revision != claimRevision || row.IdempotencyKey != idempotencyKey)
+            if (row is null || row.Revision != claimRevision || row.IdempotencyKey != idempotencyKey)
                 return false;
+            var recoveredPublication = verifiedWebsitePublication && result is not null &&
+                row.AuthorizationKind == "WebsiteProposal" && row.ToolName == "legend_website_propose_publish" &&
+                row.State == "OutcomeUnknown";
+            if (row.State != "Executing" && !recoveredPublication) return false;
             row.State = result is null ? "OutcomeUnknown" : "Completed";
             row.ResultJson = result;
             row.CompletedUtc = DateTime.UtcNow;

@@ -1,10 +1,27 @@
 using Domain.Billing;
 using Domain.Entities;
+using System.Linq.Expressions;
 
 namespace Infrastructure.Billing;
 
 internal static class BillingStateMapper
 {
+    private static readonly Expression<Func<ClientSubscription, DateTime, bool>> UsableExpression = (subscription, now) =>
+        !(subscription.CancelAtPeriodEnd && subscription.CurrentPeriodEndUtc.HasValue && subscription.CurrentPeriodEndUtc.Value <= now) &&
+        (subscription.Status == ClientSubscriptionStatus.Active ||
+         ((subscription.Status == ClientSubscriptionStatus.GracePeriod || subscription.Status == ClientSubscriptionStatus.PastDue) &&
+          subscription.GracePeriodEndsUtc.HasValue && subscription.GracePeriodEndsUtc.Value > now));
+    private static readonly Func<ClientSubscription, DateTime, bool> IsUsable = UsableExpression.Compile();
+
+    internal static Expression<Func<ClientSubscription, bool>> UsableAt(DateTime now) =>
+        Expression.Lambda<Func<ClientSubscription, bool>>(
+            new EvaluationTimeVisitor(UsableExpression.Parameters[1], now).Visit(UsableExpression.Body)!, UsableExpression.Parameters[0]);
+
+    private sealed class EvaluationTimeVisitor(ParameterExpression parameter, DateTime now) : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node) =>
+            node == parameter ? Expression.Constant(now) : base.VisitParameter(node);
+    }
     public static BillingEntitlementEvaluationResult EvaluateSubscription(
         ClientSubscription? subscription,
         string entitlementKey,
@@ -40,7 +57,7 @@ internal static class BillingStateMapper
                 $"{entitlementKey}: scheduled cancellation reached its period boundary.");
         }
 
-        if (subscription.Status == ClientSubscriptionStatus.Active)
+        if (IsUsable(subscription, evaluatedUtc) && subscription.Status == ClientSubscriptionStatus.Active)
         {
             return new BillingEntitlementEvaluationResult(
                 ClientEntitlementStatus.Active,
@@ -53,9 +70,7 @@ internal static class BillingStateMapper
                 $"{entitlementKey}: subscription is active.");
         }
 
-        if ((subscription.Status is ClientSubscriptionStatus.GracePeriod or ClientSubscriptionStatus.PastDue) &&
-            subscription.GracePeriodEndsUtc.HasValue &&
-            subscription.GracePeriodEndsUtc.Value > evaluatedUtc)
+        if (IsUsable(subscription, evaluatedUtc))
         {
             return new BillingEntitlementEvaluationResult(
                 ClientEntitlementStatus.GracePeriod,

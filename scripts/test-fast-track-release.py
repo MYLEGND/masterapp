@@ -236,6 +236,30 @@ class UniversalFastTrackAdmissionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
             authority.fast_track_scope(['Domain/Billing/UnreviewedTrainingSibling.cs'])
 
+    def test_assistant_and_membership_shared_inputs_reach_all_managed_hosts(self):
+        paths = ['Domain/Billing/ClientSubscriptionOfferPricing.cs',
+                 'Domain/Entities/MessageConversation.cs', 'Domain/Messaging/MessagingModels.cs',
+                 'Infrastructure/Data/Configurations/MarketingConnectionConfiguration.cs',
+                 'Infrastructure/Data/Configurations/MessagingModelConfiguration.cs',
+                 'Infrastructure/Messaging/MessagingService.FounderAi.cs',
+                 'Infrastructure/Mobile/LegendMemberDirectory.cs',
+                 'Infrastructure/Reception/ReceptionistAdmissionService.Assistant.cs',
+                 'Infrastructure/Reception/ReceptionistAdmissionService.AssistantAccounting.cs',
+                 'Infrastructure/Reception/ReceptionistOperatorService.Assistant.cs',
+                 'Infrastructure/Reception/ReceptionistOperatorService.AssistantAccounting.cs',
+                 'SHARED/Workspaces/WorkspaceKey.cs']
+        for path in paths:
+            with self.subTest(path=path):
+                actual = authority.fast_track_scope([path])
+                self.assertEqual({'portal', 'client', 'protect', 'parfait'},
+                                 {row['key'] for row in actual['matrix']['include']})
+        for path in ['Legend-Android/app/src/main/java/com/mylegnd/legend/registered/ui/LegendFounderAiConversation.kt',
+                     'Legend-Android/app/src/test/java/com/mylegnd/legend/registered/FounderAiMobileContractTest.kt']:
+            self.assertEqual([], authority.fast_track_scope([path])['matrix']['include'])
+        for path in ['Infrastructure/Reception/UnreviewedAssistant.cs', 'SHARED/Workspaces/Unreviewed.cs']:
+            with self.assertRaisesRegex(ValueError, 'Unmapped fast-track source path'):
+                authority.fast_track_scope([path])
+
     def invoke(self, paths, admission_error=None, migration_error=None):
         run = {'id': 123, 'head_sha': 'b' * 40, 'run_attempt': 1}
         with patch.dict(os.environ, {'BEFORE': 'a' * 40}), \

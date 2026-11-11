@@ -47,6 +47,9 @@ import kotlinx.serialization.Serializable
     val messages: List<FounderAiChatMessage>,
     @SerialName("conversationId") val conversationId: String,
     val expectedLastMessageId: String? = null,
+    val assistantWorkspaceKey: String? = null,
+    val assistantProvider: String? = null,
+    val assistantConfigurationRevision: String? = null,
 )
 @Serializable data class FounderAiChatResponse(
     val succeeded: Boolean,
@@ -84,7 +87,13 @@ import kotlinx.serialization.Serializable
 )
 @Serializable data class FounderAiHistoryThread(
     val id: String, val subject: String? = null, val lastMessageUtc: String? = null,
+    val assistantWorkspaceKey: String? = null, val assistantProvider: String? = null,
+    val assistantConfigurationRevision: String? = null,
 )
+@Serializable data class BusinessAssistantWorkspace(val workspace: String, val label: String)
+@Serializable data class BusinessAssistantConfiguration(val enabled: Boolean = false, val model: String, val projectId: String)
+@Serializable data class BusinessAssistantConnection(val workspaceKey: String, val revision: String,
+    val readiness: String, val configuration: BusinessAssistantConfiguration? = null, val creditBalanceStatus: String)
 @Serializable data class FounderAiHistoryPage(
     val succeeded: Boolean, val errorMessage: String? = null, val conversation: FounderAiHistoryConversation? = null,
 )
@@ -108,6 +117,7 @@ import kotlinx.serialization.Serializable
     val message: String,
     val round: Int? = null,
     val tool: String? = null,
+    val answerDelta: String? = null,
 )
 
 @Serializable data class MobileSessionResponse(
