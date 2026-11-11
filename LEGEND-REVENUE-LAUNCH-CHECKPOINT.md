@@ -5665,3 +5665,29 @@ Remaining combined release work: current required CI/admission, unresolved CRM
 browser startup acceptance, unfinished canonical internal-store assistant integration,
 remaining rendered journeys, native deployment-owner rebinding, then governed
 migration/application deployment and live provenance verification/source integration.
+
+### CRM local Graph configuration repair — 2026-11-10
+
+Resumed clean at40e8eee8a0977ffde42f3e3cddc218355110a3d0; session preflight PASS.
+User reported ClientsController activation failing on missing GraphProvisioning
+ClientSecret. Its canonical Entra lifecycle dependency and legacy provisioning
+facade both validated credentials during construction, before CRM reads ran.
+Deferred canonical Graph/context initialization until actual identity access;
+moved the legacy facade's unchanged required-setting checks into GetGraphClient.
+Legacy personal-email lookup resolves that client before its provider-error catch,
+so missing configuration cannot be misreported as an absent external identity.
+No credentials, fallbacks, permissions, migrations or other feature files changed.
+
+Focused supported local-test run22PASS/0FAIL/0SKIP: new real-service/no-secret
+owned-client lookup and cross-owner exclusion; canonical provisioning and legacy
+lookup reject missing secret before provider access; existing ClientsController,
+quick-view security and Entra recovery regressions. Used the existing isolated
+legend-assistant-foundation-build outputs and scripts/db.sh local test. Receipt
+/private/tmp/legend-crm-configuration-tests.log. Existing NU1900 vulnerability-feed
+availability and obsolete test-host warnings remain; no checks were suppressed.
+No Microsoft Graph request, real identity mutation, customer message or production
+change occurred. Browser access host unavailable, so rendered acceptance is NOT_RUN.
+The earlier migration repair and its SQL receipts remain preserved and compatible;
+this identity-service change invalidates affected application package bytes and
+requires normal impact/admission evaluation before deployment. Do not relabel the
+old app packages or replay any successful production effects.

@@ -270,7 +270,8 @@ internal static class ControllerTestHelpers
         IEmailSender? emailSender = null,
         IConfiguration? configuration = null,
         IAgentTimeZoneResolver? timeResolver = null,
-        IMobileActorResolver? mobileActorResolver = null)
+        IMobileActorResolver? mobileActorResolver = null,
+        IClientEntraLifecycleService? clientEntraLifecycle = null)
     {
         var config = configuration ?? new ConfigurationBuilder()
             .AddInMemoryCollection(new[]
@@ -289,11 +290,12 @@ internal static class ControllerTestHelpers
                 "client-entra-id",
                 "client@example.com",
                 false));
+        clientEntraLifecycle ??= entraLifecycle.Object;
         var provisioning = new ClientProvisioningService(
             config,
             NullLogger<ClientProvisioningService>.Instance,
             db,
-            entraLifecycle.Object);
+            clientEntraLifecycle);
         var households = new Mock<IHouseholdMembershipService>();
         households
             .Setup(service => service.RemoveMemberAsync(
@@ -323,7 +325,7 @@ internal static class ControllerTestHelpers
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
         mobileActorResolver ??= Mock.Of<IMobileActorResolver>();
         var dataProtectionProvider = new EphemeralDataProtectionProvider();
-        var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, entraLifecycle.Object, households.Object, subscriptionIdentitySync.Object, prod, effCtx, execution, commitments, billingOrchestrator, clientBillingWorkspaceService, subscriptionInvitationEmailService, householdPartnerInvitationEmailService, mobileActorResolver, dataProtectionProvider)
+        var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, clientEntraLifecycle, households.Object, subscriptionIdentitySync.Object, prod, effCtx, execution, commitments, billingOrchestrator, clientBillingWorkspaceService, subscriptionInvitationEmailService, householdPartnerInvitationEmailService, mobileActorResolver, dataProtectionProvider)
         {
             ControllerContext = new ControllerContext { HttpContext = http },
             TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>())

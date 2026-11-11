@@ -80,10 +80,12 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
 
     private readonly MasterAppDbContext _db;
     private readonly ILogger<ClientEntraLifecycleService> _logger;
-    private readonly GraphServiceClient _graph;
-    private readonly string _inviteRedirectUrl;
-    private readonly string _clientApplicationId;
-    private readonly Guid _clientAppRoleId;
+    private sealed record ProvisioningContext(GraphServiceClient Graph, string InviteRedirectUrl, string ClientApplicationId, Guid ClientAppRoleId);
+    private readonly Lazy<ProvisioningContext> _provisioning;
+    private GraphServiceClient _graph => _provisioning.Value.Graph;
+    private string _inviteRedirectUrl => _provisioning.Value.InviteRedirectUrl;
+    private string _clientApplicationId => _provisioning.Value.ClientApplicationId;
+    private Guid _clientAppRoleId => _provisioning.Value.ClientAppRoleId;
 
     public ClientEntraLifecycleService(
         MasterAppDbContext db,
@@ -92,7 +94,13 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
     {
         _db = db;
         _logger = logger;
+        // Resolving a CRM controller must not require downstream provisioning credentials.
+        // Validate the complete provider configuration on first actual identity operation.
+        _provisioning = new Lazy<ProvisioningContext>(() => CreateProvisioningContext(configuration));
+    }
 
+    private static ProvisioningContext CreateProvisioningContext(IConfiguration configuration)
+    {
         var tenantId = GetRequired(
             configuration,
             "GraphProvisioning:TenantId",
@@ -110,7 +118,7 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
             "GraphProvisioning:ClientSecret",
             "GraphProvisioning__ClientSecret");
 
-        _clientApplicationId = GetRequired(
+        var clientApplicationId = GetRequired(
             configuration,
             "GraphProvisioning:ClientApplicationId",
             "GraphProvisioning__ClientApplicationId");
@@ -120,14 +128,15 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
             "GraphProvisioning:ClientAppRoleId",
             "GraphProvisioning__ClientAppRoleId");
 
+        var clientAppRoleId = Guid.Empty;
         if (!string.IsNullOrWhiteSpace(configuredRole) &&
-            !Guid.TryParse(configuredRole, out _clientAppRoleId))
+            !Guid.TryParse(configuredRole, out clientAppRoleId))
         {
             throw new InvalidOperationException(
                 "GraphProvisioning:ClientAppRoleId must be a GUID.");
         }
 
-        _inviteRedirectUrl =
+        var inviteRedirectUrl =
             GetSetting(
                 configuration,
                 "GraphProvisioning:InviteRedirectUrl",
@@ -141,7 +150,7 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
         var cacheKey =
             $"{tenantId}|{provisioningClientId}|{provisioningSecret}";
 
-        _graph = GraphClients.GetOrAdd(cacheKey, _ =>
+        var graph = GraphClients.GetOrAdd(cacheKey, _ =>
         {
             var credential = new ClientSecretCredential(
                 tenantId,
@@ -152,6 +161,7 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
                 credential,
                 new[] { "https://graph.microsoft.com/.default" });
         });
+        return new ProvisioningContext(graph, inviteRedirectUrl, clientApplicationId, clientAppRoleId);
     }
 
     public async Task<ClientEntraIdentityResult> EnsureBusinessTeamIdentityAsync(string firstName, string lastName,

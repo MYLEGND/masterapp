@@ -58,15 +58,6 @@ public class ClientProvisioningService
             !string.IsNullOrWhiteSpace(_clientSecret)
         );
 
-        if (string.IsNullOrWhiteSpace(_tenantId))
-            throw new Exception("Missing TenantId. Expected GraphProvisioning:TenantId (or GraphProvisioning__TenantId) or AzureAd:TenantId (or AzureAd__TenantId).");
-
-        if (string.IsNullOrWhiteSpace(_clientId))
-            throw new Exception("Missing ClientId. Expected GraphProvisioning:ClientId (or GraphProvisioning__ClientId) or AzureAd:ClientId (or AzureAd__ClientId).");
-
-        if (string.IsNullOrWhiteSpace(_clientSecret))
-            throw new Exception("Missing ClientSecret. Expected GraphProvisioning:ClientSecret (or GraphProvisioning__ClientSecret) or AzureAd:ClientSecret (or AzureAd__ClientSecret).");
-
         _graphCacheKey = $"{_tenantId}|{_clientId}|{_clientSecret}";
     }
 
@@ -85,6 +76,16 @@ public class ClientProvisioningService
 
     private GraphServiceClient GetGraphClient()
     {
+        // CRM reads can resolve this service without provisioning credentials.
+        if (string.IsNullOrWhiteSpace(_tenantId))
+            throw new Exception("Missing TenantId. Expected GraphProvisioning:TenantId (or GraphProvisioning__TenantId) or AzureAd:TenantId (or AzureAd__TenantId).");
+
+        if (string.IsNullOrWhiteSpace(_clientId))
+            throw new Exception("Missing ClientId. Expected GraphProvisioning:ClientId (or GraphProvisioning__ClientId) or AzureAd:ClientId (or AzureAd__ClientId).");
+
+        if (string.IsNullOrWhiteSpace(_clientSecret))
+            throw new Exception("Missing ClientSecret. Expected GraphProvisioning:ClientSecret (or GraphProvisioning__ClientSecret) or AzureAd:ClientSecret (or AzureAd__ClientSecret).");
+
         try
         {
             return GraphClients.GetOrAdd(_graphCacheKey, _ =>
@@ -198,6 +199,8 @@ public class ClientProvisioningService
     // ==========================================================
     private async Task<User?> FindUserByPersonalEmailAsync(string personalEmail)
     {
+        // Missing configuration is not evidence that an external user is absent.
+        var graph = GetGraphClient();
         try
         {
             var eMail = (personalEmail ?? "").Trim();
@@ -207,7 +210,7 @@ public class ClientProvisioningService
             var esc = eMail.Replace("'", "''");
             var filter = $"mail eq '{esc}' or otherMails/any(m:m eq '{esc}')";
 
-            var result = await GetGraphClient().Users.GetAsync(req =>
+            var result = await graph.Users.GetAsync(req =>
             {
                 req.QueryParameters.Filter = filter;
                 req.QueryParameters.Select = new[] { "id", "userPrincipalName", "mail", "otherMails" };
