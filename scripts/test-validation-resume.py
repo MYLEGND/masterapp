@@ -5882,7 +5882,14 @@ class ReleaseAttemptNonentryTests(unittest.TestCase):
     def test_current_nonentry_preserves_reviewed_observers_and_rejects_mutation(self):
         source=(ROOT / '.github/workflows' / m.DIRECT_RELEASE_WORKFLOW).read_text()
         jobs=self.observer_jobs()+[dict(name='migration-readiness',status='completed',conclusion='skipped',steps=[])]
+        self.assertFalse(m.release_attempt_never_entered(jobs,source))
+        native=dict(name='native-mac-ownership',status='completed',conclusion='skipped',steps=[])
+        jobs=[native]+jobs
         self.assertTrue(m.release_attempt_never_entered(jobs,source))
+        for mutation in ({'status':'in_progress'}, {'conclusion':'success'}, {'conclusion':'failure'},
+                         {'steps':[{'conclusion':'success'}]}):
+            self.assertFalse(m.release_attempt_never_entered([native | mutation]+jobs[1:],source))
+        self.assertFalse(m.release_attempt_never_entered([native]+jobs,source))
         self.assertFalse(m.release_attempt_never_entered(jobs[:-1],source))
         for before,after in (
             ('run: python3 scripts/wake-release-lifecycle.py','run: python3 scripts/deploy-approved-app.py'),

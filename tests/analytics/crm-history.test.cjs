@@ -58,6 +58,11 @@ test('startup diagnostics classify failures without leaking driver text or ident
     assert.equal(result.elapsedMs,null);assert.equal(JSON.stringify(result).includes('PRIVATE'),false);
   }
   const unknown=diagnostic(secret,undefined,-1);
+  for(const [message,key] of [['COMMAND InitSession','initReceived'],['Launching chrome:','browserLaunchIssued'],['DevTools listening on','devToolsListening'],['DevTools HTTP Request failed','devToolsHttpFailed']]){
+    const result=diagnostic(message+' '+secret,undefined,100);
+    assert.equal(result[key],true);assert.equal(JSON.stringify(result).includes('private'),false);
+    assert.equal(unknown[key],false);
+  }
   assert.equal(unknown.ready,false);assert.equal(unknown.versionMismatch,false);assert.equal(unknown.elapsedMs,0);
   assert.equal(unknown.exitCode,null);assert.equal(unknown.exited,false);
   assert.ok(browser.includes('AbortSignal.timeout(8000)'));

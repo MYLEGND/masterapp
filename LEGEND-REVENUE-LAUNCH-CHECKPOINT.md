@@ -5603,3 +5603,24 @@ all PASS (SingleBranchTopology4PASS plus targeted guard1PASS). No new dependenci
 No production app stop/upload/restart. Required migration-rehearsal extension,
 independent combined release acceptance, remaining rendered journeys and native-owner
 rebinding remain outstanding. Shared internal-store assistant remains unimplemented.
+
+### Combined release continuation — non-entry evidence repair
+
+Resumed from exact remote/local398f94f523ea13951f9a415c2de6f56eea0d5f47;
+session preflight PASS, no local-only/remote-only commits or dirty work at entry.
+Corrected validation-resume.py's non-entry classifier for the existing native Mac
+mutex lane. Requires exactly one explicit completed/skipped/no-step native job;
+missing, active, successful, failed, duplicate or contradictory evidence rejects.
+The new exact observer hash differs only by native-input suppression on two
+always() observers; commands, permissions and ambient environment remain unchanged.
+ReleaseAttemptNonentryTests14PASS; independent reviewer accepted the exact two-file
+diff for source preservation only, not release admission. Original five packages
+at9a2977c2341509044eecf65b3555e691acacc833 remain unchanged and retain provenance.
+
+Current CI at398f94f52: security42960525385 PASS, architecture42960525289 FAIL,
+contracts42960525204 FAIL. Remaining demonstrated failures are assistant migration
+suffix/physical rehearsal support and CRM browser POST/session startup timeout.
+Migration support has not been loosened, no old acceptance has been relabeled, and
+no production migration or app stop/upload/restart occurred in this continuation.
+Shared internal-store assistant remains unimplemented. Combined release is NOT
+admitted; preserve existing receipts and resume only these outstanding stages.

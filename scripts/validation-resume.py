@@ -15234,6 +15234,18 @@ def _release_history_runs(repository, token):
 
 def _release_nonentry_observers(jobs, source):
     """Authenticate observers with no capability to publish within this attempt."""
+    blocks = _job_blocks(source) if isinstance(source, str) else {}
+    native = [job for job in jobs if job.get('name') == 'native-mac-ownership']
+    if 'native-mac-ownership' in blocks or native:
+        # A native mutex run may accompany external Mac writes. Only explicit
+        # skipped/no-step evidence proves this lane never entered; an omitted,
+        # active, successful or otherwise ambiguous holder is not non-entry.
+        if ('native-mac-ownership' not in blocks or len(native) != 1 or
+                native[0].get('status') != 'completed' or
+                native[0].get('conclusion') != 'skipped' or native[0].get('steps') != []):
+            return None
+        jobs = [job for job in jobs if job is not native[0]]
+        blocks.pop('native-mac-ownership')
     names = {'release-state-receipt', 'target-release-receipts (${{ matrix.app }})',
              'wake-release-lifecycle-after-terminal-release'}
     present = [job for job in jobs if job.get('name') in names]
@@ -15242,7 +15254,6 @@ def _release_nonentry_observers(jobs, source):
     if (not isinstance(source, str) or {job['name'] for job in present} != names
         or len(present) != len(names)):
         return None
-    blocks = _job_blocks(source)
     legacy_jobs = {'admission', 'discover-live', 'preserve-rollback', 'release',
                    'release-state-receipt', 'target-release-receipts',
                    'wake-release-lifecycle-after-terminal-release'}
@@ -15265,6 +15276,9 @@ def _release_nonentry_observers(jobs, source):
     contracts = {
         'ce5e7dfe3d4100116bae366833687d6055dd51b91357cc268c73d33105b999c7': legacy_jobs,
         'f49cf05a452c901b015e69a58697b108b24694cee0763448d3a3a3672e4d04c2': legacy_jobs | {'migration-readiness'},
+        # Native coordination suppresses these same observers; their permissions
+        # and commands are unchanged. Explicit skipped native evidence is required above.
+        '4b4234ebc49d8332cac27072422ec631483ed24cd7db4b500622e2197a9b2d2b': legacy_jobs | {'migration-readiness'},
     }
     if contracts.get(hashlib.sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest()) != set(blocks):
         return None
