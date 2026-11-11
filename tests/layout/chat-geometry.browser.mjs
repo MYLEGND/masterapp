@@ -66,17 +66,31 @@ try {
         const select = document.querySelector('#legendFounderAiModelSelection').getBoundingClientRect();
         const send = document.querySelector('#legendFounderAiSend').getBoundingClientRect();
         return { inputBottom: input.bottom, selectTop: select.top, selectRight: select.right, sendLeft: send.left,
+          selectWidth: select.width, selectBackground: getComputedStyle(document.querySelector('#legendFounderAiModelSelection')).backgroundColor,
           selectorCount: document.querySelectorAll('#legendFounderAiModelSelection').length };
       });
       assert(layout.selectTop >= layout.inputBottom, `${width}: selector must be below text`);
       assert(layout.selectRight <= layout.sendLeft, `${width}: toolbar overlaps`);
       assert.equal(layout.selectorCount, 1);
+      assert(layout.selectWidth <= 180, `${width}: model picker too wide`);
+      assert.notEqual(layout.selectBackground, 'rgb(255, 255, 255)', `${width}: model picker lost component theme`);
     }
     assert.equal(m.sendRadius,'50%' ,`${width}: send shape overridden`);
     if(width<=900){
       assert.equal(m.scrim.opacity,'0',`${width}: scrim rendered as extra close`);
       const menu=page.locator('#legendFounderAiMobileMenu');
       await menu.click();assert.equal(await menu.getAttribute('aria-expanded'),'true');
+      await page.locator('#legendBusinessAssistantSettings').evaluate(el => el.open = true);
+      await page.waitForTimeout(240); // Existing drawer transition must finish before visual evidence.
+      const businessStyle = await page.locator('#legendBusinessAssistantSettings').evaluate(el => ({
+        foreground: getComputedStyle(el).color,
+        sidebar: getComputedStyle(el.closest('.legend-founder-ai-sidebar')).color,
+        controlBackground: getComputedStyle(el.querySelector('select')).backgroundColor
+      }));
+      assert.equal(businessStyle.foreground, businessStyle.sidebar, `${width}: sidebar text loses theme`);
+      assert.notEqual(businessStyle.controlBackground, 'rgb(255, 255, 255)', `${width}: business control loses theme`);
+      if (process.env.LEGEND_SCREENSHOTS) await page.screenshot({path:`${process.env.LEGEND_SCREENSHOTS}/${width}-sidebar.png`});
+      await page.locator('#legendBusinessAssistantSettings').evaluate(el => el.open = false);
       await menu.click();assert.equal(await menu.getAttribute('aria-expanded'),'false');
       const handle=page.locator('.legend-mobile-sheet-handle');
       const handleBox=await handle.boundingBox();

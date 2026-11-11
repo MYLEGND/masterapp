@@ -196,7 +196,7 @@ body.legend-app.legend-modal-active > .modal-backdrop {
         select,
         .form-control,
         .form-select
-    ):not(.legend-founder-ai-input-wrap textarea, .messaging-command-center-search, .messaging-send-form textarea) {
+    ):not(.legend-founder-ai-modal :is(input, textarea, select), .messaging-command-center-search, .messaging-send-form textarea) {
         border: 1px solid var(--legend-modal-line);
         border-radius: var(--legend-app-radius-compact);
         background: var(--legend-app-control);

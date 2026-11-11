@@ -2003,7 +2003,9 @@
         // Read only displayed page text, never form values, hidden application
         // state, credentials, or this assistant's own transcript. This is user
         // supplied evidence, not permission to execute instructions on a page.
-        const root = Array.from(document.querySelectorAll('main, [role="main"]')).find(el => !modalElement.contains(el)) || document.body;
+        const root = document.querySelector('[data-legend-page-content]') ||
+            Array.from(document.querySelectorAll('main, [role="main"]')).find(el =>
+                !el.closest('.modal, dialog, [data-legend-modal-surface]') && !modalElement.contains(el)) || document.body;
         const parts = [];
         let length = 0;
         let visited = 0;

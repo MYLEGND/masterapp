@@ -6227,3 +6227,28 @@ is bounded visible text, excludes private/hidden/editable regions, and is untrus
 context rather than browser automation or canonical service evidence.
 PR773 source-only fast-track synchronization remains pending; no duplicate deployment
 is authorized by its sourceIntegration marker. Preserve the exact e7 package.
+
+
+### Page capture and component theme follow-up — 2026-11-11
+Prior PR773 is merged at6077ef21e21f0708e462d66cbd912cae2272ebf0 and imported through
+supported source intake, same checkout/branch. Prior e7 deployment is retained.
+The reported route-only failure is reproduced structurally: _Layout renders hidden
+Messages <main> before the actual page, and capture selected that first main.
+The canonical layout now marks its page content; capture selects it, with a modal-
+excluding fallback. Existing hidden/private/editable exclusions and24k bound remain.
+Regression includes hidden Messages preceding the page, both with and without marker.
+No permissions or backend projection rules changed. A separate canonical analytics
+read timeout is not diagnosed or claimed fixed by this browser delivery correction.
+
+Shared modal form styles were overriding the AI component; that generic selector
+now exempts AI form controls so legend-founder-ai.css owns them. Compact themed model
+selector, readable sidebar controls/text/buttons, subdued secondary rows, narrower drawer, and collapsed
+optional image tools preserve existing IDs/handlers/state. No duplicate CSS owner,
+provider changes or new attachment flow. Canonical impact selects all five apps due
+to the shared stylesheet; deployment must follow that owner, not assume Portal-only.
+Focused JS10 and layout contract53 passed. Rendered assistant/theme evidence is in
+/private/tmp/legend-composer-followup-final-geometry.log and corresponding screenshots;
+full harness retains the pre-existing unrelated Messages palette failure. Real browser
+control is disabled in Work settings; physical iPhone and actual authenticated analytics
+request acceptance remain unverified. No paid/provider or customer test calls occurred.
+This follow-up is not yet deployed. Preserve previous successful upload/restart receipts.
