@@ -4873,6 +4873,18 @@ def fast_track_scope(paths):
     # Infrastructure/Domain/Shared ProjectReference dependencies. Keep exact
     # ownership: an unknown sibling is not silently admitted.
     shared_server = {
+        'Domain/Billing/ClientSubscriptionOfferPricing.cs',
+        'Domain/Entities/MessageConversation.cs',
+        'Domain/Messaging/MessagingModels.cs',
+        'Infrastructure/Data/Configurations/MarketingConnectionConfiguration.cs',
+        'Infrastructure/Data/Configurations/MessagingModelConfiguration.cs',
+        'Infrastructure/Messaging/MessagingService.FounderAi.cs',
+        'Infrastructure/Mobile/LegendMemberDirectory.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.Assistant.cs',
+        'Infrastructure/Reception/ReceptionistAdmissionService.AssistantAccounting.cs',
+        'Infrastructure/Reception/ReceptionistOperatorService.Assistant.cs',
+        'Infrastructure/Reception/ReceptionistOperatorService.AssistantAccounting.cs',
+        'SHARED/Workspaces/WorkspaceKey.cs',
         'Infrastructure/Mobile/MobileHomeService.cs',
         'Infrastructure/Notifications/NotificationEngine.cs',
         # Filed CRM history shares the existing Domain/Infrastructure graph.
@@ -5027,6 +5039,8 @@ def fast_track_scope(paths):
     # Reviewed native application sources are not inputs to server packages.
     # Keep this exact: new native files still require ownership review.
     native_only = {
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/ui/LegendFounderAiConversation.kt',
+        'Legend-Android/app/src/test/java/com/mylegnd/legend/registered/FounderAiMobileContractTest.kt',
         'Legend-ios/Legend.xcodeproj/project.pbxproj',
         'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/LegendActivityProjection.kt',
         'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/model/MobileContracts.kt',

@@ -5529,3 +5529,31 @@ decorative button, copy an assistant stack, weaken frame policy or claim a plain
 link provides embedded store management. Extend the existing transport/session authority
 with focused tenant/role/continuity tests before the combined release.
 Fresh Azure read-only inventory confirms all five masterapp web apps Running.
+
+### Combined candidate release checks initiated — 2026-11-10
+
+Founder reiterated DEPLOY EVERYTHING and LEGEND subscription selection. Existing Azure
+sign-in verified; selected enabled subscription a543b54e-8a42-4a4b-bd4d-bc13573b1c48.
+Preflight PASS at a2379b8210b8c800558b4f3eac8400237de07ebf; actual fast-track remains
+4e6554d8a34ca89ef7f98f77773be5fa75f92835. Opened draft PR772 for required combined
+validation: https://github.com/MYLEGND/masterapp/pull/772. Not merged or deployed.
+
+Exact source run42952690607 failed canonical carry-diff admission because14 accumulated
+paths were unmapped. Corrected existing validation-resume.py explicit ownership:
+12 shared Domain/Infrastructure/SHARED inputs select all four .NET hosts; two Android
+files remain native-only and do not imply Azure/mobile-store publication. Unknown
+siblings still reject. Added focused mapping regression. Actual previously failing
+carry-diff test and new regression each PASS. Independent review accepted exact policy/test diff
+for source preservation, not production admission. Full local suites initially used
+Mac Python3.9 and encountered unsupported hashlib.file_digest and historical fixture
+failures; installed Python3.13 rerun PASS:211 impact/admission tests and117 migration
+operation tests, logs /private/tmp/legend-combined-impact-py313-tests.log and
+/private/tmp/legend-combined-release-children-py313-tests.log. These are local policy
+checks, not production migration or whole-feature acceptance.
+
+PR security42954306374 and architecture42954306364 started; migration probe PASS at
+last observation, security/architecture still running. Source-only/draft package and
+migration rehearsal jobs were skipped, not accepted. Packaging, exact final candidate
+checks/review, production schema admission and store assistant work remain outstanding.
+No production mutation. Existing direct-release request still preserves source-only
+integration; do not repurpose stale native deployment receipts or bypass admission.
