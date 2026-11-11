@@ -228,6 +228,9 @@
 
     const modelSelection = document.getElementById('legendFounderAiModelSelection');
     const modelStatus = document.getElementById('legendFounderAiModelStatus');
+    const modelControl = document.getElementById('legendFounderAiModelControl');
+    const modelHeaderHome = modelControl?.parentElement;
+    const mobileModelSlot = document.getElementById('legendFounderAiMobileModelSlot');
     let chatModels = [];
 
     const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
@@ -329,6 +332,8 @@
     // The mobile hamburger exposes that same sidebar; never duplicate controls
     // across the chat canvas and navigation rail.
     function syncControlPlacement() {
+        const modelHome = isMobile() ? mobileModelSlot : modelHeaderHome;
+        if (modelControl && modelHome && modelControl.parentElement !== modelHome) modelHome.appendChild(modelControl);
         if (modebar && mobileControls && modebar.parentElement !== mobileControls) {
             mobileControls.appendChild(modebar);
         }
@@ -1655,17 +1660,23 @@
         if (dictation) { if (dictation.phase === 'recording') await finishDictation(); return; }
         const conversation = activeConversation();
         if (busy || conversation.pendingOperation) { voiceStatus.textContent = 'Finish the pending request before recording.'; return; }
-        if (conversation.mode !== 'business' || conversation.nativeOnly || conversation.externalAnsweringBlocked ||
-            businessConfiguration?.workspaceKey !== conversation.assistantWorkspaceKey ||
-            businessConfiguration?.revision !== conversation.assistantConfigurationRevision ||
-            businessConfiguration?.configuration?.dictationEnabled !== true || conversation.assistantProvider !== 'openai') {
-            voiceStatus.textContent = 'Select a business conversation with reviewed OpenAI dictation and funding enabled in its settings. You can continue typing.'; return;
+        if (conversation.nativeOnly || conversation.externalAnsweringBlocked) {
+            voiceStatus.textContent = 'External audio transcription is blocked by this conversation’s privacy setting. Typed text is unchanged.'; return;
+        }
+        if (!businessConfiguration?.workspaceKey || businessConfiguration?.configuration?.enabled !== true ||
+            businessConfiguration?.configuration?.dictationEnabled !== true || businessProvider.value !== 'openai' ||
+            (conversation.mode === 'business' && (businessConfiguration.workspaceKey !== conversation.assistantWorkspaceKey ||
+                businessConfiguration.revision !== conversation.assistantConfigurationRevision || conversation.assistantProvider !== 'openai'))) {
+            voiceStatus.textContent = 'Choose your authorized workspace and enable dictation in its OpenAI settings. Dictation needs its own approved funding; your chat model selection is unchanged.';
+            setSidebarOpen(true);
+            if (businessSettings) { businessSettings.open = true; businessSettings.scrollIntoView({ block: 'nearest' }); }
+            return;
         }
         if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || !window.AudioWorkletNode) {
             voiceStatus.textContent = 'Microphone recording is unavailable here. Use an HTTPS browser with microphone access, or type your message.'; return;
         }
         const session = { phase: 'permission', chunks: [], samples: 0, abort: new AbortController(),
-            workspace: conversation.assistantWorkspaceKey, revision: conversation.assistantConfigurationRevision,
+            workspace: businessConfiguration.workspaceKey, revision: businessConfiguration.revision,
             conversationId: conversation.id, accountGeneration, operationId: crypto.randomUUID() };
         dictation = session; voiceCancel.hidden = false;
         voiceStatus.textContent = 'Allow microphone access to record. Audio goes to your selected OpenAI project when you stop or reach 60 seconds. Cancel before transcription discards the local recording.';
@@ -1765,7 +1776,7 @@
         if (kind === 'model') {
             settingsTitle.textContent = 'Model';
             settingsBody.append(
-                settingsAction('Choose model', 'Choose Auto or a configured model in this conversation’s header.', () => { closeSettingsPanel(); modelSelection?.focus(); })
+                settingsAction('Choose model', 'Choose Auto or a configured model in this conversation.', () => { closeSettingsPanel(); modelSelection?.focus(); })
             );
         } else if (kind === 'tools') {
             settingsTitle.textContent = 'Tools & data';
@@ -1988,6 +1999,35 @@
         }
     }
 
+    function captureCurrentPage() {
+        // Read only displayed page text, never form values, hidden application
+        // state, credentials, or this assistant's own transcript. This is user
+        // supplied evidence, not permission to execute instructions on a page.
+        const root = Array.from(document.querySelectorAll('main, [role="main"]')).find(el => !modalElement.contains(el)) || document.body;
+        const parts = [];
+        let length = 0;
+        let visited = 0;
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode() && visited++ < 15000) {
+            const node = walker.currentNode;
+            const parent = node.parentElement;
+            if (!parent || modalElement.contains(parent) || parent.closest('script,style,noscript,template,input,textarea,select,[contenteditable],[role="textbox"],[hidden],[aria-hidden="true"],[data-private],[data-sensitive],[data-ai-exclude]')) continue;
+            const text = node.textContent.replace(/\s+/g, ' ').trim();
+            if (!text) continue;
+            let visible = true;
+            for (let el = parent; el; el = el.parentElement) {
+                const style = window.getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') { visible = false; break; }
+            }
+            if (!visible) continue;
+            const remaining = 24000 - length;
+            if (remaining <= 0) break;
+            parts.push(text.slice(0, remaining));
+            length += parts.at(-1).length + 1;
+        }
+        return parts.join('\n').slice(0, 24000);
+    }
+
     form?.addEventListener('submit', async event => {
         event.preventDefault();
         if (dictation) { voiceStatus.textContent = 'Stop or cancel dictation before sending.'; return; }
@@ -2011,6 +2051,7 @@
             mode: conversation.mode, nativeOnly: conversation.nativeOnly === true,
             modelSelection: conversation.mode === 'business' ? null : (modelSelection?.value || 'auto'),
             pagePath: window.location.pathname,
+            pageContent: captureCurrentPage(),
             assistantWorkspaceKey: conversation.assistantWorkspaceKey || null,
             assistantProvider: conversation.assistantProvider || null,
             assistantConfigurationRevision: conversation.assistantConfigurationRevision || null,

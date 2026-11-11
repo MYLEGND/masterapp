@@ -1,25 +1,33 @@
 // Run with: node tests/layout/chat-geometry.browser.mjs (requires Playwright Chromium).
 // Synthetic content only; loads production styles and interaction controllers.
 import { chromium } from 'playwright';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 const root = new URL('../../', import.meta.url);
-const read = path => readFileSync(new URL(path, root), 'utf8');
+const read = path => process.env.LEGEND_CAPTURE_REVISION
+  ? execFileSync('git', ['show', `${process.env.LEGEND_CAPTURE_REVISION}:${path}`], { cwd: root, encoding: 'utf8' })
+  : readFileSync(new URL(path, root), 'utf8');
 const styles = ['AgentPortal/wwwroot/lib/bootstrap/dist/css/bootstrap.min.css',
   'Legend-Design/legend-web-foundation.css', 'Legend-Design/legend-app-shell.css',
   'AgentPortal/wwwroot/css/site.css', 'AgentPortal/wwwroot/css/legend-founder-ai.css',
   'SHARED/wwwroot/css/dashboard-home-shared.css'].map(read).join('\n');
 const view = read('AgentPortal/Views/Shared/_LegendFounderAiModal.cshtml')
-  .split('\n').map(line => line.includes('@') ? (line.trim().endsWith('>') ? '>' : '') : line).join('\n');
+    .replace(/^@model.*$/m, '')
+  .replace(/@Url.Action\("([^"]+)", "LegendFounderAi"\)/g, '/fixture/$1')
+  .replaceAll('@Model.AvatarUrl', '').replaceAll('@Model.Initials', 'QA')
+  .replaceAll('@Shared.Branding.LegendBrand.RegisteredTitle', 'LEGEND®')
+  .replace('@Html.AntiForgeryToken()', '<input type="hidden" name="__RequestVerificationToken" value="synthetic">');
 const browser = await chromium.launch({headless:true});
 let cases = 0;
 try {
-  for (const width of [320, 390, 820, 860, 900, 901, 1363]) {
+  for (const width of [320, 375, 390, 430, 820, 860, 900, 901, 1363]) {
     const page = await browser.newPage({viewport:{width,height:844}});
     page.setDefaultTimeout(5000);
     page.on('pageerror', error => console.error(error.message));
     await page.route('**/*', route => route.fulfill({status:200,contentType:'application/json',body:'[]'}));
-    await page.route('http://localhost/', route => route.fulfill({contentType:'text/html',body:`<html data-legend-modal-region="true"><head><style>${styles}</style></head>
+    await page.route('**/images/legend-ai/legendai.png', route => route.fulfill({path: new URL('AgentPortal/wwwroot/images/legend-ai/legendai.png', root).pathname}));
+    await page.route('http://localhost/', route => route.fulfill({contentType:'text/html',body:`<html data-legend-modal-region="true"><head><meta charset="utf-8"><style>${styles}</style></head>
       <body class="legend-app"><header class="legend-global-nav">Test navigation</header>
       <button id="legendFounderAiTrigger">Open AI</button><main class="legend-app-content"></main>${view}</body></html>`}));
     await page.goto('http://localhost/');
@@ -35,11 +43,36 @@ try {
         scrim:{...rect('#legendFounderAiSidebarScrim'),opacity:getComputedStyle(document.querySelector('#legendFounderAiSidebarScrim')).opacity},
         sendRadius:getComputedStyle(document.querySelector('#legendFounderAiSend')).borderRadius};
     });
+    await page.evaluate(() => {
+      const transcript = document.querySelector('#legendFounderAiTranscript');
+      for (let i = 0; i < 30; i++) {
+        const message = document.createElement('p'); message.textContent = `Synthetic message ${i + 1}: review this page and the next step.`; transcript.append(message);
+      }
+      transcript.scrollTop = transcript.scrollHeight;
+    });
+    if (process.env.LEGEND_SCREENSHOTS) {
+      mkdirSync(process.env.LEGEND_SCREENSHOTS, { recursive: true });
+      await page.locator('#legendFounderAiInput').fill('Help me understand this page.\nReview the next steps with me.');
+      await page.screenshot({path:`${process.env.LEGEND_SCREENSHOTS}/${width}-portrait.png`});
+    }
+    if (process.env.LEGEND_CAPTURE_REVISION) { await page.close(); continue; } // Historical images only, never acceptance.
     let m=await measure();
     assert(m.shell.y>=-1 && m.shell.bottom<=845, `${width}: shell outside viewport ${JSON.stringify(m)}`);
     assert(m.title.height>0 && m.title.y>=m.shell.y, `${width}: title hidden`);
     assert(m.input.bottom<=m.shell.bottom && m.send.bottom<=m.shell.bottom, `${width}: composer clipped ${JSON.stringify(m)}`);
-    assert.equal(m.sendRadius,'50%',`${width}: send shape overridden`);
+    if (width <= 900) {
+      const layout = await page.evaluate(() => {
+        const input = document.querySelector('#legendFounderAiInput').getBoundingClientRect();
+        const select = document.querySelector('#legendFounderAiModelSelection').getBoundingClientRect();
+        const send = document.querySelector('#legendFounderAiSend').getBoundingClientRect();
+        return { inputBottom: input.bottom, selectTop: select.top, selectRight: select.right, sendLeft: send.left,
+          selectorCount: document.querySelectorAll('#legendFounderAiModelSelection').length };
+      });
+      assert(layout.selectTop >= layout.inputBottom, `${width}: selector must be below text`);
+      assert(layout.selectRight <= layout.sendLeft, `${width}: toolbar overlaps`);
+      assert.equal(layout.selectorCount, 1);
+    }
+    assert.equal(m.sendRadius,'50%' ,`${width}: send shape overridden`);
     if(width<=900){
       assert.equal(m.scrim.opacity,'0',`${width}: scrim rendered as extra close`);
       const menu=page.locator('#legendFounderAiMobileMenu');
@@ -57,7 +90,16 @@ try {
       await page.keyboard.press('Enter');await page.waitForTimeout(320);
       // Model Safari keyboard + visual viewport panning through its public events.
       await page.evaluate(()=>{Object.defineProperty(window.visualViewport,'height',{configurable:true,value:420});Object.defineProperty(window.visualViewport,'offsetTop',{configurable:true,value:20});window.visualViewport.dispatchEvent(new Event('resize'));window.visualViewport.dispatchEvent(new Event('scroll'));});
+      if (process.env.LEGEND_SCREENSHOTS) await page.screenshot({path:`${process.env.LEGEND_SCREENSHOTS}/${width}-keyboard.png`});
       m=await measure();assert(m.input.bottom<=441 && m.send.bottom<=441,`${width}: keyboard clips composer ${JSON.stringify(m)}`);
+    }
+    if (width <= 430) {
+      await page.evaluate(() => { delete window.visualViewport.height; delete window.visualViewport.offsetTop; });
+      await page.setViewportSize({width: 844, height: width});
+      await page.waitForTimeout(100);
+      const landscape = await measure();
+      assert(landscape.input.bottom <= width + 1 && landscape.send.bottom <= width + 1, `${width}: landscape composer clipped`);
+      if (process.env.LEGEND_SCREENSHOTS) await page.screenshot({path:`${process.env.LEGEND_SCREENSHOTS}/${width}-landscape.png`});
     }
     await page.locator('.legend-founder-ai-close').click();
     await page.locator('#legendFounderAiModal').waitFor({state:'hidden'});

@@ -151,3 +151,35 @@ test('only exact same-origin action review links become interactive', t => {
     assert.equal(body.querySelector('a').getAttribute('href'), '/founder/legend-ai/actions/12345678-1234-1234-1234-123456789abc');
     assert.equal(body.querySelector('a').rel, 'noopener');
 });
+
+test('current page capture excludes assistant, hidden content and form values', t => {
+    const dom = new JSDOM(`<div id="ai"><main>Private assistant conversation</main></div>
+      <main><h1>Sales overview</h1><p>Visible result: 7 inquiries</p>
+      <input value="secret"><textarea>Unsent draft</textarea><select><option>Private choice</option></select>
+      <div hidden>Hidden token</div><div style="display:none"><p>Hidden ancestor</p></div>
+      <div contenteditable="true">Unsent editor</div><div role="textbox">Editor value</div><div data-private>Private account</div><script>secret()</script></main>`, { runScripts: 'outside-only' });
+    t.after(() => dom.window.close());
+    const w = dom.window; w.modalElement = w.document.getElementById('ai');
+    w.eval(implementation('captureCurrentPage'));
+    assert.equal(w.captureCurrentPage(), 'Sales overview\nVisible result: 7 inquiries');
+    w.document.querySelector('h1').textContent = 'Changed page';
+    assert.ok(w.captureCurrentPage().startsWith('Changed page'));
+    w.document.querySelector('p').textContent = 'x'.repeat(30000);
+    assert.equal(w.captureCurrentPage().length, 24000);
+});
+
+test('mobile model placement moves one control and preserves selection and listeners', t => {
+    const dom = new JSDOM('<header><span id="control"><select><option>a</option><option>b</option></select></span></header><footer></footer>', { runScripts: 'outside-only' });
+    t.after(() => dom.window.close());
+    const w = dom.window;
+    Object.assign(w, { modelControl: w.document.getElementById('control'), modelHeaderHome: w.document.querySelector('header'),
+        mobileModelSlot: w.document.querySelector('footer'), modebar: null, mobileControls: null, isMobile: () => true });
+    const select = w.modelControl.querySelector('select'); select.value = 'b'; let changes = 0;
+    select.addEventListener('change', () => changes++);
+    w.eval(implementation('syncControlPlacement')); w.syncControlPlacement();
+    assert.equal(select.closest('footer'), w.mobileModelSlot); assert.equal(select.value, 'b');
+    w.isMobile = () => false; w.syncControlPlacement();
+    assert.equal(select.closest('header'), w.modelHeaderHome);
+    select.dispatchEvent(new w.Event('change')); assert.equal(changes, 1);
+    assert.equal(w.document.querySelectorAll('select').length, 1);
+});

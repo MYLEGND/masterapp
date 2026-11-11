@@ -40,11 +40,13 @@
                             <h2 id="legendFounderAiTitle">
                                 Legend<sup>®</sup> Ai
                             </h2>
+                            <span id="legendFounderAiModelControl" class="legend-founder-ai-model-control">
                             <label class="visually-hidden" for="legendFounderAiModelSelection">Model</label>
                             <select id="legendFounderAiModelSelection" class="form-select form-select-sm" aria-label="LEGEND AI model">
                                 <option value="auto">Auto</option>
                             </select>
                             <span id="legendFounderAiModelStatus" class="visually-hidden" role="status"></span>
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -294,6 +296,7 @@
                             @Html.AntiForgeryToken()
 
                             <div class="legend-founder-ai-input-wrap">
+                                <span id="legendFounderAiMobileModelSlot" class="legend-founder-ai-mobile-model-slot"></span>
                                 <button type="button"
                                         id="legendFounderAiComposerMenu"
                                         class="legend-founder-ai-composer-tool"

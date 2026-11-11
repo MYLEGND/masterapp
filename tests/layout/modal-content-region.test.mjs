@@ -482,7 +482,7 @@ test('mobile conversational composers own the visual viewport and stay compact a
 
   assert.match(aiCss,/@media \(max-width: 900px\) \{[\s\S]*?\.legend-founder-ai-workspace \{[\s\S]*?flex: 1 1 0;[\s\S]*?height: auto;[\s\S]*?overflow: hidden;/);
   assert.match(aiCss,/\.legend-founder-ai-main \{[\s\S]*?grid-template-rows: minmax\(0, 1fr\) auto;/);
-  assert.match(aiCss,/@media \(max-width: 900px\) \{[\s\S]*?\.legend-founder-ai-input-wrap \{[\s\S]*?min-height: 48px;[\s\S]*?border-radius: 26px;/);
+  assert.match(aiCss,/@media \(max-width: 900px\) \{[\s\S]*?\.legend-founder-ai-input-wrap \{[\s\S]*?display: grid;[\s\S]*?grid-template-columns: minmax\(0, 1fr\) 44px 44px;[\s\S]*?min-height: 100px;[\s\S]*?border-radius: 26px;/);
   assert.match(aiCss,/@media \(max-width: 900px\) \{[\s\S]*?\.legend-founder-ai-input-wrap textarea \{[\s\S]*?min-height: 34px;[\s\S]*?max-height: min\(112px, 20dvh\);/);
   assert.match(aiCss,/\.legend-founder-ai-shell\[data-legend-mobile-sheet\] \{[\s\S]*?--legend-mobile-sheet-height: var\(--legend-ai-viewport-height, 100dvh\);[\s\S]*?--legend-mobile-sheet-bottom: var\(--legend-ai-visual-bottom, 0px\);/);
   assert.match(aiCss,/@media \(max-width: 900px\) \{[\s\S]*?\.legend-founder-ai-composer \{[\s\S]*?margin: 0;/);

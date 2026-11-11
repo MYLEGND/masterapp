@@ -6138,3 +6138,92 @@ base4e6554d8a34ca89ef7f98f77773be5fa75f92835. Integration must not redeploy.
 Task branch source preservation and merge readback remain distinct; record exact
 result in the final session receipt. Cloudflare setup and authenticated live UI/
 provider acceptance remain outstanding, not silently reported complete.
+
+
+### 2026-11-11 focused mobile composer, current page and dictation repair
+
+Founder requested the attached GPT-style mobile arrangement, current-page visibility,
+and microphone repair, then direct deployment of affected apps. Same task branch;
+canonical intake imported actual fast-track ad1b501da64455e2f2cb06aeb336bfa848cfcca8,
+with no checkout/database replacement. Working tree was clean before this repair.
+Canonical impact selects Portal only; no schema, routing or Cloudflare changes.
+
+The existing mobile CSS now provides two composer rows, minimum44px lower actions,
+and an auto-height unclipped header. The ONE existing selector moves through
+syncControlPlacement to the composer on mobile and returns to its original header
+on desktop. Existing visualViewport/sheet/autosizing controllers are retained.
+The sidebar plus remains unchanged/hidden on mobile: no working chat attachment
+picker/upload flow is wired here; image-reference selection is existing saved-media
+selection, not camera/files upload. Attachment parity requires separately wiring an
+existing authorized tenant-media upload and chat attachment contract; none is faked.
+
+Each sent turn captures displayed current-page text, bounded24000characters,
+excluding assistant UI, hidden regions, inputs/selects/textareas, contenteditable,
+textbox and explicitly private/sensitive/excluded regions. Server validates bounds,
+binds text to idempotency and supplies it as untrusted user evidence, never tool
+permission or verified database facts. Legacy replay hashes remain unchanged when
+new context is absent. Existing business context remains canonical and scoped.
+Dictation now permits the explicitly selected authorized enabled OpenAI workspace
+in regular chat, using the same recording/transcription/funding endpoint. Missing
+setup opens existing settings with readable feedback. Privacy blocks remain enforced;
+no credentials, budget changes or new provider fallback. This does not make a global
+OpenAI chat key a funded workspace dictation connection.
+
+Focused JS13/13 and .NET6/6 PASS; latest TRX:
+/private/tmp/legend-unified-ai-results/mobile-page-dictation-final.trx.
+Synthetic rendered assistant geometry PASS at320,375,390,430,820,860,900,901,1363;
+requested mobile widths also exercise landscape, multiline text, long transcript,
+menus/sheet and simulated visualViewport keyboard. Matched before/after screenshots
+/private/tmp/legend-mobile-composer-before and /private/tmp/legend-mobile-composer-after.
+The existing fixture's Razor interpolation was corrected so textarea closing markup
+is preserved. The full fixture still FAILS the unrelated Messages palette assertion
+on both ad1b501 baseline and candidate; no Messages styles changed. Actual iPhone
+keyboard/microphone, paid transcription and authenticated live acceptance NOT VERIFIED.
+No billable model/audio call or customer data used. Astra reviewed canonical owners,
+privacy exclusions, legacy fingerprints and selector/dictation lifecycle; exact final
+source/package admission and deployment receipts remain to be recorded.
+
+
+Portal application candidate e7b78aa16405870c3a0cbf9346be5f01a1ff5437 is reviewed,
+packaged and preserved remotely. Package manifest84df5f4aa099ecc7082e08656ec0603bea52b306b554cc198b3394bbc9e00f18,
+ZIP498e8fe32664f0ac91f9a0c9ed75bfb65728ab6ecebd6bf646cc75fa8690dacc.
+PR773 continues source integration. Architecture43110238217 failed an obsolete
+48px/single-row CSS assertion and an unrelated CRM browser startup timeout;
+security43110243589 passed. Update only the owning mobile-layout assertion to
+require the intended two-row grid/44px controls/100px composer, preserving viewport
+checks. No application source or package change; retain e7b78 package rather than
+rebuild. Failed gate recovery must preserve passing evidence and retry only
+invalidated/unresolved stages. No production app has been stopped for this repair.
+
+
+### Mobile composer release live verification — 2026-11-11
+Portal-only application e7b78aa16405870c3a0cbf9346be5f01a1ff5437 deployed once,
+SCM operation 82fcc3a9415d4a3a80f00278ada282ec (Succeeded). Stop, upload and restart
+receipts are reconciled under native-deployment-receipts/e7b78aa16 in the existing
+linked-bundle-release-20261110 evidence directory. Restart CLI succeeded; subsequent
+network read failed, then read-only recovery confirmed all five apps Running and
+unchanged journals. Astra accepted receipt closure; start/upload were not replayed.
+Runtime verification PASS: Portal e7b78aa16405870c3a0cbf9346be5f01a1ff5437;
+Client/Protect/Parfait dd72553987c8cb2a2dd7900d9a6cab4fdcc3dc19;
+Website ea128c942b7d8bd4452b5ec6abc591ee624111fc. Public Portal CSS and JS SHA256
+match reviewed source. live-verification.json and live-assets.json retain evidence.
+No migration applied: fresh read found 241 applied and zero pending. Existing
+single-IP firewall rule was refreshed under prior authorization; no credentials,
+budgets or application settings changed. Cloudflare remains deferred.
+
+Founder explicitly authorized deployment before broad validation; exact admission
+recorded deferred checks truthfully. All later passed on test/control b66484b7472ac236fcf7b1d0feeba8df8fee3474:
+security43112759729, architecture43112759670, commerce43112759769. Focused evidence
+remains .NET6, JS13, layout53 and synthetic rendered assistant geometry at9 widths.
+Astra independently accepted source, package, admission and receipt recovery.
+Native coordination hold43113229732 completed/cancelled after live verification.
+
+Physical iPhone microphone/audio, paid transcription and authenticated live journeys
+remain unverified. Dictation requires the explicitly selected approved OpenAI
+workspace configuration; missing setup now displays actionable settings guidance.
+The plus remains existing sidebar navigation, not an attachment picker. Camera/file
+uploads need a canonical chat attachment contract and are not included. Page context
+is bounded visible text, excludes private/hidden/editable regions, and is untrusted
+context rather than browser automation or canonical service evidence.
+PR773 source-only fast-track synchronization remains pending; no duplicate deployment
+is authorized by its sourceIntegration marker. Preserve the exact e7 package.
