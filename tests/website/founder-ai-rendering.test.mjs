@@ -114,3 +114,40 @@ test('streamed final result and persisted history use the same canonical rendere
     assert.equal(w.transcript.innerHTML, finalMarkup);
     assert.equal(w.transcript.querySelectorAll('h2,strong,ul').length, 3);
 });
+
+test('unified model selector preserves a legacy conversation and privacy controls', t => {
+    const dom = new JSDOM('<div id="modal"><select id="model"></select><input id="native"><input id="blocked"><textarea id="input"></textarea></div>', { runScripts: 'outside-only' });
+    t.after(() => dom.window.close());
+    const w = dom.window;
+    const conversation = { id: 'existing-thread', mode: 'teacher', modelSelection: 'openai:gpt-6-astra' };
+    Object.assign(w, {
+        activeConversation: () => conversation, busy: false, businessConfiguration: null,
+        chatModels: [{ id: 'openai:gpt-6-astra', label: 'OpenAI · gpt-6-astra', configured: true }],
+        modelSelection: w.document.getElementById('model'), nativeOnly: w.document.getElementById('native'),
+        externalAnsweringBlocked: w.document.getElementById('blocked'), input: w.document.getElementById('input'),
+        modalElement: w.document.getElementById('modal'), send: null, sendIcon: null, newConversation: null,
+        retryRequest: null, updateThinkingStatus() {}
+    });
+    w.eval(implementation('renderModes'));
+    w.eval(implementation('setBusy'));
+    w.renderModes();
+    assert.equal(w.modelSelection.value, 'openai:gpt-6-astra');
+    assert.equal(conversation.id, 'existing-thread');
+    w.setBusy(true);
+    assert.equal(w.modelSelection.disabled, true);
+    w.setBusy(false);
+    assert.equal(w.nativeOnly.disabled, false);
+    assert.equal(w.externalAnsweringBlocked.disabled, false);
+    assert.equal(w.modelSelection.disabled, false);
+    conversation.mode = 'business';
+    w.renderModes();
+    assert.equal(w.modelSelection.disabled, true);
+});
+
+test('only exact same-origin action review links become interactive', t => {
+    const w = fixture(t);
+    const body = w.show('[Review exact website action](/founder/legend-ai/actions/12345678-1234-1234-1234-123456789abc) [Bad](https://untrusted.example/steal)');
+    assert.equal(body.querySelectorAll('a').length, 1);
+    assert.equal(body.querySelector('a').getAttribute('href'), '/founder/legend-ai/actions/12345678-1234-1234-1234-123456789abc');
+    assert.equal(body.querySelector('a').rel, 'noopener');
+});

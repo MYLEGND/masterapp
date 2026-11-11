@@ -271,3 +271,38 @@ test('invalid operator settings fail before reservation and never weaken silentl
     assert.equal(f.reservations.size, 0); assert.equal(f.dispatches.length, 0);
   }
 });
+
+
+test('explicit model selection uses the exact qualified model within the existing budget', async () => {
+  const f = fixture();
+  f.envelope.version = 'legend-cloudflare.v2';
+  f.envelope.limits.maxCostMicrousd = 100000; // Synthetic envelope funds this larger context reservation.
+  f.envelope.task.requestedModel = MODEL_REGISTRY[1].id;
+  const result = await orchestrate(f);
+  assert.equal(result.status, 'completed', JSON.stringify(result.error));
+  assert.equal(result.version, 'legend-cloudflare.v2');
+  assert.equal(f.dispatches.length, 1);
+  assert.equal(f.dispatches[0].id, MODEL_REGISTRY[1].id);
+});
+
+test('manual selection cannot fall back to a cheaper model or evade qualification', async () => {
+  for (const reason of ['unknown', 'unqualified', 'budget']) {
+    const f = fixture();
+    f.envelope.version = 'legend-cloudflare.v2';
+    f.envelope.task.requestedModel = reason === 'unknown' ? '@cf/unknown/model' : MODEL_REGISTRY[1].id;
+    if (reason === 'unqualified') f.registry[1].enabled = false;
+    if (reason === 'budget') f.envelope.limits.maxCostMicrousd = 1;
+    const result = await orchestrate(f);
+    assert.equal(result.status, 'failed');
+    assert.equal(f.dispatches.length, 0);
+    assert.equal(f.reservations.size, 0);
+  }
+});
+
+test('v1 cannot silently ignore an explicit v2 model selection', async () => {
+  const f = fixture();
+  f.envelope.task.requestedModel = MODEL_REGISTRY[1].id;
+  const result = await orchestrate(f);
+  assert.equal(result.status, 'failed');
+  assert.equal(f.dispatches.length, 0);
+});

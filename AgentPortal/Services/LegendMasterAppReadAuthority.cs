@@ -128,6 +128,10 @@ internal sealed class WebsiteAnalyticsLegendReadProjection(
     IMarketingManagerService marketing, MarketingConnectionStore connections,
     Infrastructure.Reception.ReceptionistOperatorService receptionist) : ILegendMasterAppReadProjection
 {
+    internal static object? Observe<T>(AiSafeAnalyticsPayload payload, string section, T value) =>
+        payload.Warnings.Any(warning => warning.StartsWith(section + " unavailable;", StringComparison.Ordinal))
+            ? null : value;
+
     public string Key => "agent-portal.website-analytics";
     public string Application => "AgentPortal";
     public IReadOnlyList<string> Routes => ["/WebsiteAnalytics", "/website-analytics"];
@@ -230,12 +234,12 @@ internal sealed class WebsiteAnalyticsLegendReadProjection(
             scopeLabel = payload.ScopeLabel,
             qualityMode = payload.QualityMode,
             trafficFilter = payload.TrafficFilter,
-            pageViews = payload.PageViews,
-            uniqueVisitors = payload.UniqueVisitors,
-            sessions = payload.Sessions,
-            verifiedLeads = payload.VerifiedLeads,
-            sessionConversionRate = payload.SessionConversionRate,
-            intentConversionRate = payload.IntentConversionRate,
+            pageViews = Observe(payload, "Summary", payload.PageViews),
+            uniqueVisitors = Observe(payload, "Summary", payload.UniqueVisitors),
+            sessions = Observe(payload, "Summary", payload.Sessions),
+            verifiedLeads = Observe(payload, "Summary", payload.VerifiedLeads),
+            sessionConversionRate = Observe(payload, "Summary", payload.SessionConversionRate),
+            intentConversionRate = Observe(payload, "Summary", payload.IntentConversionRate),
             intentAvailable = payload.IntentAvailable,
             totalConversions = payload.TotalConversions,
             topPage = payload.TopPage,
@@ -245,8 +249,20 @@ internal sealed class WebsiteAnalyticsLegendReadProjection(
             topPages = payload.TopPages.Take(10).ToArray(),
             topSources = payload.TopSources.Take(10).ToArray(),
             topCampaigns = payload.TopCampaigns.Take(10).ToArray(),
-            pagePerformance = payload.PagePerformance.Take(10).ToArray(),
-            channels = payload.Channels.Take(10).ToArray(),
+            pagePerformance = Observe(payload, "PagePerf", payload.PagePerformance.Take(20).ToArray()),
+            channels = Observe(payload, "ChannelPerformance", payload.Channels.Take(20).ToArray()),
+            paidCampaigns = Observe(payload, "ChannelPerformance", payload.PaidCampaigns.Take(30).ToArray()),
+            channelCoverage = payload.ChannelCoverageNotes,
+            quoteFunnel = Observe(payload, "QuoteFunnel", new { payload.QuoteStarts, payload.QuoteFormStarts,
+                payload.QuoteFormSubmits, payload.DropOffStartsToFormStarts, payload.DropOffFormStartsToSubmits }),
+            formAbandonment = Observe(payload, "Abandon", payload.FormAbandonment.Take(20).ToArray()),
+            abandonedFields = Observe(payload, "Abandon", payload.TopAbandonedFields.Take(20).ToArray()),
+            journey = Observe(payload, "Journey", new { payload.PagesBeforeLead, payload.CommonDropOffPages }),
+            ctaPerformance = Observe(payload, "CTA", payload.CtaPerformance.Take(20).ToArray()),
+            sourcePerformance = Observe(payload, "Source", payload.SourcePerformance.Take(20).ToArray()),
+            devices = Observe(payload, "Devices", payload.Devices.Take(12).ToArray()),
+            marketingHealth = Observe(payload, "MarketingHealth", payload.MarketingHealth),
+            outcomeCalibration = Observe(payload, "OutcomeCalibration", payload.OutcomeCalibration),
             warnings = payload.Warnings.Take(20).ToArray(),
             privacy = new
             {

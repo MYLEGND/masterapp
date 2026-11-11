@@ -22,7 +22,7 @@ using Xunit;
 namespace AgentPortal.Tests;
 
 [Collection("LegendConnectFounderEnvironment")]
-public sealed class LegendFounderCloudActionApprovalTests
+public sealed partial class LegendFounderCloudActionApprovalTests
 {
     private const string FounderId = "587d1166-e29b-41d4-a716-446655440099";
     private const string ToolName = "legend_release_approved_repair";
@@ -392,7 +392,8 @@ public sealed class LegendFounderCloudActionApprovalTests
             Db = db; _options = options; _keeper = keeper;
             var services = new ServiceCollection();
             services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-                { ["FounderSoftwareRemediation:CandidateValidation:Enabled"] = "true" }).Build());
+                { ["FounderSoftwareRemediation:CandidateValidation:Enabled"] = "true", ["Founder:Oid"] = FounderId }).Build());
+            services.AddSingleton(new Infrastructure.WebsiteEditing.WebsiteEditorTicketProtector(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider()));
             services.AddScoped(_ => new MasterAppDbContext(options));
             ControllerTestHelpers.AddFounderHistoryServices(services);
             _services = services.BuildServiceProvider();

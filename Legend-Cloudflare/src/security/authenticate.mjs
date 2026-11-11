@@ -29,7 +29,7 @@ export function validateScope(scope, accountId) {
 }
 
 function validateEnvelope(envelope, env, now, timestamp) {
-  requireSecurity(envelope && envelope.version === 'legend-cloudflare.v1', 'protocol_version_invalid', 400);
+  requireSecurity(envelope && ['legend-cloudflare.v1', 'legend-cloudflare.v2'].includes(envelope.version), 'protocol_version_invalid', 400);
   requireSecurity(isIdentifier(envelope.requestId), 'request_id_invalid', 400);
   validateScope(envelope.scope, env.LEGEND_ACCOUNT_ID);
   requireSecurity(Number.isSafeInteger(envelope.issuedAt) && Number.isSafeInteger(envelope.expiresAt) &&
@@ -52,6 +52,9 @@ function validateEnvelope(envelope, env, now, timestamp) {
     Array.isArray(envelope.task.messages) && envelope.task.messages.length > 0 &&
     envelope.task.messages.length <= 256 && Array.isArray(envelope.task.tools) &&
     envelope.task.tools.length <= 64, 'task_invalid', 400);
+  requireSecurity(envelope.task.requestedModel == null ||
+    (envelope.version === 'legend-cloudflare.v2' && typeof envelope.task.requestedModel === 'string' &&
+      /^@cf\/[A-Za-z0-9_./-]{1,195}$/.test(envelope.task.requestedModel)), 'requested_model_invalid', 400);
   // Walk once before freezing to reject pathological nesting, even on a service-signed body.
   canonicalJson(envelope);
 }

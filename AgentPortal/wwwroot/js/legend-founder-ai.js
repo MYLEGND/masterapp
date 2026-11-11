@@ -226,9 +226,9 @@
         refreshHistory();
     });
 
-    const modeButtons = Array.from(
-        modalElement.querySelectorAll('[data-legend-ai-mode]')
-    );
+    const modelSelection = document.getElementById('legendFounderAiModelSelection');
+    const modelStatus = document.getElementById('legendFounderAiModelStatus');
+    let chatModels = [];
 
     const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
 
@@ -567,6 +567,10 @@
         conversation.title = detail.subject || 'New conversation';
         conversation.updatedUtc = detail.lastMessageUtc;
         if (!older) conversation.lastMessageId = page.at(-1)?.id || null;
+        if (!older && conversation.modelSelection == null) {
+            const selected = [...page].reverse().find(item => item.modelSelection)?.modelSelection;
+            if (selected) conversation.modelSelection = selected;
+        }
         const pending = conversation.pendingOperation;
         if (pending && page.some(item => item.id === pending.terminalId || (pending.userMessageId && item.replyToMessageId === pending.userMessageId))) conversation.pendingOperation = null;
     }
@@ -643,53 +647,6 @@
 
     function activeConversation() {
         return ensureActiveConversation();
-    }
-
-    function setMode(nextMode) {
-        if (busy) {
-            return;
-        }
-
-        if (
-            nextMode !== 'legend' &&
-            nextMode !== 'teacher'
-        ) {
-            if (status) {
-                updateThinkingStatus(`Conversation mode is invalid. Select ${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai or OpenAI Teacher.`, false);
-            }
-            return;
-        }
-
-        const requestedMode = nextMode;
-
-        const current = activeConversation();
-
-        if (current.mode === requestedMode) {
-            return;
-        }
-
-        // One browser conversation has exactly one responder identity. Never
-        // relabel an existing LEGEND brand AI transcript as OpenAI Teacher (or the
-        // reverse), because that would feed one AI's prior responses to the
-        // other under the wrong role. A mode change starts a clean thread while
-        // preserving both histories independently.
-        const conversation = newConversationRecord(
-            requestedMode,
-            false
-        );
-        state.conversations.unshift(conversation);
-        stopHistoryRefresh();
-        state.activeConversationId = conversation.id;
-        scheduleHistoryRefresh();
-        sortConversations();
-        setSidebarOpen(false);
-        renderAll({ forceBottom: true });
-
-        if (status) {
-            updateThinkingStatus('', false);
-        }
-
-        focusComposer();
     }
 
     function startNewConversation() {
@@ -818,27 +775,35 @@
     function renderModes() {
         const conversation = activeConversation();
 
-        for (const button of modeButtons) {
-            const active =
-                button.dataset.legendAiMode ===
-                conversation.mode;
-
-            button.classList.toggle(
-                'is-active',
-                active
-            );
-
-            button.setAttribute(
-                'aria-selected',
-                active ? 'true' : 'false'
-            );
+        if (modelSelection) {
+            modelSelection.replaceChildren(new Option('Auto', 'auto'));
+            if (conversation.mode === 'business') {
+                const configured = businessConfiguration?.configuration?.model;
+                modelSelection.replaceChildren(new Option(configured || 'Workspace model', 'auto'));
+                modelSelection.disabled = true;
+            } else {
+                for (const model of chatModels) {
+                    const option = new Option(model.label + (model.configured ? '' : ' · Not configured'), model.id);
+                    option.disabled = !model.configured;
+                    modelSelection.add(option);
+                }
+                const selected = conversation.modelSelection || (conversation.mode === 'teacher'
+                    ? chatModels.find(item => item.provider === 'openai' && item.configured)?.id : 'auto');
+                if (selected && !Array.from(modelSelection.options).some(option => option.value === selected)) {
+                    const unavailable = new Option('Selected model unavailable', selected);
+                    unavailable.disabled = true;
+                    modelSelection.add(unavailable);
+                }
+                modelSelection.value = selected || 'auto';
+                modelSelection.disabled = busy;
+            }
         }
 
         if (nativeOnly) {
             nativeOnly.checked =
                 conversation.nativeOnly === true;
             nativeOnly.disabled =
-                busy || conversation.mode !== 'legend';
+                busy || conversation.mode === 'business';
             nativeOnly.closest(
                 '.legend-founder-ai-native-only'
             )?.classList.toggle(
@@ -849,7 +814,7 @@
 
         if (externalAnsweringBlocked) {
             externalAnsweringBlocked.checked = conversation.externalAnsweringBlocked === true;
-            externalAnsweringBlocked.disabled = busy || conversation.mode !== 'legend' || conversation.nativeOnly === true;
+            externalAnsweringBlocked.disabled = busy || conversation.mode === 'business' || conversation.nativeOnly === true;
             externalAnsweringBlocked.closest(
                 '.legend-founder-ai-native-only'
             )?.classList.toggle(
@@ -860,9 +825,7 @@
 
         if (input) {
             input.placeholder =
-                conversation.mode === 'teacher'
-                    ? 'Message the OpenAI Teacher…'
-                    : conversation.mode === 'business' ? 'Ask about this business…' : `Message ${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai…`;
+                `Message ${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai…`;
         }
     }
 
@@ -943,9 +906,7 @@
             preview.textContent =
                 last?.content ||
                 (
-                    conversation.mode === 'teacher'
-                        ? 'OpenAI Teacher'
-                        : `${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai`
+                    `${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai`
                 );
 
             const time =
@@ -1121,6 +1082,18 @@
             if (text[i] === '\\' && /[\\`*{}\[\]()#+\-.!_>]/.test(text[i + 1] || '')) {
                 plain += text[i + 1];
                 i += 2;
+                continue;
+            }
+            const reviewLink = /^\[([^\]\r\n]{1,120})\]\((\/founder\/legend-ai\/actions\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\)/.exec(text.slice(i));
+            if (reviewLink) {
+                flush();
+                const link = document.createElement('a');
+                link.href = reviewLink[2];
+                link.textContent = reviewLink[1];
+                link.target = '_blank';
+                link.rel = 'noopener';
+                parent.appendChild(link);
+                i += reviewLink[0].length;
                 continue;
             }
             let token = null;
@@ -1388,18 +1361,16 @@
             retryRequest.hidden = !activeConversation().pendingOperation || value;
         }
 
-        for (const button of modeButtons) {
-            button.disabled = value;
-        }
+        if (modelSelection) modelSelection.disabled = value || activeConversation().mode === 'business';
 
         if (nativeOnly) {
             nativeOnly.disabled =
                 value ||
-                activeConversation().mode !== 'legend';
+                activeConversation().mode === 'business';
         }
 
         if (externalAnsweringBlocked) {
-            externalAnsweringBlocked.disabled = value || activeConversation().mode !== 'legend' || activeConversation().nativeOnly === true;
+            externalAnsweringBlocked.disabled = value || activeConversation().mode === 'business' || activeConversation().nativeOnly === true;
         }
         updateThinkingStatus(message, value);
     }
@@ -1794,8 +1765,7 @@
         if (kind === 'model') {
             settingsTitle.textContent = 'Model';
             settingsBody.append(
-                settingsAction(`${window.LEGEND_BRAND?.registeredTitle ?? ""} Ai`, 'Use LEGEND hosted foundation and governed tools.', () => { closeSettingsPanel(); setMode('legend'); }),
-                settingsAction('OpenAI', 'Use the direct OpenAI teacher conversation mode.', () => { closeSettingsPanel(); setMode('teacher'); })
+                settingsAction('Choose model', 'Choose Auto or a configured model in this conversation’s header.', () => { closeSettingsPanel(); modelSelection?.focus(); })
             );
         } else if (kind === 'tools') {
             settingsTitle.textContent = 'Tools & data';
@@ -1805,7 +1775,7 @@
                     current.nativeOnly ? 'Start a clean LEGEND conversation with governed provider access restored.' : 'Start a clean native-only conversation with external answering, research, and translation disabled.',
                     () => {
                         closeSettingsPanel();
-                        if (!nativeOnly || current.mode !== 'legend') return;
+                        if (!nativeOnly || current.mode === 'business') return;
                         nativeOnly.checked = !current.nativeOnly;
                         nativeOnly.dispatchEvent(new Event('change', { bubbles: true }));
                     }
@@ -1815,7 +1785,7 @@
                     'Keep authorized research and translation available while controlling external answer generation.',
                     () => {
                         closeSettingsPanel();
-                        if (!externalAnsweringBlocked || current.mode !== 'legend' || current.nativeOnly) return;
+                        if (!externalAnsweringBlocked || current.mode === 'business' || current.nativeOnly) return;
                         externalAnsweringBlocked.checked = !current.externalAnsweringBlocked;
                         externalAnsweringBlocked.dispatchEvent(new Event('change', { bubbles: true }));
                     }
@@ -1853,23 +1823,29 @@
     });
     settingsClose?.addEventListener('click', closeSettingsPanel);
 
-    for (const button of modeButtons) {
-        button.addEventListener(
-            'click',
-            () => {
-                const requestedMode =
-                    button.dataset.legendAiMode;
-
-                if (requestedMode) {
-                    setMode(requestedMode);
-                }
-            }
-        );
+    modelSelection?.addEventListener('change', () => {
+        if (busy || activeConversation().mode === 'business') return;
+        activeConversation().modelSelection = modelSelection.value;
+        // A model is a per-turn selection, never a new identity or transcript.
+        renderModes();
+    });
+    async function loadChatModels() {
+        try {
+            const response = await fetch(modalElement.dataset.modelsUrl, { credentials: 'same-origin', cache: 'no-store' });
+            if (!response.ok) throw new Error('model_catalog_unavailable');
+            const catalog = await response.json();
+            chatModels = Array.isArray(catalog.models) ? catalog.models : [];
+            if (modelStatus) modelStatus.textContent = 'Configured models. Provider access and funding are checked separately.';
+            renderModes();
+        } catch {
+            if (modelStatus) modelStatus.textContent = 'Model list unavailable. Retry opening LEGEND AI.';
+        }
     }
+    loadChatModels();
 
     externalAnsweringBlocked?.addEventListener('change', () => {
         const current = activeConversation();
-        if (busy || current.mode !== 'legend' || current.nativeOnly === true) {
+        if (busy || current.mode === 'business' || current.nativeOnly === true) {
             renderModes();
             return;
         }
@@ -1891,7 +1867,7 @@
             }
 
             const current = activeConversation();
-            if (current.mode !== 'legend') {
+            if (current.mode === 'business') {
                 renderModes();
                 return;
             }
@@ -2033,6 +2009,8 @@
         const localUserMessageId = `pending-user-${operationId}`;
         const operation = { id: operationId, localUserMessageId, body: JSON.stringify({
             mode: conversation.mode, nativeOnly: conversation.nativeOnly === true,
+            modelSelection: conversation.mode === 'business' ? null : (modelSelection?.value || 'auto'),
+            pagePath: window.location.pathname,
             assistantWorkspaceKey: conversation.assistantWorkspaceKey || null,
             assistantProvider: conversation.assistantProvider || null,
             assistantConfigurationRevision: conversation.assistantConfigurationRevision || null,

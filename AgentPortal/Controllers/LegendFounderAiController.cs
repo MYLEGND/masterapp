@@ -26,6 +26,10 @@ public sealed class LegendFounderAiController : Controller
 
     private LegendFounderAiHttpTransport Transport => new(HttpContext, _conversation, _progress, _logger);
 
+    [HttpGet("founder/legend-ai/models")]
+    public async Task<IActionResult> Models(CancellationToken ct) => Ok(new { models = await _conversation.GetChatModelsAsync(User, ct),
+        availability = "configured_models_only", credits = "not_verified", automaticFallback = false });
+
     [HttpGet]
     [Route("founder/legend-ai/progress/{operationId:guid}")]
     public Task Progress(Guid operationId, CancellationToken cancellationToken) =>

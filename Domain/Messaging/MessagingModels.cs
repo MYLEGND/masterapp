@@ -186,7 +186,8 @@ public sealed record MessagingFounderAiResponseProvenance(
     IReadOnlyList<LegendConnectGovernedScheduleCertificateSnapshot>? ScheduleCertificates = null,
     IReadOnlyList<string>? ReasoningTransitionPath = null,
     bool BodyIsError = false,
-    string? Error = null)
+    string? Error = null,
+    string? ModelSelection = null)
 {
     public static MessagingFounderAiResponseProvenance OutcomeUnknown(string mode) =>
         new(false, mode, Stage: "request_interrupted", Reason: "outcome_unknown",

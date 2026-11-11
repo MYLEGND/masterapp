@@ -1092,6 +1092,13 @@ public class WebsitePlatformController : ControllerBase
         return await ApplyMutationBatchAsync(request, cancellationToken);
     }
 
+    // Assistant review uses the same validator and persistence owner as Studio.
+    // A reviewed whole-draft revision must never silently rebase onto newer work.
+    [NonAction]
+    public Task<IActionResult> ReviewAssistantMutations(WebsiteMutationRequest request,
+        bool previewOnly, CancellationToken cancellationToken = default, Action<long>? recordCommit = null) =>
+        ApplyMutationBatchAsync(request, cancellationToken, exactRevision: true, previewOnly: previewOnly, recordCommit: recordCommit);
+
     [HttpPost("manage/design-plan")]
     [RequestSizeLimit(2_500_000)]
     public async Task<IActionResult> ApplyDesignPlan(
@@ -2085,7 +2092,8 @@ public class WebsitePlatformController : ControllerBase
         WebsiteContentState? authorizedState = null,
         WebsiteContentDocument? preparedBaseline = null,
         IReadOnlyList<WebsiteCallToActionOption>? preparedActions = null,
-        WebsiteCapabilityManifest? preparedCapabilities = null)
+        WebsiteCapabilityManifest? preparedCapabilities = null,
+        bool exactRevision = false, bool previewOnly = false, Action<long>? recordCommit = null)
     {
         var performance = Stopwatch.StartNew();
         if (request is null || request.Operations is null)
@@ -2102,7 +2110,7 @@ public class WebsitePlatformController : ControllerBase
         var canScopedRebase = request.Operations.Count > 0 && request.Operations.All(operation =>
             (operation.Type is "replaceNode" or "removeNode" or "moveNode" or "updatePage" or "setApprovedCapability") &&
             !string.IsNullOrWhiteSpace(operation.ExpectedFingerprint));
-        if (state.Revision != request.ExpectedRevision && !canScopedRebase)
+        if (state.Revision != request.ExpectedRevision && (exactRevision || !canScopedRebase))
             return Conflict(new { error = "revision_conflict", revision = state.Revision });
 
         var baseline = preparedBaseline ?? Read(state.DraftJson);
@@ -2168,6 +2176,13 @@ public class WebsitePlatformController : ControllerBase
             return Conflict(new { error = ex.Message });
         }
 
+        if (previewOnly)
+            return Ok(new { previewOnly = true, revision = state.Revision,
+                changedScopes = result.ChangedScopes, fingerprints = result.Fingerprints,
+                content = WebsiteContentStore.ProjectPublishedText(JsonSerializer.Serialize(result.Document, JsonOptions)),
+                quality = WebsiteDraftQualityInspector.Inspect(result.Document),
+                published = false, saved = false });
+
         var document = result.Document;
         document.UpdatedUtc = DateTime.UtcNow;
         if (request.DraftId.HasValue || request.DraftName is not null)
@@ -2199,6 +2214,9 @@ public class WebsitePlatformController : ControllerBase
         state.ScheduleError = null;
         state.Revision++;
         state.UpdatedUtc = DateTime.UtcNow;
+        // The assistant receipt is tracked in this same context and committed
+        // atomically with its draft. Normal Studio callers supply no callback.
+        recordCommit?.Invoke(state.Revision);
         try { await _db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { error = "revision_conflict" }); }
 

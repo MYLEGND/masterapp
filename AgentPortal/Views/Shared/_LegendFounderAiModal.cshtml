@@ -7,6 +7,7 @@
      aria-hidden="true"
      data-chat-url="@Url.Action("Chat", "LegendFounderAi")"
      data-history-url="@Url.Action("Conversations", "LegendFounderAi")"
+     data-models-url="@Url.Action("Models", "LegendFounderAi")"
      data-user-avatar-url="@Model.AvatarUrl"
      data-user-initials="@Model.Initials">
 
@@ -39,6 +40,11 @@
                             <h2 id="legendFounderAiTitle">
                                 Legend<sup>®</sup> Ai
                             </h2>
+                            <label class="visually-hidden" for="legendFounderAiModelSelection">Model</label>
+                            <select id="legendFounderAiModelSelection" class="form-select form-select-sm" aria-label="LEGEND AI model">
+                                <option value="auto">Auto</option>
+                            </select>
+                            <span id="legendFounderAiModelStatus" class="visually-hidden" role="status"></span>
                         </div>
                     </div>
                 </div>
@@ -77,29 +83,6 @@
                          aria-label="@Shared.Branding.LegendBrand.RegisteredTitle Ai conversation controls">
 <div id="legendFounderAiModebar"
                              class="legend-founder-ai-modebar">
-                            <div class="legend-founder-ai-mode-tabs"
-                                 role="tablist"
-                                 aria-label="Conversation mode">
-                                <button type="button"
-                                        class="legend-founder-ai-mode is-active"
-                                        data-legend-ai-mode="legend"
-                                        role="tab"
-                                        aria-selected="true">
-                                    <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
-                                    Legend<sup>®</sup> Ai
-                                </button>
-
-                                <button type="button"
-                                        class="legend-founder-ai-mode"
-                                        data-legend-ai-mode="teacher"
-                                        role="tab"
-                                        aria-selected="false">
-                                    <span class="legend-founder-ai-mode-dot" aria-hidden="true"></span>
-                                    OpenAI
-                                    <span class="visually-hidden">Direct OpenAI mode; native LEGEND responder bypassed</span>
-                                </button>
-                            </div>
-
                             <details id="legendBusinessAssistantSettings">
                                 <summary>Business assistant</summary>
                                 <label for="legendBusinessAssistantWorkspace">Business or agent suite</label>
@@ -193,7 +176,7 @@
 
                         <button type="button" class="legend-founder-ai-setting" data-legend-ai-setting="model">
                             <span class="legend-founder-ai-setting-icon" aria-hidden="true">◉</span>
-                            <span class="legend-founder-ai-setting-summary"><strong>Model</strong><small>Choose response mode</small></span>
+                            <span class="legend-founder-ai-setting-summary"><strong>Model</strong><small>Choose model in chat</small></span>
                             <span class="legend-founder-ai-setting-chevron" aria-hidden="true">›</span>
                         </button>
                         <button type="button" class="legend-founder-ai-setting" data-legend-ai-setting="tools">

@@ -5937,3 +5937,75 @@ would fail closed after merging. Correct only the existing request metadata to t
 reviewed source and fresh fast-track base, run required checks and merge normally;
 do not trigger a duplicate production deployment. This checkpoint addition is local
 and not yet remotely preserved.
+
+## 2026-11-11 — unified pretrained LEGEND AI and website action continuation
+
+Continuing the same checkout/branch from remotely preserved checkpoint
+`356b948eb25a3ab111babe436ad1d0c312a36408`. Production remains39bd1428;
+completed migration/upload receipts above are unchanged and must not be replayed.
+Founder authorized one assistant with Auto/manual OpenAI and Cloudflare selection,
+then expanded scope to privacy-safe website/form presentation edits and separately
+approved publication through existing Studio owners. Backend source/deployment
+writes remain unavailable to the assistant. Direct deployment is authorized once
+required exact-candidate checks/review pass. Founder explicitly declined further
+browser attempts and will verify deployed journeys; rendered acceptance is not
+claimed. Observed browser control: Mac locked, browser use disabled.
+
+Current uncommitted implementation extends the existing conversation/tool/history
+owners, signed Cloudflare model selection (v2), WebsitePlatformController mutation
+preview/exact-revision path, and existing FounderAiActionAuthorization ledger.
+No new database, provider credentials, funding limits, or background automation.
+Live read-only OpenAI model metadata returned200; provider credits/billable
+inference remain unverified. Production diagnostics showed governed tool timeouts,
+not demonstrated credit exhaustion. Direct pretrained conversations now bypass
+legacy native language/curriculum admission and expose read failures as unavailable
+evidence for truthful synthesis; tenant/identity/write controls remain enforced.
+
+Reusable checks: Cloudflare runtime/security151 passed; initial focused .NET206
+passed before subsequent review fixes; JS DOM rendering6 passed (not rendered
+browser acceptance). Astra found replay/config coupling, Auto privacy precedence,
+and legacy-thread privacy UI issues; corrected, new focused test run pending.
+Current focused log/private/tmp/legend-unified-ai-direct-tests.log; isolated build
+root/private/tmp/legend-unified-ai-tests. Website action approval/security audit
+and focused regressions remain pending. No acceptance, commit, deployment or
+fast-track synchronization of these new changes is claimed. Worker v2 must precede
+Azure manual Cloudflare selection. Resume exact tests/review, fix demonstrated
+issues, package/admit/deploy affected consumers, verify live, then source-only
+fast-track integration. Preserve this scope and all prior completed receipts.
+
+### Unified assistant source acceptance (supersedes pending test notes above)
+
+Astra accepted all28 changed source/test paths at manifest SHA256
+`7871c3e16d08afd2848da5b931c29f6b1c11b528b9cc644cf9ee8ce5a1804dec`.
+Exact sorted source hashes retained in/private/tmp/legend-unified-ai-source-manifest.txt.
+Focused run:330 passed and3 initial failures; corrected fixture identity/assertion
+issues, then all3 passed in targeted reruns. New SQL-compatible relational draft
+approval tests prove preview nonmutation, exact revision rejection, single-write
+replay, and closed-conversation denial. Publication-recovery regression identified
+a real OutcomeUnknown settlement gap: canonical receipt owner now permits only
+verified immutable website publication readback to complete that receipt, never
+reexecution. Entire affected action suite46/46 passed afterward. Additional
+missing-versus-zero analytics regression passed. JS8/8 passed; Cloudflare151/151
+passed. These are automated/synthetic checks, not provider-quality or browser
+acceptance. Logs reside under/private/tmp/legend-unified-ai-*, with final action
+suite/private/tmp/legend-canonical-action-recovery.log. Existing package advisory
+NU1903 for SignalR10.0.5 remains unchanged; no unrelated upgrade performed.
+
+Direct OpenAI AND Cloudflare now bypass legacy native curriculum/source-language
+classification. Existing structured read failures reach the same provider for
+truthful synthesis instead of rejecting every answer; no tenant/authorization or
+write approval is bypassed. Existing analytics projection now includes bounded
+campaign, funnel, form-abandonment and journey coverage. Missing section evidence
+is null, not zero. Website staging shares the existing action ledger and Studio
+validation; draft+receipt commit atomically, publication has its separate exact
+review and immutable request-ID recovery. No backend writes exposed. Same-origin
+review links are rendered safely in chat. New frontend capability is Founder-only
+with existing per-site authorization; no retail-client access added.
+
+Source acceptance does not grant deployment admission. Next: preserve exact source,
+reuse current PR checks, determine dependency impact, bind new packages/native owner
+and current healthy runtime39bd1428 (websiteea128c942), then stop/deploy/restart only
+affected applications plus the existing Cloudflare Worker v2 update. No migration
+is introduced. Founder latest instruction: "Do not waste time trying browser access,
+I need these deployed if done"; no further browser attempts. No new production
+mutation or live acceptance is claimed yet. Fast-track remains source-only afterward.

@@ -180,6 +180,29 @@ internal sealed partial class MessagingService
             delegation with { Roles = delegation.Roles.ToArray() });
     }
 
+    // Receipt retrieval is history access, never renewed execution authority.
+    // Provider revocation must stop new calls without hiding completed outcomes.
+    public async Task<MessagingFounderAiTurnResult?> ReadCompletedFounderAiTurnAsync(
+        MessagingActor actor, Guid conversationId, Guid operationId, string requestFingerprint,
+        CancellationToken cancellationToken = default)
+    {
+        actor = NormalizeActor(actor);
+        if (!await IsFounderAiOwnerAsync(actor, cancellationToken) ||
+            !IsFounderAiFingerprint(requestFingerprint) || conversationId == Guid.Empty || operationId == Guid.Empty)
+            return FounderAiBeginNotFound();
+        if (!await FounderAiOwnedQuery(actor).AnyAsync(x => x.Id == conversationId, cancellationToken)) return null;
+        var key = FounderAiOperationKey(actor, conversationId, operationId, "user");
+        var prior = await _db.InternalMessages.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.ConversationId == conversationId && x.ClientMessageId == key, cancellationToken);
+        if (prior is null) return null;
+        if (prior.SenderUserId != actor.UserId || prior.SenderType != actor.ParticipantType ||
+            !TryReadFounderAiRequest(prior, out var receipt) || receipt!.RequestFingerprint != requestFingerprint)
+            return MessagingFounderAiTurnResult.Failure("FOUNDER_HISTORY_REPLAY_MISMATCH",
+                "This request identifier was already used for different content or settings.");
+        var terminal = await FounderAiTerminalAsync(conversationId, prior.Id, cancellationToken);
+        return terminal is null ? null : FounderAiReplay(prior, terminal, operationId);
+    }
+
     public async Task<MessagingFounderAiTurnResult> BeginFounderAiTurnAsync(
         MessagingFounderAiBeginTurnCommand command, CancellationToken cancellationToken = default)
     {
@@ -462,7 +485,7 @@ internal sealed partial class MessagingService
         value.Version == 1 && value.Mode is "legend" or "teacher" or "business" &&
         new[] { value.Stage, value.Reason, value.ResponseAuthority, value.FoundationModel, value.FoundationHosting,
             value.EscalationDisposition, value.ResearchState, value.LearningState, value.ModelAssistanceState,
-            value.ModelVersion, value.ModelProvenance, value.FailureKind, value.Reference, value.ModelAssistanceReason }
+            value.ModelVersion, value.ModelProvenance, value.FailureKind, value.Reference, value.ModelAssistanceReason, value.ModelSelection }
             .All(field => field is null || field.Length <= 1024) &&
         value.ProviderStatusCode is null or (>= 100 and <= 599) &&
         (!value.BodyIsError || value.Error is null) &&
