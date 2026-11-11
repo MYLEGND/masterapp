@@ -57,7 +57,7 @@ public static class LegendMemberDirectory
                         .OrderByDescending(candidate => candidate.UpdatedUtc).ThenByDescending(candidate => candidate.CreatedUtc)
                         .ThenByDescending(candidate => candidate.Id).Select(candidate => candidate.Id).FirstOrDefault())
 
-            select membership.ClientProfileId.Value;
+            select membership.ClientProfileId;
         return profiles
             .Where(profile => profile.CrmStatus == null ||
                 !UnavailableCrmStatuses.Contains(profile.CrmStatus.ToLower()))

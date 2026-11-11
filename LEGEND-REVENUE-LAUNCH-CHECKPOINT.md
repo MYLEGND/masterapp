@@ -5557,3 +5557,15 @@ migration rehearsal jobs were skipped, not accepted. Packaging, exact final cand
 checks/review, production schema admission and store assistant work remain outstanding.
 No production mutation. Existing direct-release request still preserves source-only
 integration; do not repurpose stale native deployment receipts or bypass admission.
+
+Security run42954306374 subsequently failed the release build on CS8629 in
+LegendMemberDirectory inherited membership projection. Kept its existing HasValue
+filter and projected nullable ClientProfileId directly (Contains lifts profile.Id),
+removing the unsafe Value dereference without changing entitlement eligibility.
+Independent review accepted this bounded correction. Existing household tests34PASS,
+0FAIL/0SKIP via supported persistent local configuration; log
+/private/tmp/legend-combined-directory-fix-tests.log. Rebuild completed without CS8629;
+NU1900 feed warnings remain. Exact updated remote CI must still pass.
+Fresh public runtime readback confirms all five apps still at
+ea128c942b7d8bd4452b5ec6abc591ee624111fc; receipt
+/private/tmp/legend-combined-live-baselines.json. No production mutation.
