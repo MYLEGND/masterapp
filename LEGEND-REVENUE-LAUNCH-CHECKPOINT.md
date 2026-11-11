@@ -6252,3 +6252,27 @@ full harness retains the pre-existing unrelated Messages palette failure. Real b
 control is disabled in Work settings; physical iPhone and actual authenticated analytics
 request acceptance remain unverified. No paid/provider or customer test calls occurred.
 This follow-up is not yet deployed. Preserve previous successful upload/restart receipts.
+
+
+### Settings gear continuation — 2026-11-11
+Founder requested one gear in the hamburger panel opening Settings, with future
+personalization/automation configuration belonging there. Existing SettingsPanel
+now contains the original workspace/provider/funding, privacy and per-request action
+controls. One gear replaces the four sidebar settings shortcuts. Model selector stays
+in chat. No personalization/automation capability or permissions were invented.
+Removed duplicate JS settings-action toggles and their obsolete CSS. Existing shared
+legend-modal surface/panel contract owns stacking, Escape, Tab and focus return;
+no competing focus/keyboard manager. Missing dictation setup opens this same dialog.
+Rendered checks exercise opening, Escape/close, gear focus return, unchanged state,
+mobile and desktop layout. Evidence: /private/tmp/legend-settings-gear-final-geometry.log,
+/private/tmp/legend-settings-contract.log, /private/tmp/legend-settings-gear-final-images.
+The unrelated existing Messages palette fixture failure remains disclosed.
+
+c71 source and all-five packages remain preserved, but are not deployed and do not
+contain this settings relocation. Architecture43118553128 attempt1 failed hosted
+Chrome version/session startup; only the failed job was retried. Security and commerce
+passed. Native hold43119147737 was cancelled; no production app was stopped. Retain
+admission/c71cde5e1/remaining-gate.json and packages; do not deploy superseded Portal
+bytes. Current live Portal remains e7b78aa16, other runtime baselines unchanged.
+PR774 continues this same repair; package/validation compatibility must be reconciled
+for the new candidate before admission, with no replay of successful prior effects.

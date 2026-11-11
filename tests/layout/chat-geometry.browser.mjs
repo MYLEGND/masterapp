@@ -75,22 +75,50 @@ try {
       assert(layout.selectWidth <= 180, `${width}: model picker too wide`);
       assert.notEqual(layout.selectBackground, 'rgb(255, 255, 255)', `${width}: model picker lost component theme`);
     }
+    if (width > 900) {
+      await page.locator('[data-legend-ai-setting="settings"]').click();
+      await page.locator('#legendFounderAiSettingsPanel').waitFor({state:'visible'});
+      const settingsGeometry = await page.locator('.legend-founder-ai-settings-panel').evaluate(el => ({
+        panel: el.getBoundingClientRect().toJSON(), header: el.querySelector('header').getBoundingClientRect().toJSON(),
+        body: el.querySelector('.legend-founder-ai-settings-body').getBoundingClientRect().toJSON()
+      }));
+      assert(settingsGeometry.header.bottom <= settingsGeometry.body.y, `${width}: settings header must stay above controls`);
+      assert(settingsGeometry.panel.width <= 561, `${width}: settings panel too wide`);
+      await page.locator('#legendFounderAiSettingsClose').click();
+    }
     assert.equal(m.sendRadius,'50%' ,`${width}: send shape overridden`);
     if(width<=900){
       assert.equal(m.scrim.opacity,'0',`${width}: scrim rendered as extra close`);
       const menu=page.locator('#legendFounderAiMobileMenu');
       await menu.click();assert.equal(await menu.getAttribute('aria-expanded'),'true');
+      await page.waitForTimeout(240);
+      if (process.env.LEGEND_SCREENSHOTS) await page.screenshot({path:`${process.env.LEGEND_SCREENSHOTS}/${width}-drawer.png`});
+      const gear = page.locator('[data-legend-ai-setting="settings"]');
+      await gear.click();
+      await page.locator('#legendFounderAiSettingsPanel').waitFor({state:'visible'});
+      assert.equal(await page.locator('#legendFounderAiSidebar #legendBusinessAssistantSettings').count(), 0);
+      assert.equal(await page.locator('#legendFounderAiSettingsPanel #legendBusinessAssistantSettings').count(), 1);
       await page.locator('#legendBusinessAssistantSettings').evaluate(el => el.open = true);
       await page.waitForTimeout(240); // Existing drawer transition must finish before visual evidence.
       const businessStyle = await page.locator('#legendBusinessAssistantSettings').evaluate(el => ({
         foreground: getComputedStyle(el).color,
-        sidebar: getComputedStyle(el.closest('.legend-founder-ai-sidebar')).color,
+        sidebar: getComputedStyle(el.closest('.legend-founder-ai-settings-panel')).color,
         controlBackground: getComputedStyle(el.querySelector('select')).backgroundColor
       }));
       assert.equal(businessStyle.foreground, businessStyle.sidebar, `${width}: sidebar text loses theme`);
       assert.notEqual(businessStyle.controlBackground, 'rgb(255, 255, 255)', `${width}: business control loses theme`);
       if (process.env.LEGEND_SCREENSHOTS) await page.screenshot({path:`${process.env.LEGEND_SCREENSHOTS}/${width}-sidebar.png`});
-      await page.locator('#legendBusinessAssistantSettings').evaluate(el => el.open = false);
+      const privacy = page.locator('#legendFounderAiNativeOnly');
+      const privacyBefore = await privacy.isChecked();
+      await page.keyboard.press('Escape');
+      assert.equal(await page.locator('#legendFounderAiSettingsPanel').isVisible(), false);
+      assert.equal(await privacy.isChecked(), privacyBefore);
+      await gear.waitFor({state:'visible'});
+      await page.waitForTimeout(50);
+      assert.equal(await gear.evaluate(el => document.activeElement === el), true);
+      await gear.click();
+      assert.equal(await privacy.isChecked(), privacyBefore);
+      await page.locator('#legendFounderAiSettingsClose').click();
       await menu.click();assert.equal(await menu.getAttribute('aria-expanded'),'false');
       const handle=page.locator('.legend-mobile-sheet-handle');
       const handleBox=await handle.boundingBox();

@@ -1217,10 +1217,12 @@
     display: none;
 }
 
-.legend-founder-ai-settings-panel {
-    position: absolute;
-    z-index: 30;
-    inset: 14px;
+#legendFounderAiSettingsPanel > .legend-founder-ai-settings-panel {
+    position: relative;
+    width: 100%;
+    max-width: 560px;
+    height: min(680px, calc(100dvh - 32px));
+    margin-inline: auto;
     display: grid;
     grid-template-rows: auto minmax(0,1fr);
     overflow: hidden;
@@ -1231,7 +1233,7 @@
     box-shadow: 0 30px 78px rgba(2,10,28,.42);
 }
 
-.legend-founder-ai-settings-panel[hidden] {
+#legendFounderAiSettingsPanel[hidden] {
     display: none;
 }
 
@@ -1285,46 +1287,6 @@
     gap: 9px;
     padding: 14px;
 }
-
-.legend-founder-ai-settings-action {
-    width: 100%;
-    min-height: 52px;
-    display: flex;
-    align-items: center;
-    padding: 9px 11px;
-    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-300) 72%, transparent);
-    border-radius: 12px;
-    background: linear-gradient(135deg, var(--legend-ai-gold-300), var(--legend-ai-gold-700));
-    color: #14213a;
-    text-align: left;
-    cursor: pointer;
-}
-
-.legend-founder-ai-settings-action:hover,
-.legend-founder-ai-settings-action:focus-visible {
-    border-color: var(--legend-ai-blue-bright);
-    background: linear-gradient(135deg, var(--legend-ai-blue), var(--legend-ai-blue-bright));
-    color: #ffffff;
-    outline: none;
-}
-
-.legend-founder-ai-settings-action > span {
-    display: grid;
-    gap: 2px;
-}
-
-.legend-founder-ai-settings-action strong {
-    font-size: .75rem;
-    font-weight: 900;
-}
-
-.legend-founder-ai-settings-action small {
-    color: inherit;
-    opacity: .76;
-    font-size: .63rem;
-    line-height: 1.35;
-}
-
 
 /* ==========================================================
    COMPACT DESKTOP / TABLET LANDSCAPE
@@ -1704,7 +1666,6 @@
     }
 
     .legend-founder-ai-settings-panel {
-        inset: 8px;
         border-radius: 14px;
     }
 
