@@ -25,6 +25,11 @@ public sealed class LegendBusinessAssistantFoundationTests
         MarketingConnectionStore.ValidateAssistantConfiguration(images);
         Assert.NotEqual(ReceptionistConfigurationCodec.Hash(historical), ReceptionistConfigurationCodec.Hash(JsonSerializer.Serialize(images)));
         Assert.Throws<ArgumentException>(() => MarketingConnectionStore.ValidateAssistantConfiguration(config with { ImagesEnabled = true }));
+        Assert.Throws<ArgumentException>(() => MarketingConnectionStore.ValidateAssistantConfiguration(config with { DictationEnabled = true }));
+        var dictation = config with { DictationEnabled = true, TranscriptionModel = "gpt-transcribe" };
+        MarketingConnectionStore.ValidateAssistantConfiguration(dictation);
+        Assert.NotEqual(ReceptionistConfigurationCodec.Hash(historical), ReceptionistConfigurationCodec.Hash(JsonSerializer.Serialize(dictation)));
+        Assert.Throws<ArgumentException>(() => MarketingConnectionStore.ValidateAssistantConfiguration(dictation with { Provider = "cloudflare" }));
     }
 
     [Fact]

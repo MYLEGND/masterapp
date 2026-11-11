@@ -77,7 +77,9 @@
         ['enabled', 'Enable requests after funding admission', 'checkbox']
         ,['imageModel', 'Reviewed image model ID (optional)', 'text'],
         ['imageQuality', 'Image quality: low, medium, or high', 'text'],
-        ['imagesEnabled', 'Enable image requests within the same reviewed funding limits', 'checkbox']
+        ['imagesEnabled', 'Enable image requests within the same reviewed funding limits', 'checkbox'],
+        ['transcriptionModel', 'Reviewed dictation model (gpt-transcribe)', 'text'],
+        ['dictationEnabled', 'Enable dictation within reviewed funding limits (up to 60 seconds)', 'checkbox']
     ];
     function renderBusinessSettings(config) {
         if (!businessFields) return;
@@ -102,6 +104,7 @@
     let businessSelectionGeneration = 0;
 
     async function refreshBusinessConfiguration() {
+        cancelDictation();
         const generation = ++businessSelectionGeneration;
         businessConfiguration = null;
         businessStart.disabled = true;
@@ -146,6 +149,7 @@
         configuration.reasoningEffort ||= null;
         configuration.imageModel ||= null;
         configuration.imageQuality ||= null;
+        configuration.transcriptionModel ||= null;
         businessSave.disabled = true;
         businessSaveStatus.textContent = 'Saving settings…';
         const credential = businessCredential.value || null;
@@ -496,6 +500,7 @@
     }
 
     function clearAuthenticatedHistory() {
+        cancelDictation();
         accountGeneration++;
         const request = activeRequest;
         activeRequest = null;
@@ -688,6 +693,7 @@
     }
 
     function startNewConversation() {
+        cancelDictation();
         if (busy) {
             return;
         }
@@ -721,6 +727,7 @@
     }
 
     function openConversation(id) {
+        cancelDictation();
         if (busy) {
             return;
         }
@@ -785,6 +792,7 @@
     }
 
     function renderAll({ forceBottom = false } = {}) {
+        if (dictation && dictation.conversationId !== state.activeConversationId) cancelDictation();
         const wasNearBottom =
             isTranscriptNearBottom();
 
@@ -1612,12 +1620,122 @@
         }
     );
 
-    voiceFocus?.addEventListener(
-        'click',
-        () => {
-            input?.focus({ preventScroll: true });
+    const voiceStatus = document.getElementById('legendFounderAiVoiceStatus');
+    const voiceCancel = document.getElementById('legendFounderAiVoiceCancel');
+    let dictation = null;
+    function stopMicrophone(session) {
+        clearTimeout(session.timer);
+        session.stream?.getTracks().forEach(track => track.stop());
+        if (session.node) { session.node.port.onmessage = null; session.node.disconnect(); }
+        session.source?.disconnect();
+        void session.context?.close().catch(() => {});
+    }
+    function cancelDictation() {
+        if (!dictation) return;
+        const session = dictation; dictation = null;
+        session.abort.abort(); stopMicrophone(session);
+        session.chunks.length = 0;
+        voiceCancel.hidden = true; voiceFocus.setAttribute('aria-pressed', 'false');
+        voiceFocus.setAttribute('aria-label', 'Record dictation');
+        voiceStatus.textContent = session.phase === 'transcribing'
+            ? 'Transcription cancelled locally. OpenAI may already have received the audio; its cost reservation remains pending. Typed text is unchanged.'
+            : 'Recording discarded before upload. Typed text is unchanged.';
+    }
+    async function finishDictation() {
+        const session = dictation;
+        if (!session || session.phase !== 'recording') return;
+        session.phase = 'transcribing'; stopMicrophone(session);
+        voiceFocus.setAttribute('aria-pressed', 'false');
+        voiceFocus.setAttribute('aria-label', 'Transcription in progress');
+        voiceStatus.textContent = 'Transcribing with the selected OpenAI project… No message has been sent.';
+        try {
+            const { encodeDictationWave, appendDictation } = await import('/js/legend-ai-dictation.mjs');
+            if (dictation !== session || session.accountGeneration !== accountGeneration ||
+                activeConversation().id !== session.conversationId) return;
+            const wave = encodeDictationWave(session.chunks, session.sampleRate);
+            session.chunks.length = 0;
+            let binary = '';
+            for (let i = 0; i < wave.length; i += 8192) binary += String.fromCharCode(...wave.subarray(i, i + 8192));
+            const response = await fetch('/founder/legend-ai/business/dictation', {
+                method: 'POST', credentials: 'same-origin', signal: session.abort.signal,
+                headers: { 'Content-Type': 'application/json',
+                    'RequestVerificationToken': form.querySelector('input[name="__RequestVerificationToken"]')?.value || '' },
+                body: JSON.stringify({ workspace: session.workspace, configurationRevision: session.revision,
+                    operationId: session.operationId, audioBase64: btoa(binary) })
+            });
+            if (response.status === 401 || response.status === 403 || response.redirected) { clearAuthenticatedHistory(); return; }
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Transcription failed. Check dictation configuration and funding.');
+            if (dictation !== session || session.accountGeneration !== accountGeneration || activeConversation().id !== session.conversationId ||
+                businessConfiguration?.revision !== session.revision) return;
+            input.value = appendDictation(input.value, result.transcript, input.maxLength);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            voiceStatus.textContent = 'Transcript added. Review it, then press Send. Raw audio was not saved by LEGEND.';
+        } catch (error) {
+            if (dictation === session) voiceStatus.textContent = error.message || 'Dictation failed. Typed text is unchanged.';
+        } finally {
+            if (dictation === session) {
+                dictation = null; voiceCancel.hidden = true;
+                voiceFocus.setAttribute('aria-label', 'Record dictation');
+            }
         }
-    );
+    }
+    voiceFocus?.addEventListener('click', async () => {
+        if (dictation) { if (dictation.phase === 'recording') await finishDictation(); return; }
+        const conversation = activeConversation();
+        if (busy || conversation.pendingOperation) { voiceStatus.textContent = 'Finish the pending request before recording.'; return; }
+        if (conversation.mode !== 'business' || conversation.nativeOnly || conversation.externalAnsweringBlocked ||
+            businessConfiguration?.workspaceKey !== conversation.assistantWorkspaceKey ||
+            businessConfiguration?.revision !== conversation.assistantConfigurationRevision ||
+            businessConfiguration?.configuration?.dictationEnabled !== true || conversation.assistantProvider !== 'openai') {
+            voiceStatus.textContent = 'Select a business conversation with reviewed OpenAI dictation and funding enabled in its settings. You can continue typing.'; return;
+        }
+        if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || !window.AudioWorkletNode) {
+            voiceStatus.textContent = 'Microphone recording is unavailable here. Use an HTTPS browser with microphone access, or type your message.'; return;
+        }
+        const session = { phase: 'permission', chunks: [], samples: 0, abort: new AbortController(),
+            workspace: conversation.assistantWorkspaceKey, revision: conversation.assistantConfigurationRevision,
+            conversationId: conversation.id, accountGeneration, operationId: crypto.randomUUID() };
+        dictation = session; voiceCancel.hidden = false;
+        voiceStatus.textContent = 'Allow microphone access to record. Audio goes to your selected OpenAI project when you stop or reach 60 seconds. Cancel before transcription discards the local recording.';
+        try {
+            const AudioContextType = window.AudioContext || window.webkitAudioContext;
+            session.context = new AudioContextType();
+            await session.context.resume();
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 }, video: false });
+            if (dictation !== session) { stream.getTracks().forEach(track => track.stop()); return; }
+            session.stream = stream;
+            await session.context.audioWorklet.addModule('/js/legend-ai-microphone-worklet.js');
+            if (dictation !== session) return;
+            session.sampleRate = session.context.sampleRate;
+            session.source = session.context.createMediaStreamSource(stream);
+            session.node = new AudioWorkletNode(session.context, 'legend-microphone-capture');
+            session.node.port.onmessage = event => {
+                if (dictation !== session || session.phase !== 'recording') return;
+                const remaining = session.sampleRate * 60 - session.samples;
+                const chunk = event.data.subarray(0, remaining);
+                session.chunks.push(chunk); session.samples += chunk.length;
+                if (session.samples >= session.sampleRate * 60) void finishDictation();
+            };
+            session.source.connect(session.node); session.node.connect(session.context.destination);
+            session.phase = 'recording';
+            voiceFocus.setAttribute('aria-pressed', 'true'); voiceFocus.setAttribute('aria-label', 'Stop recording and transcribe');
+            voiceStatus.textContent = 'Recording microphone · press Stop to transcribe, or Cancel to discard (60 seconds maximum).';
+            session.timer = setTimeout(() => void finishDictation(), 60000);
+            stream.getAudioTracks()[0].addEventListener('ended', () => { if (dictation === session && session.phase === 'recording') cancelDictation(); });
+        } catch (error) {
+            if (dictation === session) {
+                cancelDictation();
+                voiceStatus.textContent = error.name === 'NotAllowedError'
+                    ? 'Microphone access was denied. Allow it in browser settings and try again, or type your message.'
+                    : 'Microphone could not start. Check that a microphone is connected and available, or type your message.';
+            }
+        }
+    });
+    voiceCancel?.addEventListener('click', cancelDictation);
+    modalElement.addEventListener('hidden.bs.modal', cancelDictation);
+    window.addEventListener('pagehide', cancelDictation);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) cancelDictation(); });
 
     transcript?.addEventListener(
         'click',
@@ -1896,6 +2014,7 @@
 
     form?.addEventListener('submit', async event => {
         event.preventDefault();
+        if (dictation) { voiceStatus.textContent = 'Stop or cancel dictation before sending.'; return; }
         if (busy) { abortActiveRequest(); return; }
         const text = input?.value.trim();
         if (!text) return;

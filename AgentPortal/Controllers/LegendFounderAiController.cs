@@ -54,6 +54,19 @@ public sealed class LegendFounderAiController : Controller
         catch (InvalidOperationException) { return Conflict(new { error = "Workspace selection is unavailable." }); }
     }
 
+    [HttpPost("founder/legend-ai/business/dictation")]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(2_600_000)]
+    public async Task<IActionResult> BusinessDictation([FromBody] BusinessAssistantDictationRequest request, CancellationToken ct)
+    {
+        if (!ModelState.IsValid || request is null || string.IsNullOrWhiteSpace(request.Workspace)) return BadRequest();
+        try { return Ok(new { transcript = await _conversation.TranscribeBusinessAsync(User, request, ct) }); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException) { return BadRequest(new { error = "Record 0.1–60 seconds of microphone audio in a selected workspace." }); }
+        catch (Exception error) when (error is InvalidOperationException or HttpRequestException or OperationCanceledException or System.Text.Json.JsonException)
+        { return StatusCode(503, new { error = "Dictation could not complete. Check the selected workspace's dictation configuration and funding. No message was sent; no automatic retry was made." }); }
+    }
+
     [HttpGet("founder/legend-ai/business/media")]
     public async Task<IActionResult> BusinessMedia(string workspace, CancellationToken ct)
     {

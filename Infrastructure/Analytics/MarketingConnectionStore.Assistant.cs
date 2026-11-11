@@ -20,7 +20,9 @@ public sealed record BusinessAssistantConfiguration(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ImageModel = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ImageQuality = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool ImagesEnabled = false,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ReasoningEffort = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ReasoningEffort = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? TranscriptionModel = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool DictationEnabled = false);
 
 public sealed record BusinessAssistantConnectionStatus(Guid ConnectionId, Guid Revision,
     string WorkspaceKey, BusinessAssistantConfiguration? Configuration, bool CredentialConfigured,
@@ -127,6 +129,8 @@ public sealed partial class MarketingConnectionStore
             s.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' or ':');
         if (value.ServiceTier != "default" || value.Provider is not ("openai" or "cloudflare" or "legend-native") || !Token(value.ProjectId, 200) ||
             value.ReasoningEffort is not (null or "low" or "medium" or "high") ||
+            value.TranscriptionModel is not (null or "gpt-transcribe") ||
+            (value.DictationEnabled && (value.Provider != "openai" || value.TranscriptionModel is null)) ||
             (value.ImageModel is not null && (!Token(value.ImageModel, 100) || !value.ImageModel.StartsWith("gpt-image-", StringComparison.Ordinal))) ||
             value.ImageQuality is not (null or "low" or "medium" or "high") || (value.ImagesEnabled && (value.Provider != "openai" || value.ImageModel is null || value.ImageQuality is null)) ||
             !Token(value.Model, 100) || (value.OrganizationId is not null && !Token(value.OrganizationId, 200)) ||
