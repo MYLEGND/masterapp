@@ -6035,3 +6035,40 @@ Website. Final package/native admission and Worker v2 publication remain outstan
 Worker deployment owner currently enforces the old protected workflow identity;
 resolve through an authorized existing authority extension, never fabricated CI
 identity or bypass. Do not send manual v2 selections to an unupgraded Worker.
+
+### Exact unified assistant packages retained; no production mutation
+
+Application candidate3b78a234df16fdc09260b14dd3f1d8abbfcf61b2 is verified remotely
+preserved on the task branch. Existing native build owner was extended only for
+ancestor-bound canonical impact and conditional static packaging; Astra accepted
+owner SHA256c5e97e63f96539aa20eb61192044b2c2f12d37da1339b4ae46adcd5c6fa995b3.
+Four packages are complete at/private/tmp/legend-unified-ai-native-3b78a234d/packages.json.
+Manifest SHA256ee56fed47f054a03576a8e176a49bf88ca8613097b1f42d65a60c632970ff4b8.
+Astra independently accepted ZIP integrity, all package digests, exact target set,
+provenance markers and19 project assemblies. Reuse these exact packages; this
+checkpoint-only continuation does not change application bytes.
+
+Canonical scope: portal/client/protect/parfait; schema=false; routing=false;
+Founder Worker update=true. Static Website remains unaffected. Current candidate
+security43081371807 PASS; commerce43081361820 PASS; additional commerce43081371643
+and architecture43081371822 were still running at last observation. Do not call
+those pending checks successful or restart them. Reuse completed focused checks.
+
+Read-only production provenance reconfirmed all four managed apps at39bd1428d651e375f55bab0f40b649eb8f268bd3
+and static Website at ea128c942b7d8bd4452b5ec6abc591ee624111fc. No new release lock,
+shutdown, upload, migration, secret or funding mutation was performed.
+
+Exact remaining boundary: Cloudflare v2 must be published before enabling manual
+Cloudflare selection from this Azure candidate. Existing Worker deployment token
+is not in the Mac environment, known Wrangler configuration, or inspected Portal
+settings. Its established declaration is the GitHub CLOUDFLARE_WORKERS_API_TOKEN
+secret in the old Production workflow. Existing Worker deployment owner enforces
+that workflow and its deployment routine also rewrites secrets/policy/settings.
+Do not invoke it as a code-only update, fabricate Actions identity, copy secrets
+into logs/artifacts, or reactivate the rejected old release lane. A narrowly reviewed
+extension of the existing owner must preserve Worker bindings/routes/secrets/budgets
+and use an existing authorized deployment identity; no new key or broader access
+is assumed. Native Azure admission also needs rebinding to this candidate/current
+healthy baseline without replaying the completed241-migration history. No app
+should be stopped before that dependency and remaining required checks reconcile.
+Fast-track PR772 source-only synchronization remains pending after deployment.
