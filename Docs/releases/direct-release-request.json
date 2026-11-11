@@ -1,8 +1,8 @@
 {
   "requestedBy": "Founder",
   "authorization": "Founder authorized source-only fast-track integration after completed direct Mac deployment; no production mutation is authorized by this request.",
-  "purpose": "Preserve reviewed LEGEND AI source and completed Azure deployment checkpoint without replaying app deployments; Cloudflare remains deferred.",
-  "requestId": "source-integration-legend-ai-azure-dd7255398-20261111",
+  "purpose": "Preserve reviewed mobile composer, current-page context and workspace dictation repair with verified Portal-only deployment; do not replay production uploads.",
+  "requestId": "source-integration-mobile-composer-e7b78aa16-20261111",
   "releaseMode": "validate-only",
   "targets": [],
   "cloudflareWebsiteRouting": false,
@@ -78,7 +78,7 @@
   },
   "sourceIntegration": {
     "schemaVersion": 1,
-    "baseRevision": "4e6554d8a34ca89ef7f98f77773be5fa75f92835",
-    "sourceRevision": "9ce4e9cfc886bc3cfff8a8f36314b8a856f629dc"
+    "baseRevision": "ad1b501da64455e2f2cb06aeb336bfa848cfcca8",
+    "sourceRevision": "6cd73138f540934a22488cf23a25bfecdcc75110"
   }
 }
