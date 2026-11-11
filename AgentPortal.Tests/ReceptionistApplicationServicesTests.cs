@@ -206,9 +206,31 @@ public sealed class ReceptionistApplicationServicesTests
         BookingPolicy = new() { Enabled = true, QaOnly = false, AllowConsentedCustomerEmail = true,
             Services = [new() { ServiceKey = "website_services", BookingServiceId = "synthetic-service", TimeZoneId = "UTC", DurationMinutes = 30 }] }
     };
+    [Fact]
+    public async Task BookingFailureRetainsConfirmedIntakeAndDoesNotRepeatUncertainAction()
+    {
+        using var f = new SessionFixture(BookingConfiguration(), controlledTest: true, booking: new FakeBooking { FailCommit = true });
+        await SaveBookingIntakeAsync(f);
+        f.Input("Please book an appointment tomorrow.", 1000, 1100);
+        await f.Session.HandleDelegationAsync("offer");
+        f.Input("Option one.", 1200, 1300);
+        var confirmation = await f.Session.HandleDelegationAsync("slot");
+        f.Acknowledge(confirmation, 1400);
+        f.Input("Please book the appointment and send the email invitation.", 1500, 1600);
+        var result = Text(await f.Session.HandleDelegationAsync("commit"));
+        Assert.Contains("needs reconciliation", result);
+        Assert.True(f.Actions.Committed); Assert.Equal(1, f.Actions.Writes);
+        Assert.Equal(1, f.Booking!.Commits);
+        f.Input("Please book the appointment and send the email invitation.", 1700, 1800);
+        await f.Session.HandleDelegationAsync("repeat");
+        Assert.Equal(1, f.Booking.Commits); Assert.Equal(1, f.Actions.Writes);
+        Assert.True(f.Actions.Committed);
+    }
+
     private sealed class FakeBooking : IReceptionistApplicationBooking
     {
         internal int Preparations, Commits;
+        internal bool FailCommit;
         public Task<IReadOnlyList<ReceptionistBookingOption>> PrepareAsync(ReceptionistCallContext call, Guid intake, string service, DateOnly date, Guid lease, CancellationToken ct)
         {
             Preparations++;
@@ -216,7 +238,7 @@ public sealed class ReceptionistApplicationServicesTests
             return Task.FromResult<IReadOnlyList<ReceptionistBookingOption>>([new("opaque-option", start, start.AddMinutes(30), "UTC", "Website services", call.ControlledTest)]);
         }
         public Task<ReceptionistBookingResult> CommitAsync(ReceptionistCallContext call, string handle, bool appointment, bool email, string receipt, Guid lease, CancellationToken ct)
-        { Assert.True(appointment); Assert.True(email); Commits++; return Task.FromResult(new ReceptionistBookingResult(call.ControlledTest ? "qa_booking_outcome_verified" : "booking_verified", true, call.ControlledTest)); }
+        { Assert.True(appointment); Assert.True(email); Commits++; if (FailCommit) throw new InvalidOperationException("Synthetic downstream failure"); return Task.FromResult(new ReceptionistBookingResult(call.ControlledTest ? "qa_booking_outcome_verified" : "booking_verified", true, call.ControlledTest)); }
     }
     [Theory]
     [InlineData("We discussed coaching earlier.")]

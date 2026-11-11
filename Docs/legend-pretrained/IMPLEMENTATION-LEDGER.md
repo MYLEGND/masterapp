@@ -358,3 +358,36 @@ allocation is inferred from this instruction. Unknown integrations remain explic
 unavailable until verified. The latest assignment requests the existing authorized
 Azure flow after exact-candidate gates; deployment remains blocked by unmet gates,
 not implied by a source checkpoint or a saved instruction.
+
+### Shared LEGEND AI role/channel clarification (2026-11-10)
+
+Shayla names the public receptionist persona/channel of LEGEND AI. Existing
+`Receptionist*` types are retained incremental voice/lifecycle owners, not authority
+to build a second assistant stack or to replace working integrations. Existing
+conversation/message history remains the private authenticated history owner;
+public call/intake records remain scoped by the pinned business/call identity.
+Sharing voice/persona never authorizes attaching a caller to private history.
+
+Server-side policy is supplied by existing owners, not a new role registry:
+
+| Actor/channel | Existing authority | Allowed boundary |
+| --- | --- | --- |
+| Public receptionist | Verified provider ingress or published-site grant; pinned configuration capabilities; fenced action claim | Approved public knowledge, confirmed inquiry service operation, separately admitted booking; no private account/CRM reads |
+| Authenticated business/member or agent | Authenticated actor, BusinessWorkspaceAccess and existing feature rollout/entitlement | Only that actor's authorized workspace/context/tools; membership alone does not grant billing/admin or retail assistant access |
+| Founder administration | Existing FounderOnly and exact proposal/approval authority | Administrative tools retain their guards; a public voice cannot invoke them |
+
+Public intake goes directly from `ReceptionistApplicationServices.CanonicalActions`
+to `ReceptionistInquiryAuthority` and the transactional `WebsiteLeadSubmission`/
+`WebsiteLifeLeadCaptureService` owners. No employee HttpContext, cookie, interactive
+AgentPortal login or browser automation is required. Canonical CRM ownership and
+verified call/action/facts must still resolve. Missing notification recipients must
+not prevent durable intake; existing WebsiteLeadNotificationRecoveryWorker owns
+later delivery. Intake readback is required before claiming saved, and booking
+failure is not permission to erase or duplicate the inquiry.
+
+The existing voice worker has bounded session/owner admission, per-call backend
+work, independent watchdog work and a dedicated named HTTP transport without
+provider retries. Keep long-running assistant/image work off that queue. Shared
+funding admission still applies; this source design does not prove measured
+latency/capacity isolation on the deployed host. Exact candidate/live acceptance
+and remaining work stay in LEGEND-REVENUE-LAUNCH-CHECKPOINT.md.

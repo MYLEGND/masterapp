@@ -225,6 +225,16 @@ For LEGEND AI changes, extend the existing conversation, tool, credential, media
 context and accounting owners. Apply the authorization, privacy, validation and
 release rules above; a saved instruction is not a running automation.
 
+Shayla is LEGEND AI's public receptionist persona/channel, not a separate assistant
+stack. Reuse existing voice adapters, versioned business knowledge, tool services,
+accounting and diagnostics incrementally. Enforce server-derived capability policy
+for public callers, authenticated members, agents and Founder administration;
+sharing a persona never shares private conversations or grants account access.
+Public intake calls a scoped backend service without employee sign-in or browser
+automation. Persist confirmed intake durably and idempotently before optional
+booking/notification effects; confirm actions only after service readback. Preserve
+receptionist concurrency/deadlines independently of long-running assistant work.
+
 - Map the actual entry points, deployed model/provider identities (distinguish
   OpenAI, Azure OpenAI and other routes), context sources, tool permissions,
   budgets and response handling before selecting a repair.

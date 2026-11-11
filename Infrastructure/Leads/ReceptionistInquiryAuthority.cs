@@ -113,8 +113,9 @@ internal sealed partial class ReceptionistInquiryAuthority(
         var recipients = new WebsiteIntakeRecipientResolver(db, configuration);
         var actor = await recipients.ResolveCrmOwnerAsync(current.Owner, ct);
         if (actor is null) throw new InvalidOperationException("The inquiry's canonical CRM owner is unresolved.");
-        if (rules.NotifyOwner && string.IsNullOrWhiteSpace(await recipients.ResolveAsync(current.Owner, ct)))
-            throw new InvalidOperationException("The approved owner notification has no current scoped recipient.");
+        // Intake ownership is mandatory; notification delivery is not intake
+        // authorization. The existing recovery worker retries this durable lead
+        // after a missing recipient or delivery configuration is repaired.
 
         var envelope = new InquiryEnvelope(1, current.Owner.Key, current.CallId, actionId,
             current.Provider, current.ProviderProjectKey, current.ProviderSessionId, current.ConfigurationId,
