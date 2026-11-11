@@ -4696,6 +4696,8 @@ public sealed record LegendFounderAiChatMessage(
 
 public sealed class LegendFounderAiChatRequest
 {
+    public bool GenerateImage { get; init; }
+    public Guid[]? ReferenceImageIds { get; init; }
     public string? AssistantWorkspaceKey { get; init; }
     public string? AssistantProvider { get; init; }
     public Guid? AssistantConfigurationRevision { get; init; }

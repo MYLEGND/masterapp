@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Infrastructure.Analytics;
 using Infrastructure.Reception;
 using Microsoft.AspNetCore.DataProtection;
@@ -12,6 +13,20 @@ namespace AgentPortal.Tests;
 
 public sealed class LegendBusinessAssistantFoundationTests
 {
+    [Fact]
+    public void HistoricalConfigurationHashDoesNotChangeWhenImageOptionsAreAbsent()
+    {
+        const string historical = """
+        {"Provider":"openai","ProjectId":"proj_synthetic","OrganizationId":null,"Model":"synthetic-model","OwnerBudgetAccountId":"11111111-1111-1111-1111-111111111111","FundingBudgetAccountId":"22222222-2222-2222-2222-222222222222","MonthlyCashAllocation":25,"MonthlyServiceAllocation":25,"MaximumCashPerTurn":1,"MaximumServicePerTurn":1,"MaximumOutputTokens":512,"CostCeilingEvidenceSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","CostCeilingExpiresUtc":"2026-11-11T00:00:00Z","Enabled":false,"MaximumInputCharacters":32000,"ServiceTier":"default"}
+        """;
+        var config = JsonSerializer.Deserialize<BusinessAssistantConfiguration>(historical)!;
+        Assert.Equal(historical, JsonSerializer.Serialize(config));
+        var images = config with { ImagesEnabled = true, ImageModel = "gpt-image-2.5-sunburst", ImageQuality = "high" };
+        MarketingConnectionStore.ValidateAssistantConfiguration(images);
+        Assert.NotEqual(ReceptionistConfigurationCodec.Hash(historical), ReceptionistConfigurationCodec.Hash(JsonSerializer.Serialize(images)));
+        Assert.Throws<ArgumentException>(() => MarketingConnectionStore.ValidateAssistantConfiguration(config with { ImagesEnabled = true }));
+    }
+
     [Fact]
     public void WorkspaceParsingRejectsAggregateAliasesAndNoncanonicalIdentities()
     {

@@ -1500,6 +1500,42 @@ final class MobileNativeContractTests: XCTestCase {
         throw SessionSwitchTestError.expectedSessionWasNotReached
     }
 
+    func testFounderBusinessSelectionBindsRequestAndStreamsProvisionalText() async throws {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        let workspace = "agent:11111111111111111111111111111111"
+        let revision = "22222222-2222-2222-2222-222222222222"
+        StubURLProtocol.onRequest = {
+            if StubURLProtocol.requests.last?.url?.path.hasSuffix("workspaces") == true {
+                StubURLProtocol.responseBody = Data("[{\"workspace\":\"\(workspace)\",\"label\":\"Synthetic suite\"}]".utf8)
+            } else {
+                StubURLProtocol.responseBody = Data("{\"workspaceKey\":\"\(workspace)\",\"revision\":\"\(revision)\",\"readiness\":\"funding_admission_required\",\"creditBalanceStatus\":\"unknown\",\"configuration\":{\"enabled\":true,\"model\":\"synthetic-model\",\"projectId\":\"proj_synthetic\"}}".utf8)
+            }
+        }
+        await store.loadBusinessWorkspaces()
+        await store.selectBusinessWorkspace(workspace)
+        XCTAssertEqual(store.assistantWorkspace, workspace)
+        StubURLProtocol.onRequest = nil
+        StubURLProtocol.requests = []
+        StubURLProtocol.responseBody = Data("""
+        {"type":"progress","progress":{"stage":"answer_delta","message":"","answerDelta":"Grounded answer"}}
+        {"type":"result","status":200,"result":{"succeeded":true,"mode":"business","message":"Grounded answer","messageId":"cccccccc-cccc-cccc-cccc-cccccccccccc"}}
+
+        """.utf8)
+        var text: [String] = []
+        let subscription = store.$provisionalAnswer.sink { text.append($0) }
+        defer { subscription.cancel() }
+        await store.send("A scoped question")
+        let request = try XCTUnwrap(StubURLProtocol.requests.first)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: founderRequestBody(request)) as? [String: Any])
+        XCTAssertEqual(body["mode"] as? String, "business")
+        XCTAssertEqual(body["assistantWorkspaceKey"] as? String, workspace)
+        XCTAssertEqual(body["assistantProvider"] as? String, "openai")
+        XCTAssertEqual(body["assistantConfigurationRevision"] as? String, revision)
+        XCTAssertTrue(text.contains("Grounded answer"))
+        XCTAssertEqual(store.provisionalAnswer, "")
+    }
+
     func testFounderChatConsumesProgressAndResultOnOneAuthenticatedPost() async throws {
         let store = await availableFounderStore()
         defer { resetFounderStreamStub() }

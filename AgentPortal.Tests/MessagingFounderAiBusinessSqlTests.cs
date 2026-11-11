@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Domain.Entities;
 using Domain.Messaging;
@@ -7,6 +9,10 @@ using Infrastructure.Data;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Shared.Workspaces;
+using Infrastructure.Businesses;
+using Infrastructure.WebsiteEditing;
+using Domain.Social;
+using Moq;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -36,7 +42,9 @@ public sealed partial class MessagingServiceTests
         var foreignTracking = new AgentTrackingProfile { AgentUserId = foreignId, AgentUpn = foreign.AgentUpn, Slug = "synthetic-" + Guid.NewGuid().ToString("N") };
         var workspace = WorkspaceKey.ForAgentTrackingProfile(tracking.Id).Value;
         var conversationId = Guid.NewGuid();
-        db.AddRange(agent, foreign, tracking, foreignTracking); await db.SaveChangesAsync();
+        var mediaAsset = new WebsiteMediaAsset { OwnerKey = actorId, SourceUrl = "synthetic-reference", ContentType = "image/png",
+            SizeBytes = 1, Sha256 = new string('a', 64), StorageKey = "synthetic-" + Guid.NewGuid().ToString("N") };
+        db.AddRange(agent, foreign, tracking, foreignTracking, mediaAsset); await db.SaveChangesAsync();
         try
         {
             var service = CreateService(db, configuredFounderOid: actorId, configuration: FounderConfiguration(actorId));
@@ -61,12 +69,25 @@ public sealed partial class MessagingServiceTests
             var changedProvider = await otherDevice.BeginFounderAiTurnAsync(request with { OperationId = Guid.NewGuid(),
                 ExpectedLastMessageId = terminal.Message!.Id, AssistantConfigurationRevision = Guid.NewGuid() });
             Assert.Equal("FOUNDER_HISTORY_PROVIDER_CHANGED", changedProvider.ErrorCode);
+            Assert.True(await BusinessWorkspaceAccess.CanReadAssistantWorkspaceAsync(db, actorId, workspace, capability: "website"));
+            Assert.False(await BusinessWorkspaceAccess.CanReadAssistantWorkspaceAsync(db, foreignId, workspace, capability: "website"));
+            var storage = new Mock<ISocialMediaStorage>(MockBehavior.Strict);
+            storage.Setup(x => x.OpenReadAsync(mediaAsset.StorageKey, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => SocialMediaReadResult.Available(new MemoryStream(new byte[] { 1 })));
+            var media = new WebsiteMediaService(db, storage.Object);
+            Assert.Null(await media.OpenAsync(foreignId, mediaAsset.Id));
+            storage.Verify(x => x.OpenReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            var ownedMedia = await media.OpenAsync(actorId, mediaAsset.Id);
+            Assert.NotNull(ownedMedia);
+            await ownedMedia!.Value.Content.DisposeAsync();
             tracking.Status = "disabled"; await db.SaveChangesAsync();
+            Assert.False(await BusinessWorkspaceAccess.CanReadAssistantWorkspaceAsync(db, actorId, workspace, capability: "website"));
             Assert.False((await otherDevice.GetFounderAiConversationPageAsync(actor, conversationId, new(AssistantWorkspaceKey: workspace))).Succeeded);
         }
         finally
         {
             await using var cleanup = new MasterAppDbContext(options);
+            await cleanup.Set<WebsiteMediaAsset>().Where(x => x.Id == mediaAsset.Id).ExecuteDeleteAsync();
             await cleanup.InternalMessages.Where(x => x.ConversationId == conversationId).ExecuteDeleteAsync();
             await cleanup.MessageConversationParticipants.Where(x => x.ConversationId == conversationId).ExecuteDeleteAsync();
             await cleanup.MessageConversations.Where(x => x.Id == conversationId).ExecuteDeleteAsync();

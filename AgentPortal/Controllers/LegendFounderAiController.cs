@@ -54,6 +54,36 @@ public sealed class LegendFounderAiController : Controller
         catch (InvalidOperationException) { return Conflict(new { error = "Workspace selection is unavailable." }); }
     }
 
+    [HttpGet("founder/legend-ai/business/media")]
+    public async Task<IActionResult> BusinessMedia(string workspace, CancellationToken ct)
+    {
+        try { return Ok(await _conversation.ListBusinessMediaAsync(User, workspace, ct)); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException) { return BadRequest(); }
+    }
+
+    [HttpGet("founder/legend-ai/business/media/{id:guid}")]
+    public async Task<IActionResult> BusinessMediaFile(Guid id, string workspace, CancellationToken ct, bool download = false)
+    {
+        try
+        {
+            var media = await _conversation.OpenBusinessMediaAsync(User, workspace, id, ct);
+            Response.Headers.CacheControl = "private, no-store";
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            if (media is null) return NotFound();
+            if (media.Value.Asset.ContentType is not ("image/png" or "image/jpeg" or "image/webp"))
+            {
+                await media.Value.Content.DisposeAsync();
+                return NotFound();
+            }
+            return download ? File(media.Value.Content, media.Value.Asset.ContentType, id +
+                (media.Value.Asset.ContentType == "image/png" ? ".png" : media.Value.Asset.ContentType == "image/jpeg" ? ".jpg" : ".webp"))
+                : File(media.Value.Content, media.Value.Asset.ContentType);
+        }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException) { return BadRequest(); }
+    }
+
     [HttpGet("founder/legend-ai/business/configuration")]
     public async Task<IActionResult> BusinessConfiguration(string workspace, string provider, CancellationToken ct)
     {
@@ -72,6 +102,18 @@ public sealed class LegendFounderAiController : Controller
         catch (ForbidResultException) { return Forbid(); }
         catch (ArgumentException) { return BadRequest(new { error = "A complete bounded provider and funding configuration is required." }); }
         catch (InvalidOperationException) { return Conflict(new { error = "Configuration changed or is unavailable. Reload before saving." }); }
+    }
+
+    [HttpPost("founder/legend-ai/business/model-access")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> BusinessModelAccess([FromBody] BusinessAssistantModelAccessRequest request, CancellationToken ct)
+    {
+        if (!ModelState.IsValid || request is null || string.IsNullOrWhiteSpace(request.Workspace)) return BadRequest();
+        try { return Ok(await _conversation.InspectBusinessModelAccessAsync(User, request.Workspace, ct)); }
+        catch (ForbidResultException) { return Forbid(); }
+        catch (ArgumentException) { return BadRequest(); }
+        catch (Exception error) when (error is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+        { return StatusCode(503, new { error = "Provider model access could not be verified. No inference was requested." }); }
     }
 
     [HttpGet("founder/legend-ai/actions/{proposalId:guid}")]
@@ -118,3 +160,4 @@ public sealed class LegendFounderAiController : Controller
 
 public sealed record BusinessAssistantSettingsRequest(string Workspace,
     Infrastructure.Analytics.BusinessAssistantConfiguration? Configuration, Guid ExpectedRevision, string? Credential);
+public sealed record BusinessAssistantModelAccessRequest(string Workspace);

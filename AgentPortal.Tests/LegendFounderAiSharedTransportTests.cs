@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -19,6 +20,36 @@ namespace AgentPortal.Tests;
 // Reuse the established real orchestration fixture and its recorded provider.
 public sealed partial class LegendFounderAiModeIsolationTests
 {
+    [Fact]
+    public async Task BusinessModelInspectionRejectsMalformedInputBeforeProviderAccess()
+    {
+        var controller = new LegendFounderAiController(null!, new LegendFounderAiProgressBroker(),
+            NullLogger<LegendFounderAiController>.Instance);
+        Assert.IsType<BadRequestResult>(await controller.BusinessModelAccess(null!, CancellationToken.None));
+        Assert.IsType<BadRequestResult>(await controller.BusinessModelAccess(new(" "), CancellationToken.None));
+        controller.ModelState.AddModelError("Workspace", "Invalid input");
+        Assert.IsType<BadRequestResult>(await controller.BusinessModelAccess(new("agent:" + Guid.NewGuid()), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task MobileRetailRoleCannotUseAssistantEvenWithFounderIdentity()
+    {
+        using var founderEnvironment = new FounderEnvironmentScope();
+        var context = ControllerContextFor(new ClaimsPrincipal(new ClaimsIdentity(
+            new[] { new Claim("oid", FounderEnvironmentScope.FounderId) }, "synthetic")));
+        var actor = new MobileResolvedActor(new MessagingActor(FounderEnvironmentScope.FounderId, MessagingParticipantTypes.Client), Guid.NewGuid(), "Synthetic retail role");
+        var resolver = new Mock<IMobileActorResolver>(MockBehavior.Strict);
+        resolver.Setup(x => x.ResolveAsync(context.HttpContext.User, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MobileActorResolution(true, null, null, [actor], actor, false));
+        var controller = new MobileFounderAiController(resolver.Object, null!, new LegendFounderAiProgressBroker(),
+            NullLogger<MobileFounderAiController>.Instance) { ControllerContext = context };
+        Assert.IsType<ForbidResult>(await controller.Access(CancellationToken.None));
+        Assert.IsType<ForbidResult>(await controller.BusinessWorkspaces(CancellationToken.None));
+        Assert.IsType<ForbidResult>(await controller.BusinessConfiguration("agent:" + Guid.NewGuid().ToString("N"), "openai", CancellationToken.None));
+        Assert.IsType<ForbidResult>(await controller.Conversations(CancellationToken.None));
+        Assert.IsType<ForbidResult>(await controller.Chat(new() { Mode = "business" }, CancellationToken.None));
+    }
+
     private static Task<IActionResult> ChatThroughControllerAsync(
         bool mobile, LegendFounderAiConversationService service, ControllerContext context,
         LegendFounderAiChatRequest request, CancellationToken token)

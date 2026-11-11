@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Domain.Entities;
 using Infrastructure.Data;
 using Infrastructure.Reception;
@@ -15,7 +16,11 @@ public sealed record BusinessAssistantConfiguration(
     decimal MonthlyCashAllocation, decimal MonthlyServiceAllocation,
     decimal MaximumCashPerTurn, decimal MaximumServicePerTurn,
     int MaximumOutputTokens, string CostCeilingEvidenceSha256, DateTime CostCeilingExpiresUtc,
-    bool Enabled = false, int MaximumInputCharacters = 32000, string ServiceTier = "default");
+    bool Enabled = false, int MaximumInputCharacters = 32000, string ServiceTier = "default",
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ImageModel = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ImageQuality = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool ImagesEnabled = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ReasoningEffort = null);
 
 public sealed record BusinessAssistantConnectionStatus(Guid ConnectionId, Guid Revision,
     string WorkspaceKey, BusinessAssistantConfiguration? Configuration, bool CredentialConfigured,
@@ -121,6 +126,9 @@ public sealed partial class MarketingConnectionStore
         static bool Token(string? s, int max) => !string.IsNullOrWhiteSpace(s) && s.Length <= max &&
             s.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' or ':');
         if (value.ServiceTier != "default" || value.Provider is not ("openai" or "cloudflare" or "legend-native") || !Token(value.ProjectId, 200) ||
+            value.ReasoningEffort is not (null or "low" or "medium" or "high") ||
+            (value.ImageModel is not null && (!Token(value.ImageModel, 100) || !value.ImageModel.StartsWith("gpt-image-", StringComparison.Ordinal))) ||
+            value.ImageQuality is not (null or "low" or "medium" or "high") || (value.ImagesEnabled && (value.Provider != "openai" || value.ImageModel is null || value.ImageQuality is null)) ||
             !Token(value.Model, 100) || (value.OrganizationId is not null && !Token(value.OrganizationId, 200)) ||
             value.MaximumOutputTokens is < 64 or > 4096 || value.MaximumInputCharacters is < 1000 or > 32000 || value.MonthlyCashAllocation < 0 || value.MonthlyServiceAllocation < 0 ||
             value.MaximumCashPerTurn < 0 || value.MaximumServicePerTurn <= 0 ||

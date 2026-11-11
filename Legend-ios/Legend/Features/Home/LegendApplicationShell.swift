@@ -10302,6 +10302,9 @@ private struct LegendFounderAiChatRequest: Encodable {
     let messages: [LegendFounderAiChatMessage]
     let conversationId: String
     let expectedLastMessageId: String?
+    var assistantWorkspaceKey: String? = nil
+    var assistantProvider: String? = nil
+    var assistantConfigurationRevision: String? = nil
 }
 
 private struct LegendFounderAiChatResponse: Decodable {
@@ -10337,6 +10340,26 @@ struct LegendFounderAiHistoryThread: Decodable, Identifiable {
     let id: String
     let subject: String?
     let lastMessageUtc: String?
+    var assistantWorkspaceKey: String? = nil
+    var assistantProvider: String? = nil
+    var assistantConfigurationRevision: String? = nil
+}
+struct LegendBusinessAssistantWorkspace: Decodable, Identifiable {
+    let workspace: String
+    let label: String
+    var id: String { workspace }
+}
+struct LegendBusinessAssistantConfiguration: Decodable {
+    let enabled: Bool
+    let model: String
+    let projectId: String
+}
+struct LegendBusinessAssistantConnection: Decodable {
+    let workspaceKey: String
+    let revision: String
+    let readiness: String
+    let configuration: LegendBusinessAssistantConfiguration?
+    let creditBalanceStatus: String
 }
 private struct LegendFounderAiHistoryList: Decodable {
     let succeeded: Bool
@@ -10382,6 +10405,11 @@ private struct LegendFounderAiProgressUpdate: Decodable {
 
 @MainActor
 final class LegendFounderAiStore: ObservableObject {
+    @Published private(set) var businessWorkspaces: [LegendBusinessAssistantWorkspace] = []
+    @Published private(set) var assistantWorkspace: String?
+    @Published private(set) var assistantProvider = "openai"
+    @Published private(set) var assistantConnection: LegendBusinessAssistantConnection?
+    private var assistantRevision: String?
     @Published private(set) var provisionalAnswer = ""
     @Published private(set) var isAvailable = false
     @Published private(set) var messages: [LegendFounderAiChatMessage] = []
@@ -10456,6 +10484,7 @@ final class LegendFounderAiStore: ObservableObject {
         hasOlderMessages = false; hasNewerMessages = false; hasMoreConversations = false
         failureMessage = nil; refreshIdentity = nil; availabilityResolved = false
         isAvailable = false; isSending = false; progressMessage = nil; provisionalAnswer = ""
+        businessWorkspaces = []; assistantWorkspace = nil; assistantConnection = nil; assistantRevision = nil
     }
 
     func refreshHistory(more: Bool = false, older: Bool = false, newer: Bool = false) {
@@ -10473,7 +10502,8 @@ final class LegendFounderAiStore: ObservableObject {
                 if !older {
                     let result = try await client.get("/api/v1/mobile/founder/legend-ai/conversations",
                         accessToken: token, queryItems: [URLQueryItem(name: "take", value: "50"),
-                            URLQueryItem(name: "skip", value: String(more ? historySkip : 0))],
+                            URLQueryItem(name: "skip", value: String(more ? historySkip : 0))] +
+                            (assistantWorkspace.map { [URLQueryItem(name: "assistantWorkspaceKey", value: $0)] } ?? []),
                         headers: participantHeaders, response: LegendFounderAiHistoryList.self)
                     try Task.checkCancellation()
                     guard generation == epoch, conversationID == thread else { return }
@@ -10485,6 +10515,7 @@ final class LegendFounderAiStore: ObservableObject {
                 }
                 guard persisted else { return }
                 var query = [URLQueryItem(name: "take", value: "60")]
+                if let assistantWorkspace { query.append(URLQueryItem(name: "assistantWorkspaceKey", value: assistantWorkspace)) }
                 if older, let first = messages.first, let sentUtc = first.sentUtc {
                     // Preserve the exact SQL timestamp string; Date formatting loses ticks.
                     query += [URLQueryItem(name: "beforeUtc", value: sentUtc), URLQueryItem(name: "beforeMessageId", value: first.id.uuidString)]
@@ -10520,10 +10551,47 @@ final class LegendFounderAiStore: ObservableObject {
 
     func openConversation(_ id: String) {
         guard !isSending, let uuid = UUID(uuidString: id) else { return }
+        let row = conversations.first(where: { $0.id == id })
+        guard row?.assistantWorkspaceKey == assistantWorkspace else { return }
+        if assistantWorkspace != nil && row?.assistantProvider != assistantProvider { failureMessage = "Select the conversation's provider before opening it."; return }
+        assistantRevision = row?.assistantConfigurationRevision
         generation += 1; refreshTask?.cancel(); refreshTask = nil
         conversationID = uuid; lastMessageId = nil; persisted = true; pending = nil
         messages = []; canRetry = false; hasOlderMessages = false; hasNewerMessages = false; failureMessage = nil
         refreshHistory()
+    }
+
+    func loadBusinessWorkspaces() async {
+        guard isAvailable, let client else { return }
+        let epoch = generation
+        do {
+            let token = try await accessTokenProvider()
+            let result = try await client.get("/api/v1/mobile/founder/legend-ai/business/workspaces",
+                accessToken: token, headers: participantHeaders, response: [LegendBusinessAssistantWorkspace].self)
+            guard generation == epoch else { return }
+            businessWorkspaces = result
+        } catch { if generation == epoch { handleHistoryError(error) } }
+    }
+
+    func selectBusinessWorkspace(_ workspace: String?, provider: String = "openai") async {
+        guard isAvailable, !isSending, pending == nil, let client,
+              ["openai", "cloudflare", "legend-native"].contains(provider) else { return }
+        if let workspace, !businessWorkspaces.contains(where: { $0.workspace == workspace }) { return }
+        clearConversation()
+        assistantWorkspace = workspace; assistantProvider = provider; assistantConnection = nil; assistantRevision = nil
+        conversations = []; historySkip = 0; hasMoreConversations = false
+        let epoch = generation
+        guard let workspace else { refreshHistory(); return }
+        do {
+            let token = try await accessTokenProvider()
+            let result = try await client.get("/api/v1/mobile/founder/legend-ai/business/configuration",
+                accessToken: token, queryItems: [URLQueryItem(name: "workspace", value: workspace), URLQueryItem(name: "provider", value: provider)],
+                headers: participantHeaders, response: LegendBusinessAssistantConnection.self)
+            guard generation == epoch else { return }
+            guard result.workspaceKey == workspace else { failureMessage = "Workspace binding could not be verified."; return }
+            assistantConnection = result; assistantRevision = result.revision
+            refreshHistory()
+        } catch { if generation == epoch { handleHistoryError(error) } }
     }
 
     func send(_ rawText: String, mode: String = "legend", nativeOnly: Bool = false,
@@ -10533,10 +10601,16 @@ final class LegendFounderAiStore: ObservableObject {
         guard pending == nil else { failureMessage = "Check the pending request before sending another message."; return }
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        let submission = Pending(id: UUID(), request: LegendFounderAiChatRequest(mode: mode,
-            nativeOnly: mode == "legend" && nativeOnly, externalAnsweringBlocked: mode == "legend" && externalAnsweringBlocked,
+        let business = assistantWorkspace != nil
+        if business && (assistantConnection?.configuration?.enabled != true || assistantConnection?.readiness != "funding_admission_required" || assistantRevision == nil) {
+            failureMessage = "The selected business provider is not ready. Configure it in the portal."; return
+        }
+        let submission = Pending(id: UUID(), request: LegendFounderAiChatRequest(mode: business ? "business" : mode,
+            nativeOnly: (business || mode == "legend") && nativeOnly, externalAnsweringBlocked: (business || mode == "legend") && externalAnsweringBlocked,
             sourceLanguageCode: sourceLanguageCode, messages: [LegendFounderAiChatMessage(role: "user", content: text)],
-            conversationId: conversationID.uuidString, expectedLastMessageId: lastMessageId))
+            conversationId: conversationID.uuidString, expectedLastMessageId: lastMessageId,
+            assistantWorkspaceKey: assistantWorkspace, assistantProvider: business ? assistantProvider : nil,
+            assistantConfigurationRevision: business ? assistantRevision : nil))
         pending = submission
         await execute(submission)
     }
@@ -10624,6 +10698,7 @@ final class LegendFounderAiStore: ObservableObject {
         generation += 1; refreshTask?.cancel(); refreshTask = nil
         messages = []; conversationID = UUID(); lastMessageId = nil; persisted = false
         pending = nil; canRetry = false; hasOlderMessages = false; hasNewerMessages = false; progressMessage = nil; failureMessage = nil
+        assistantRevision = assistantConnection?.revision
     }
 
     private var participantHeaders: [String: String] { ["X-Legend-Participant-Type": participantType.rawValue] }
@@ -10857,21 +10932,23 @@ struct LegendFounderAiConversationView: View {
         title: String,
         value: String
     ) -> some View {
-        let active = mode == value
+        let active = store.assistantWorkspace == nil && mode == value
 
         return Button {
-            guard !store.isSending,
-                  mode != value
+            guard !store.isSending, !store.canRetry,
+                  mode != value || store.assistantWorkspace != nil
             else {
                 return
             }
 
-            mode = value
-            nativeOnly = false
-            externalAnsweringBlocked = false
+            Task {
+                await store.selectBusinessWorkspace(nil)
+                mode = value
+                nativeOnly = false
+                externalAnsweringBlocked = false
+            }
             // A responder switch must start a clean thread; mixing a prior
             // model's reply into the next request would misrepresent source.
-            store.clearConversation()
         } label: {
             HStack(spacing: 7) {
                 Circle()
@@ -11481,6 +11558,33 @@ struct LegendFounderAiConversationView: View {
             .buttonStyle(.plain)
             .disabled(store.isSending)
 
+            Menu {
+                Button("Founder workspace") { Task { await store.selectBusinessWorkspace(nil) } }
+                ForEach(store.businessWorkspaces) { workspace in
+                    Button(workspace.label) {
+                        nativeOnly = false; externalAnsweringBlocked = false
+                        Task { await store.selectBusinessWorkspace(workspace.workspace) }
+                    }
+                }
+                Button("Refresh available workspaces") { Task { await store.loadBusinessWorkspaces() } }
+            } label: {
+                Label(store.businessWorkspaces.first(where: { $0.workspace == store.assistantWorkspace })?.label ?? "Founder workspace", systemImage: "building.2")
+            }
+            .disabled(store.isSending || store.canRetry)
+            .task { await store.loadBusinessWorkspaces() }
+            if store.assistantWorkspace != nil {
+                Menu("Provider: \(store.assistantProvider)") {
+                    ForEach(["openai", "cloudflare", "legend-native"], id: \.self) { provider in
+                        Button(provider) { Task { await store.selectBusinessWorkspace(store.assistantWorkspace, provider: provider) } }
+                    }
+                }
+                .disabled(store.isSending || store.canRetry)
+                Text("Provider: \(store.assistantProvider) · \(store.assistantConnection?.readiness.replacingOccurrences(of: "_", with: " ") ?? "Loading connection")")
+                    .font(.caption)
+                Text("\(store.assistantConnection?.configuration?.model ?? "") · \(store.assistantConnection?.configuration?.projectId ?? "")")
+                    .font(.caption)
+            }
+
             VStack(alignment: .leading, spacing: 10) {
                 Text(LegendLocalized("RESPONDER"))
                     .font(.system(size: 10, weight: .bold))
@@ -11581,7 +11685,7 @@ struct LegendFounderAiConversationView: View {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(store.conversations) { conversation in
                         Button {
-                            mode = "legend"; nativeOnly = false; externalAnsweringBlocked = true
+                            mode = "legend"; nativeOnly = false; externalAnsweringBlocked = store.assistantWorkspace == nil
                             store.openConversation(conversation.id)
                             chatsOpen = false
                         } label: {

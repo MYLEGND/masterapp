@@ -53,6 +53,51 @@
     const businessProvider = document.getElementById('legendBusinessAssistantProvider');
     const businessReadiness = document.getElementById('legendBusinessAssistantReadiness');
     const businessStart = document.getElementById('legendBusinessAssistantStart');
+    const businessFields = document.getElementById('legendBusinessAssistantConfigurationFields');
+    const businessCredential = document.getElementById('legendBusinessAssistantCredential');
+    const businessSave = document.getElementById('legendBusinessAssistantSave');
+    const businessSaveStatus = document.getElementById('legendBusinessAssistantSaveStatus');
+    const businessInspectModels = document.getElementById('legendBusinessAssistantInspectModels');
+    const businessGenerateImage = document.getElementById('legendBusinessAssistantGenerateImage');
+    const businessImageReferences = document.getElementById('legendBusinessAssistantImageReferences');
+    const businessSettingFields = [
+        ['projectId', 'API project ID', 'text'], ['organizationId', 'Organization ID (optional)', 'text'],
+        ['model', 'Reviewed model ID', 'text'],
+        ['reasoningEffort', 'Reviewed reasoning effort: low, medium, or high (default low)', 'text'],
+        ['ownerBudgetAccountId', 'Workspace budget account ID', 'text'],
+        ['fundingBudgetAccountId', 'Shared funding account ID', 'text'],
+        ['monthlyCashAllocation', 'Monthly cash allocation', 'number'],
+        ['monthlyServiceAllocation', 'Monthly service allocation', 'number'],
+        ['maximumCashPerTurn', 'Maximum cash reserved per request', 'number'],
+        ['maximumServicePerTurn', 'Maximum service reserved per request', 'number'],
+        ['maximumOutputTokens', 'Maximum output tokens', 'number'],
+        ['maximumInputCharacters', 'Maximum input characters', 'number'],
+        ['costCeilingEvidenceSha256', 'Reviewed cost-bound evidence SHA-256', 'text'],
+        ['costCeilingExpiresUtc', 'Cost-bound expiry (UTC)', 'text'],
+        ['enabled', 'Enable requests after funding admission', 'checkbox']
+        ,['imageModel', 'Reviewed image model ID (optional)', 'text'],
+        ['imageQuality', 'Image quality: low, medium, or high', 'text'],
+        ['imagesEnabled', 'Enable image requests within the same reviewed funding limits', 'checkbox']
+    ];
+    function renderBusinessSettings(config) {
+        if (!businessFields) return;
+        businessFields.replaceChildren();
+        businessCredential.value = '';
+        for (const [name, label, type] of businessSettingFields) {
+            const row = document.createElement('label');
+            row.textContent = label;
+            row.className = 'd-block mb-2';
+            const input = document.createElement('input');
+            input.type = type;
+            input.dataset.assistantSetting = name;
+            input.className = type === 'checkbox' ? 'form-check-input ms-2' : 'form-control';
+            if (type === 'checkbox') input.checked = config?.[name] === true;
+            else input.value = config?.[name] ?? '';
+            if (type === 'number') { input.min = '0'; input.step = name.includes('Tokens') || name.includes('Characters') ? '1' : '0.000001'; }
+            input.autocomplete = 'off';
+            row.append(input); businessFields.append(row);
+        }
+    }
     let businessConfiguration = null;
     let businessSelectionGeneration = 0;
 
@@ -60,6 +105,10 @@
         const generation = ++businessSelectionGeneration;
         businessConfiguration = null;
         businessStart.disabled = true;
+        if (businessSave) businessSave.disabled = true;
+        renderBusinessSettings(null);
+        if (businessImageReferences) businessImageReferences.replaceChildren();
+        if (businessGenerateImage) { businessGenerateImage.checked = false; businessGenerateImage.disabled = true; }
         if (!businessWorkspace.value) return;
         const query = new URLSearchParams({ workspace: businessWorkspace.value, provider: businessProvider.value });
         try {
@@ -67,14 +116,82 @@
             if (generation !== businessSelectionGeneration) return;
             businessConfiguration = result;
             const config = result.configuration;
+            renderBusinessSettings(config);
+            businessSave.disabled = false;
             businessReadiness.textContent = `${businessProvider.selectedOptions[0].text}: ${result.readiness.replaceAll('_', ' ')}. ` +
                 (config ? `Project: ${config.projectId}. Monthly cash allocation: ${config.monthlyCashAllocation}; service allocation: ${config.monthlyServiceAllocation}. ` : '') +
                 `Provider credit balance: ${result.creditBalanceStatus}. Funding is checked before each request. No automatic fallback.`;
             businessStart.disabled = !config || !config.enabled || result.readiness !== 'funding_admission_required';
+            businessGenerateImage.disabled = businessStart.disabled || !config?.imagesEnabled;
+            const media = await readHistory(`/founder/legend-ai/business/media?${new URLSearchParams({ workspace: businessWorkspace.value })}`, undefined, false).catch(() => []);
+            if (generation !== businessSelectionGeneration) return;
+            for (const item of media) {
+                const option = document.createElement('option'); option.value = item.id;
+                option.textContent = `${item.contentType} · ${item.createdUtc} · ${item.id}`;
+                businessImageReferences.append(option);
+            }
         } catch (error) {
             if (generation === businessSelectionGeneration) businessReadiness.textContent = error.message || 'Connection status is unavailable.';
         }
     }
+    businessSave?.addEventListener('click', async () => {
+        if (!businessConfiguration || !businessWorkspace.value) return;
+        const generation = businessSelectionGeneration;
+        const configuration = { provider: businessProvider.value, serviceTier: 'default' };
+        for (const [name, , type] of businessSettingFields) {
+            const input = businessFields.querySelector(`[data-assistant-setting="${name}"]`);
+            configuration[name] = type === 'checkbox' ? input.checked : type === 'number' ? Number(input.value) : input.value.trim();
+        }
+        configuration.organizationId ||= null;
+        configuration.reasoningEffort ||= null;
+        configuration.imageModel ||= null;
+        configuration.imageQuality ||= null;
+        businessSave.disabled = true;
+        businessSaveStatus.textContent = 'Saving settings…';
+        const credential = businessCredential.value || null;
+        businessCredential.value = '';
+        try {
+            const response = await fetch('/founder/legend-ai/business/configuration', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json',
+                    'RequestVerificationToken': form.querySelector('input[name="__RequestVerificationToken"]')?.value || '' },
+                body: JSON.stringify({ workspace: businessWorkspace.value, configuration,
+                    expectedRevision: businessConfiguration.revision, credential })
+            });
+            if (generation !== businessSelectionGeneration) return;
+            if (!response.ok) {
+                const error = await response.json().catch(() => null);
+                throw new Error(error?.error || 'Settings could not be saved. Reload the connection before trying again.');
+            }
+            businessSaveStatus.textContent = 'Settings saved. Provider readiness and funding are checked independently.';
+            await refreshBusinessConfiguration();
+        } catch (error) {
+            if (generation === businessSelectionGeneration) businessSaveStatus.textContent = error.message;
+        } finally {
+            if (generation === businessSelectionGeneration) businessSave.disabled = false;
+        }
+    });
+    businessInspectModels?.addEventListener('click', async () => {
+        if (!businessConfiguration || !businessWorkspace.value) return;
+        const generation = businessSelectionGeneration;
+        businessInspectModels.disabled = true;
+        businessSaveStatus.textContent = 'Checking configured model metadata…';
+        try {
+            const response = await fetch('/founder/legend-ai/business/model-access', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json',
+                    'RequestVerificationToken': form.querySelector('input[name="__RequestVerificationToken"]')?.value || '' },
+                body: JSON.stringify({ workspace: businessWorkspace.value })
+            });
+            const result = await response.json();
+            if (generation !== businessSelectionGeneration) return;
+            businessSaveStatus.textContent = response.ok
+                ? `${result.status.replaceAll('_', ' ')}. ${(result.models || []).map(item => `${item.model}: ${item.status.replaceAll('_', ' ')}`).join('; ')} ${result.limitation || ''}`
+                : result.error || 'Model access could not be verified.';
+        } catch {
+            if (generation === businessSelectionGeneration) businessSaveStatus.textContent = 'Model access could not be verified. No generation was requested.';
+        } finally { businessInspectModels.disabled = false; }
+    });
     businessSettings?.addEventListener('toggle', async () => {
         if (!businessSettings.open || businessWorkspace.options.length > 1) return;
         try {
@@ -1162,6 +1279,18 @@
         if (role === 'assistant') renderAssistantContent(body, content);
         else body.textContent = content;
         bubble.appendChild(body);
+        if (role === 'assistant' && metadata?.stage === 'business_image_saved' && typeof metadata.reference === 'string') {
+            const url = new URL(metadata.reference, window.location.origin);
+            if (url.origin === window.location.origin && /^\/founder\/legend-ai\/business\/media\/[0-9a-f-]{36}$/i.test(url.pathname) &&
+                /^(business|agent):[0-9a-f]{32}$/.test(url.searchParams.get('workspace') || '')) {
+                const image = document.createElement('img');
+                image.src = url.href; image.alt = 'Generated image saved privately to this workspace'; image.className = 'img-fluid';
+                image.loading = 'lazy'; bubble.append(image);
+                const download = document.createElement('a');
+                url.searchParams.set('download', 'true'); download.href = url.href;
+                download.textContent = 'Download image'; download.className = 'd-block'; bubble.append(download);
+            }
+        }
 
         // Provider/model provenance remains on the governed response contract for
         // diagnostics and audit, but ordinary chat presentation shows only the answer.
@@ -1788,6 +1917,9 @@
             assistantWorkspaceKey: conversation.assistantWorkspaceKey || null,
             assistantProvider: conversation.assistantProvider || null,
             assistantConfigurationRevision: conversation.assistantConfigurationRevision || null,
+            generateImage: conversation.mode === 'business' && businessConfiguration?.workspaceKey === conversation.assistantWorkspaceKey && businessGenerateImage.checked,
+            referenceImageIds: conversation.mode === 'business' && businessConfiguration?.workspaceKey === conversation.assistantWorkspaceKey && businessGenerateImage.checked
+                ? Array.from(businessImageReferences.selectedOptions, option => option.value) : [],
             externalAnsweringBlocked: conversation.externalAnsweringBlocked === true,
             sourceLanguageCode: null, conversationId: conversation.id,
             expectedLastMessageId: conversation.lastMessageId || null,

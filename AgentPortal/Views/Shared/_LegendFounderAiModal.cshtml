@@ -111,7 +111,22 @@
                                     <option value="legend-native">LEGEND native</option>
                                 </select>
                                 <p id="legendBusinessAssistantReadiness" role="status">Choose a workspace to inspect its connection and funding readiness.</p>
+                                <details id="legendBusinessAssistantConfigurationEditor">
+                                    <summary>Connection and funding settings</summary>
+                                    <p>Use the API project and existing funding accounts approved for this workspace. Saving settings does not verify provider access or grant spending authority.</p>
+                                    <div id="legendBusinessAssistantConfigurationFields"></div>
+                                    <label for="legendBusinessAssistantCredential">Replace project API key</label>
+                                    <input id="legendBusinessAssistantCredential" type="password" class="form-control" autocomplete="new-password" spellcheck="false" />
+                                    <small>Leave blank to retain the current key. Changing the project clears its old key. Keys are stored encrypted and never returned.</small>
+                                    <button type="button" id="legendBusinessAssistantSave" class="btn btn-outline-primary">Save settings</button>
+                                    <button type="button" id="legendBusinessAssistantInspectModels" class="btn btn-outline-secondary">Check model access (no generation)</button>
+                                    <p id="legendBusinessAssistantSaveStatus" role="status"></p>
+                                </details>
                                 <button type="button" id="legendBusinessAssistantStart" class="btn btn-outline-primary">Start scoped conversation</button>
+                                <label class="d-block"><input id="legendBusinessAssistantGenerateImage" type="checkbox" /> Generate or edit an image from my next message</label>
+                                <label for="legendBusinessAssistantImageReferences">Reference images from this workspace (up to four)</label>
+                                <select id="legendBusinessAssistantImageReferences" class="form-select" multiple></select>
+                                <p>Image requests send the selected references to your configured provider and save the result privately in the existing media library. Select the saved image in Studio to use it in a draft. Publication requires its existing review.</p>
                                 <p>Provider connections and funding must be configured and reviewed for this workspace. ChatGPT sign-in does not connect an API account. Recommendations require review; this mode cannot execute changes.</p>
                             </details>
 

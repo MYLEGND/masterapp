@@ -187,7 +187,7 @@ internal sealed class WebsiteAnalyticsLegendReadProjection(
                     var published = await Infrastructure.WebsiteEditing.WebsiteContentStore.PublishedBusinessAsync(db, businessId, cancellationToken);
                     publishedWebsite = published is null ? (object)new { status = "unavailable", source = "WebsiteContentStore" }
                         : new { status = "published_revision_observed", source = "WebsiteContentStore", published.Id, published.Revision, published.CreatedUtc,
-                            coverage = "publication_identity_only_content_not_exported" };
+                            content = Infrastructure.WebsiteEditing.WebsiteContentStore.ProjectPublishedText(published.DocumentJson) };
                 }
                 else publishedWebsite = new { status = "permission_unavailable" };
             }
