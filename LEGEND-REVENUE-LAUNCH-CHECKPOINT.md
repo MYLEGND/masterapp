@@ -6194,3 +6194,36 @@ require the intended two-row grid/44px controls/100px composer, preserving viewp
 checks. No application source or package change; retain e7b78 package rather than
 rebuild. Failed gate recovery must preserve passing evidence and retry only
 invalidated/unresolved stages. No production app has been stopped for this repair.
+
+
+### Mobile composer release live verification — 2026-11-11
+Portal-only application e7b78aa16405870c3a0cbf9346be5f01a1ff5437 deployed once,
+SCM operation 82fcc3a9415d4a3a80f00278ada282ec (Succeeded). Stop, upload and restart
+receipts are reconciled under native-deployment-receipts/e7b78aa16 in the existing
+linked-bundle-release-20261110 evidence directory. Restart CLI succeeded; subsequent
+network read failed, then read-only recovery confirmed all five apps Running and
+unchanged journals. Astra accepted receipt closure; start/upload were not replayed.
+Runtime verification PASS: Portal e7b78aa16405870c3a0cbf9346be5f01a1ff5437;
+Client/Protect/Parfait dd72553987c8cb2a2dd7900d9a6cab4fdcc3dc19;
+Website ea128c942b7d8bd4452b5ec6abc591ee624111fc. Public Portal CSS and JS SHA256
+match reviewed source. live-verification.json and live-assets.json retain evidence.
+No migration applied: fresh read found 241 applied and zero pending. Existing
+single-IP firewall rule was refreshed under prior authorization; no credentials,
+budgets or application settings changed. Cloudflare remains deferred.
+
+Founder explicitly authorized deployment before broad validation; exact admission
+recorded deferred checks truthfully. All later passed on test/control b66484b7472ac236fcf7b1d0feeba8df8fee3474:
+security43112759729, architecture43112759670, commerce43112759769. Focused evidence
+remains .NET6, JS13, layout53 and synthetic rendered assistant geometry at9 widths.
+Astra independently accepted source, package, admission and receipt recovery.
+Native coordination hold43113229732 completed/cancelled after live verification.
+
+Physical iPhone microphone/audio, paid transcription and authenticated live journeys
+remain unverified. Dictation requires the explicitly selected approved OpenAI
+workspace configuration; missing setup now displays actionable settings guidance.
+The plus remains existing sidebar navigation, not an attachment picker. Camera/file
+uploads need a canonical chat attachment contract and are not included. Page context
+is bounded visible text, excludes private/hidden/editable regions, and is untrusted
+context rather than browser automation or canonical service evidence.
+PR773 source-only fast-track synchronization remains pending; no duplicate deployment
+is authorized by its sourceIntegration marker. Preserve the exact e7 package.
