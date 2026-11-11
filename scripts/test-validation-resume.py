@@ -6757,7 +6757,12 @@ class HistoricalRecoveryWorkflowTests(unittest.TestCase):
     def test_observer_preparation_preserves_exact_predecessors_only(self):
         current=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
         condition="        if: inputs.original_run == '41131223973' && inputs.application_revision == '3243221ae661b53d60f78cc2dab108a93bad7632'\n"
-        old=current.replace('      - name: Install read-only schema observer runtime\n',
+        import subprocess
+        predecessor=subprocess.check_output(['git','show','dae42b7503cd95867bcb44005158c38a85adf9e7:.github/workflows/legend-fast-track-ui.yml'],text=True)
+        self.assertEqual(hashlib.sha256(predecessor.encode()).hexdigest(),'c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c')
+        self.assertTrue(m.historical_recovery_workflow_matches(predecessor,current))
+        self.assertFalse(m.historical_recovery_workflow_matches(current,predecessor))
+        old=predecessor.replace('      - name: Install read-only schema observer runtime\n',
             '      - name: Install read-only schema observer runtime\n'+condition).replace(
             '      - name: Build read-only retained schema observer without application packages\n',
             '      - name: Build read-only retained schema observer without application packages\n'+condition)
@@ -6779,9 +6784,9 @@ class HistoricalRecoveryWorkflowTests(unittest.TestCase):
         from types import SimpleNamespace
         current=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
         self.assertEqual(hashlib.sha256(current.encode()).hexdigest(),
-            'c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c')
+            '3ce7bd341a900629957325a0324fe1ca08c1c37c1625e1b89009e4d9eab9f43e')
         self.assertTrue(m.historical_recovery_workflow_matches(current,current))
-        values={b'current':'c4a64e196d1ed33b90f1574778f02d99c0949907190063543481a7e372f0f10c',
+        values={b'current':'3ce7bd341a900629957325a0324fe1ca08c1c37c1625e1b89009e4d9eab9f43e',
                 b'old':'cdf5bde7daa601450ac37df35c0aabde044d7dd5a728ad22fc12433f467fe7fd',b'unknown':'f'*64}
         with patch.object(m.hashlib,'sha256',side_effect=lambda value:SimpleNamespace(hexdigest=lambda:values[value])):
             self.assertTrue(m.historical_recovery_workflow_matches('old','current'))

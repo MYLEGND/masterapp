@@ -5751,3 +5751,21 @@ adaptations were independently reviewed and installed with previous bytes retain
 in existing admission/5fc8da452; their control/workflow binding must now follow this
 reviewed coordination move before any effect. All current evidence remains under
 existing admission and/private/tmp/legend-combined-* paths, not a new release lane.
+
+
+Native hold42975047565 is verified on enabled fast-track workflow at5554c5b4e;
+all hosted publishing/recovery jobs are skipped. Canonical history admission then
+rejected FAST_TRACK_RECOVERY_HISTORY_PRODUCER_UNPROVEN: moving the native job
+changed the current workflow digest, so previously accepted historical recovery
+workflow bytes no longer matched the closed directional compatibility table.
+Extended only that existing table with the exact reviewed current workflow digest
+and its four already-accepted predecessors; no live old execution, unknown bytes,
+reverse compatibility or ambiguous SQL is admitted. Updated existing history tests
+to use actual preserved predecessor bytes instead of deriving them from the changed
+current workflow. Focused history/producer10PASS. The earlier full fast-track suite
+ran211:210PASS and one old-host Python hashlib API error; the one failed test passed
+on installed Python3.13. No passing test was rerun for that interpreter correction.
+This metadata-only repair changes no app/package/migration inputs. Preserve all
+completed packages and rebind the existing native hold to the final control commit;
+no production effects have occurred. Required current integrity/security evidence
+and runtime migration admission remain mandatory, with rendered checks waived.
