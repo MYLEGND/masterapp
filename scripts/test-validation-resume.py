@@ -1741,6 +1741,14 @@ class SelectorAttemptNonentryTests(unittest.TestCase):
              patch.object(m,'git_show_file',return_value=(ROOT/self.run['path']).read_text()):
             return m.fast_track_selector_attempts_proven_nonentry(
                 self.repository,self.run,self.revision,'placeholder',clock=lambda:self.now)
+    def test_reviewed_historical_observer_definition_retains_nonentry_only(self):
+        import subprocess
+        self.source=subprocess.check_output(['git','show','8a82468b4b2ad7a3f0ae3add5491dcdd7614721a:'+self.run['path']],text=True)
+        self.assertTrue(self.invoke())
+        original=self.source;self.source+='\n# unknown edit'
+        self.assertFalse(self.invoke());self.source=original
+        self.responses[self.jobpath(1)]['jobs'][2]['conclusion']='success'
+        self.assertFalse(self.invoke())
     def test_single_attempt_complete_nonentry(self):
         self.run['run_attempt']=1
         self.responses[self.endpoint]=self.clone(self.run)
@@ -5882,6 +5890,9 @@ class ReleaseAttemptNonentryTests(unittest.TestCase):
     def test_current_nonentry_preserves_reviewed_observers_and_rejects_mutation(self):
         source=(ROOT / '.github/workflows' / m.DIRECT_RELEASE_WORKFLOW).read_text()
         jobs=self.observer_jobs()+[dict(name='migration-readiness',status='completed',conclusion='skipped',steps=[])]
+        self.assertTrue(m.release_attempt_never_entered(jobs,source))
+        import subprocess
+        source=subprocess.check_output(['git','show','dae42b7503cd95867bcb44005158c38a85adf9e7:.github/workflows/'+m.DIRECT_RELEASE_WORKFLOW],text=True)
         self.assertFalse(m.release_attempt_never_entered(jobs,source))
         native=dict(name='native-mac-ownership',status='completed',conclusion='skipped',steps=[])
         jobs=[native]+jobs
@@ -10279,6 +10290,26 @@ class LegacyQueuedRunDispositionTests(unittest.TestCase):
                     m._fast_track_policy().initial_completed_resource_baselines(),{},'token',required_resources=set())
 
 
+class SchemaObservationOnlyHistoryTests(unittest.TestCase):
+    def invoke(self, *, sql='skipped', valid=True, missing=False, intent=False, second=False):
+        owner=dict(name='Reconcile production schema before publication',status='completed',conclusion='success',steps=[
+            dict(name='Apply or reconcile the exact rehearsed migration bundle',status='completed',conclusion=sql),
+            dict(name='Reconcile fresh already-ready schema without SQL bundle or mutation',status='completed',conclusion='success')])
+        attempts={1:[] if missing else [owner]}
+        if second:attempts[2]=[dict(owner,steps=[dict(owner['steps'][0],conclusion='failure'),owner['steps'][1]])]
+        with patch.object(m,'completed_resource_contract',return_value=dict(resources=dict(schema={'runId':1}))), \
+             patch.object(m,'completed_resource_receipt',return_value=dict(record=dict(observation={}))), \
+             patch.object(m,'_release_history_json',return_value=dict(child='migrations')), \
+             patch.object(m,'attested_fast_track_no_write_observation',return_value=valid):
+            return m.completed_resource_schema_observation_only('MYLEGND/masterapp',dict(id=2,head_sha='a'*40,run_attempt=len(attempts)),attempts,
+                [dict(name='legend-release-child-intent-x')] if intent else [],'test-only')
+    def test_authenticated_observation_is_not_a_mutation(self):
+        self.assertTrue(self.invoke())
+    def test_every_attempt_and_no_conflicting_migration_evidence_required(self):
+        for changes in (dict(sql='success'),dict(sql='failure'),dict(valid=False),dict(missing=True),dict(intent=True),dict(second=True)):
+            with self.subTest(changes=changes):self.assertFalse(self.invoke(**changes))
+
+
 class CompletedResourceBaselineTests(unittest.TestCase):
     def contract(self):
         return m._fast_track_policy().initial_completed_resource_baselines()
@@ -10811,6 +10842,84 @@ class ExactSharedSchemaHistoricalFailureTests(unittest.TestCase):
         for options in cases:
             # Prevent fallback consumers from granting unrelated fixture evidence.
             with self.subTest(options=options),patch.object(m,'_recovery_preflight_source_contract',return_value=False):self.assertFalse(self.invoke(**options))
+
+
+class NativeCompletedSchemaAdmissionTests(unittest.TestCase):
+    def setUp(self):
+        import datetime
+        self.owner=dict(runId=123,runAttempt=1,controlRevision='b'*40,applicationRevision='a'*40)
+        self.reference=dict(sourceRevision='c'*40,artifactId=42)
+        self.contract=dict(resources=dict(schema=self.reference))
+        self.observation=dict(observedUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(),mutationActivity='settled',ready=False,pendingCount=2,databaseIdentity='d'*64,schemaIdentity='e'*64,baselineIdentity='f'*64,firstPendingMigrationId='20261110222649_AddBusinessAssistantScopeAndFunding',lastAppliedMigrationId='20261110000000_AddCommerceBundleInventory')
+    def invoke(self, *, receipt_error=None, current_error=None, current=None, prefix=True, owner_error=None):
+        import contextlib
+        with patch.object(m,'assert_native_mac_execution',side_effect=owner_error) as ownership, \
+             patch.object(m,'_fast_track_policy',return_value=SimpleNamespace(STABLE_BASELINE_ADOPTION=dict(databaseIdentity='d'*64))), \
+             patch.object(m,'completed_resource_contract',return_value=self.contract), \
+             patch.object(m,'_applied_migration_prefix_separate',return_value=prefix), \
+             patch.object(m,'recovery_admission_proof',side_effect=contextlib.nullcontext), \
+             patch.object(m,'completed_resource_receipt',return_value=dict(reference=self.reference),side_effect=receipt_error), \
+             patch.object(m,'completed_resource_currentness',return_value=current or dict(schema=self.reference),side_effect=current_error) as currentness, \
+             patch.object(m,'direct_child_operation_identity',return_value='1'*64):
+            result=m.native_completed_schema_admission('owner/repo',self.owner,self.observation,'2'*64,'synthetic')
+            self.assertEqual(2,ownership.call_count)
+            self.assertEqual(self.owner,currentness.call_args.kwargs['native_owner'])
+            self.assertEqual({'schema'},currentness.call_args.kwargs['required_resources'])
+            return result
+    def test_native_owner_is_reauthenticated_at_proof_close(self):
+        with patch.object(m,'_completed_resource_other_writers',return_value=dict(activeWriters=[])) as read:
+            with m.recovery_admission_proof():m.completed_resource_other_writers('owner/repo','synthetic',native_owner=self.owner)
+            self.assertEqual(2,read.call_count)
+            for call in read.call_args_list:self.assertEqual(self.owner,call.kwargs['native_owner'])
+    def test_existing_receipt_currentness_and_distinct_prefix_are_reused(self):
+        result=self.invoke()
+        self.assertEqual('proven',result['state'])
+        self.assertEqual('UNKNOWN_PRESERVED_DISTINCT_SUFFIX',result['historicalExecution'])
+        self.assertEqual(self.reference,result['completedResourceProof']['reference'])
+    def test_changed_expired_artifact_and_competing_writers_remain_blocking(self):
+        for kwargs in (dict(receipt_error=RuntimeError('artifact changed')),dict(receipt_error=RuntimeError('artifact expired')),dict(current_error=RuntimeError('active writer')),dict(current_error=RuntimeError('stale currentness')),dict(owner_error=RuntimeError('owner changed'))):
+            with self.subTest(kwargs=kwargs),self.assertRaises(RuntimeError):self.invoke(**kwargs)
+    def test_modified_or_overlapping_applied_prefix_rejected(self):
+        with self.assertRaisesRegex(RuntimeError,'PENDING_PREFIX'):self.invoke(prefix=False)
+    def test_wrong_database_stale_or_nonsettled_observation_rejected(self):
+        for key,value in [('databaseIdentity','0'*64),('observedUtc','2000-01-01T00:00:00+00:00'),('mutationActivity','not-observed'),('ready',True),('pendingCount',0)]:
+            prior=self.observation[key];self.observation[key]=value
+            with self.subTest(key=key),self.assertRaisesRegex(RuntimeError,'OBSERVATION'):self.invoke()
+            self.observation[key]=prior
+    def test_later_schema_reference_cannot_be_ignored(self):
+        with self.assertRaisesRegex(RuntimeError,'BASELINE_CHANGED'):self.invoke(current=dict(schema=dict(sourceRevision='4'*40)))
+
+class NativeMacExecutionTests(unittest.TestCase):
+    def setUp(self):
+        import datetime
+        self.owner=dict(runId=123,runAttempt=1,controlRevision='b'*40,applicationRevision='a'*40)
+        self.run=dict(id=123,run_attempt=1,head_sha='b'*40,path='.github/workflows/'+m.FAST_TRACK_RELEASE_WORKFLOW,event='workflow_dispatch',status='in_progress',head_branch='isolation/test',head_repository=dict(full_name='owner/repo'),display_title='LEGEND native Mac coordination candidate='+'b'*40)
+        self.hold=dict(id=1,run_id=123,head_sha='b'*40,run_attempt=1,name='native-mac-ownership',status='in_progress',started_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),steps=[dict(name='Verify native ownership request',conclusion='success'),dict(name='Hold existing publication mutex for native Mac',status='in_progress')])
+        self.jobs=[self.hold]+[dict(id=i,run_id=123,head_sha='b'*40,run_attempt=1,name='skipped-'+str(i),status='completed',conclusion='skipped',steps=[]) for i in range(2,8)]
+        self.source=(ROOT/'.github/workflows'/m.FAST_TRACK_RELEASE_WORKFLOW).read_text()
+    def invoke(self):
+        def api(repo,path,token):
+            if '/jobs?' in path:return dict(total_count=len(self.jobs),jobs=self.jobs)
+            if path.startswith('git/ref/'):return dict(object=dict(sha='b'*40))
+            return self.run
+        with patch.object(m,'_api_get_uncached',side_effect=api),patch.object(m,'_release_history_source',return_value=self.source),patch.object(m.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+            return m.assert_native_mac_execution('owner/repo',self.owner,'synthetic')
+    def test_exact_read_only_hold(self):self.assertEqual(123,self.invoke()['id'])
+    def test_changed_owner_workflow_or_expired_hold_rejected(self):
+        for key,value in [('head_sha','c'*40),('event','push'),('head_branch','Legend/fast-track-release'),('status','completed')]:
+            old=self.run[key];self.run[key]=value
+            with self.subTest(key=key),self.assertRaises(RuntimeError):self.invoke()
+            self.run[key]=old
+        self.hold['started_at']='2000-01-01T00:00:00+00:00'
+        with self.assertRaisesRegex(RuntimeError,'EXPIRED'):self.invoke()
+    def test_hosted_publication_or_incomplete_inventory_rejected(self):
+        self.jobs[1]['conclusion']='success'
+        with self.assertRaisesRegex(RuntimeError,'PUBLISHER_ENTERED'):self.invoke()
+        self.jobs[1]['conclusion']='skipped';self.jobs.pop()
+        with self.assertRaisesRegex(RuntimeError,'JOBS_INCOMPLETE'):self.invoke()
+    def test_unknown_workflow_bytes_rejected(self):
+        self.source+='\n# changed'
+        with self.assertRaisesRegex(RuntimeError,'WORKFLOW_CHANGED'):self.invoke()
 
 
 if __name__ == "__main__":

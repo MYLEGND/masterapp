@@ -5769,3 +5769,50 @@ This metadata-only repair changes no app/package/migration inputs. Preserve all
 completed packages and rebind the existing native hold to the final control commit;
 no production effects have occurred. Required current integrity/security evidence
 and runtime migration admission remain mandatory, with rendered checks waived.
+
+
+### Native completed-schema consumer — 2026-11-11
+
+All four application5fc packages are complete, canonical component verification
+and embedded runtime provenance PASS. Manifestb0e146536c0e54d666eede971ef82d960a4b26bb03104799f21ef7ea975d804c;
+reviewed migration-plan3f047eb6973ab3b3b87921a1274245b13099a30fb778698ed7c0debf139821b8.
+Native hold42975767923 is active atf9df1f3af1608de2b4af2e2a23a600148df59f10;
+prior hold42975047565 cancelled with no production effects. Final f9 security,
+commerce and migration-probe passed; architecture found one stale nonentry test
+still expecting the native job in the disabled direct workflow. Updated that test
+to prove current no-native nonentry plus the preserved prior native-job negatives.
+
+Legacy first-write scanning rejected run41131223973 attempt2 as unresolved. Do not
+repeat that SQL or manufacture its success. The existing completed-resource schema
+baseline already owns later physical acceptance. Added an explicit native consumer
+of completed_resource_contract/receipt/currentness, retaining immutable applied-
+prefix separation, full fresh activity/database checks and old UNKNOWN history.
+Actual API-verified native hold, exact reviewed workflow source, task-ref identity,
+job inventory, ownership window and application ancestry are required. Only this
+verified native hold is excluded from competing writers; reauthenticate it again
+at proof closure. Hosted consumers retain their existing default behavior.
+Focused new/existing ownership, history nonentry and completed-resource tests46PASS.
+Native adapter proposal reuses this consumer while retaining exclusive local intent,
+no replay, full execution-boundary activity/ownership rechecks and canonical bundle
+reconciliation. Runtime completed-resource proof remains pending, not admitted.
+
+Read-only full production activity/physical observation passed. An initial currentness
+attempt encountered an absent historical reader path while unrelated validation
+was active; no permission or history gate was waived. It resumed after validators
+became terminal. Application packages, rehearsal, source and receipts remain intact.
+No production migration, shutdown, upload or restart has occurred. Direct Mac
+publication still precedes fast-track source integration as explicitly instructed.
+
+Native admission continuation: selector failures now use the existing closed
+historical workflow compatibility table; complete skipped downstream inventories
+and zero artifacts still required. Runtime then exposed observation-only schema
+history incorrectly requiring a mutation-success receipt. The existing no-write
+attestation now authenticates every attempt and rejects actual SQL entry or any
+migration child journal; it retains the saved schema baseline. Focused70PASS;
+Independent review accepted validator939eda0b14f2da14ab165473ae24e920f85283e3518a4634d58afe73b2976eeb
+and tests4fe0ff62110f64d4a58ab6feaac3a6211fb8d8b97b69a8651c40da9ee1f97ff3.
+Actual read-only proof now reaches historical recovery41352634254/job124985933054,
+then rejects RESOURCE_RECOVERY_PRIOR_UNJOURNALED_ENTRY for portal. Its existing
+exact preflight attestation is being diagnosed; no historical effect is assumed.
+Logs: /private/tmp/legend-native-observation-disposition-proof.log. All four5fc
+packages and rehearsal remain preserved. No new migration, stop, upload or restart.

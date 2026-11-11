@@ -938,7 +938,7 @@ def recovery_admission_proof():
         # Include active/queued rows and reject their drift just like terminal rows.
         for repository, entry in state['histories'].items():
             if entry.get('kind')=='completed-resource-other-writers':
-                current=_completed_resource_other_writers(entry['repository'],entry['token'])
+                current=_completed_resource_other_writers(entry['repository'],entry['token'],**(dict(native_owner=entry['nativeOwner']) if 'nativeOwner' in entry else {}))
                 if json.dumps(current,sort_keys=True,separators=(',',':'))!=entry['raw']:
                     raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_WRITER_CHANGED_AT_BOUNDARY')
                 continue
@@ -7158,13 +7158,15 @@ def completed_resource_legacy_run_disposition(repository, token, *, observed=Non
                 authorization=expected['authorization'] if state[0] == 'queued' else None)
 
 
-def _completed_resource_other_writers(repository, token):
+def _completed_resource_other_writers(repository, token, *, native_owner=None):
     """Current writers and the audited legacy dispatch surface, not all old events.
 
     At approved5bf the lifecycle can dispatch NEW production runs and rerun only
     PR validations/read-only readiness. The complete dispatch inventory catches
     old direct attempts too. An unaudited approved ref cannot inherit this proof.
     """
+    if native_owner is not None:
+        assert_native_mac_execution(repository, native_owner, token)
     approved='5bf13a59c7608d87264ffbf280fa3551598ea774'
     if _api_get_uncached(repository,'git/ref/heads/'+TRUSTED_PR_BASE,token).get('object',{}).get('sha')!=approved:
         raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_LEGACY_SOURCE_CHANGED')
@@ -7205,6 +7207,11 @@ def _completed_resource_other_writers(repository, token):
             path=row.get('path','');name=path.removeprefix('.github/workflows/')
             if row.get('head_repository',{}).get('full_name','').lower()!=repository.lower():
                 raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ACTIVE_OWNER_UNKNOWN')
+            if native_owner is not None and row.get('id')==native_owner['runId']:
+                if (row.get('head_sha')!=native_owner['controlRevision'] or row.get('run_attempt')!=native_owner['runAttempt']
+                    or path!='.github/workflows/'+FAST_TRACK_RELEASE_WORKFLOW or row.get('event')!='workflow_dispatch'):
+                    raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_OWNER_CHANGED')
+                continue
             if row.get('id')==current:
                 if row.get('head_sha')!=os.environ.get('GITHUB_SHA') or path!='.github/workflows/'+FAST_TRACK_RELEASE_WORKFLOW:
                     raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_ACTIVE_OWNER_CHANGED')
@@ -7223,17 +7230,18 @@ def _completed_resource_other_writers(repository, token):
     return dict(approvedRef=approved,dispatchCount=len(rows),dispatchIdentity=digest,activeWriters=[],nonwriterDispositions=nonwriters)
 
 
-def completed_resource_other_writers(repository,token):
-    state=_RECOVERY_PROOF_VIEW.get();key=(repository,'completed-resource-other-writers')
+def completed_resource_other_writers(repository,token,*,native_owner=None):
+    state=_RECOVERY_PROOF_VIEW.get();key=(repository,'completed-resource-other-writers') if native_owner is None else (repository,'completed-resource-other-writers',json.dumps(native_owner,sort_keys=True))
     if state is not None and key in state['histories']:
         evidence_remaining(30)
         return json.loads(state['histories'][key]['raw'])
-    value=_completed_resource_other_writers(repository,token)
+    value=_completed_resource_other_writers(repository,token,**(dict(native_owner=native_owner) if native_owner is not None else {}))
     if state is not None:
         raw=json.dumps(value,sort_keys=True,separators=(',',':'));size=len(raw.encode())
         if len(state['histories'])>=4 or state['bytes']+size>32*1024*1024:
             raise ReleaseOperationHistoryUnproven('RECOVERY_PROOF_STORAGE_BOUND')
         state['histories'][key]=dict(kind='completed-resource-other-writers',repository=repository,raw=raw,token=token)
+        if native_owner is not None:state['histories'][key]['nativeOwner']=dict(native_owner)
         state['bytes']+=size
     return value
 
@@ -7386,7 +7394,42 @@ def completed_resource_historical_acceptance(repository, original, resource, row
     return accepted[-1][1]
 
 
-def completed_resource_currentness(repository, revision, contract, proofs, token, *, recovery_original=None, recovery_observer=None, required_resources=None, resource_holds=None):
+def completed_resource_schema_observation_only(repository, run, attempts, artifacts, token):
+    """Authenticate every schema attempt as observation-only; retain the baseline."""
+    if not attempts or set(attempts) != set(range(1, run['run_attempt'] + 1)):
+        return False
+    # A read-only receipt cannot conceal an entered migration operation.
+    for artifact in artifacts:
+        if artifact.get('name', '').startswith('legend-release-child-'):
+            record = _release_history_json(repository, run['id'], artifact, 'operation.json', verify_digest=True)
+            if record.get('child') == 'migrations':
+                return False
+    contract = completed_resource_contract(run['head_sha'])
+    reference = contract['resources'].get('schema') if contract else None
+    if reference is None:
+        return False
+    baseline = completed_resource_receipt(repository, 'schema', reference, token)
+    seen = False
+    for attempt, jobs in attempts.items():
+        owners = [j for j in jobs if j.get('name') == 'Reconcile production schema before publication']
+        if len(owners) != 1:
+            return False
+        owner = owners[0]
+        if owner.get('status') != 'completed':
+            return False
+        if owner.get('conclusion') == 'skipped' and owner.get('steps') == []:
+            continue
+        sql = [s for s in owner.get('steps', []) if s.get('name') == 'Apply or reconcile the exact rehearsed migration bundle']
+        observations = [s for s in owner.get('steps', []) if s.get('name') == 'Reconcile fresh already-ready schema without SQL bundle or mutation']
+        if (len(sql) != 1 or sql[0].get('status') != 'completed' or sql[0].get('conclusion') != 'skipped'
+            or len(observations) != 1 or not attested_fast_track_no_write_observation(
+                repository, run, attempt, owner, observations[0], artifacts, token, baseline['record']['observation'])):
+            return False
+        seen = True
+    return seen
+
+
+def completed_resource_currentness(repository, revision, contract, proofs, token, *, recovery_original=None, recovery_observer=None, required_resources=None, resource_holds=None, native_owner=None):
     """Authenticate newer effects, not retired source ancestry.
 
     The fixed root is a metadata cut only, never proof that old submissions have
@@ -7401,7 +7444,7 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
         resource_holds[resource] = reason
         if resource in required_resources:
             raise ReleaseOperationHistoryUnproven(reason)
-    completed_resource_other_writers(repository,token)
+    completed_resource_other_writers(repository,token,**(dict(native_owner=native_owner) if native_owner is not None else {}))
     rows = _fast_track_history_observation(repository, token)
     old = [{k:r.get(k) for k in _RESOURCE_ROOT_HISTORY_FIELDS} for r in rows if r['id'] <= _RESOURCE_ROOT_HISTORY['lastRun']]
     old.sort(key=lambda r:r['id'])
@@ -7518,6 +7561,8 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
                     raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PUBLICATION_STATE_UNKNOWN')
                 if any(s.get('conclusion')!='skipped' for s in steps):entered=True
             if not entered:continue
+            if resource == 'schema' and completed_resource_schema_observation_only(repository, run, attempts, artifacts, token):
+                continue  # Verified read-only history never advances a resource baseline.
             resolved=None
             recovery_title='LEGEND retained recovery original='+str(run['id'])+' application='+run['head_sha']
             if resource in RELEASE_TARGETS and any(row.get('display_title')==recovery_title for row in rows):
@@ -7618,6 +7663,90 @@ def completed_resource_selection(before, head, *, repository=None, token=None):
     return dict(scope, baseline=before, sourceParent=before, resourceBaselines=contract,
         schemaBaseline=contract['resources']['schema']['sourceRevision'], resourceHolds=holds,
         authenticatedResources=sorted(proofs), productionEligible=True,promotion=None)
+
+
+def assert_native_mac_execution(repository, owner, token, *, now=None):
+    """Authenticate the existing read-only native hold without hosted impersonation."""
+    import datetime
+    now = time.time() if now is None else now
+    if (not isinstance(owner, dict) or set(owner) != {'runId','runAttempt','controlRevision','applicationRevision'}
+        or type(owner['runId']) is not int or owner['runId'] < 1 or type(owner['runAttempt']) is not int or owner['runAttempt'] != 1
+        or any(not re.fullmatch('[a-f0-9]{40}', str(owner[key])) for key in ('controlRevision','applicationRevision'))):
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_OWNER_INVALID')
+    if subprocess.run(['git','merge-base','--is-ancestor',owner['applicationRevision'],owner['controlRevision']],capture_output=True).returncode:
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_APPLICATION_ANCESTRY_CHANGED')
+    run = _api_get_uncached(repository, 'actions/runs/'+str(owner['runId']), token)
+    path = '.github/workflows/'+FAST_TRACK_RELEASE_WORKFLOW
+    if (run.get('id')!=owner['runId'] or run.get('run_attempt')!=owner['runAttempt']
+        or run.get('head_sha')!=owner['controlRevision'] or run.get('path')!=path
+        or run.get('event')!='workflow_dispatch' or run.get('status')!='in_progress'
+        or not str(run.get('head_branch','')).startswith('isolation/')
+        or run.get('head_repository',{}).get('full_name','').lower()!=repository.lower()
+        or run.get('display_title')!='LEGEND native Mac coordination candidate='+owner['controlRevision']):
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_OWNER_CHANGED')
+    source = _release_history_source(repository, owner['controlRevision'], path, token)
+    if hashlib.sha256(source.encode()).hexdigest() != '3ce7bd341a900629957325a0324fe1ca08c1c37c1625e1b89009e4d9eab9f43e':
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_WORKFLOW_CHANGED')
+    remote = _api_get_uncached(repository,'git/ref/heads/'+run['head_branch'],token)
+    if remote.get('object',{}).get('sha')!=owner['controlRevision']:
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_SOURCE_CHANGED')
+    payload = _api_get_uncached(repository,f"actions/runs/{owner['runId']}/attempts/1/jobs?per_page=100",token)
+    jobs = payload.get('jobs')
+    if (not isinstance(jobs,list) or payload.get('total_count')!=len(jobs) or len(jobs)!=7
+        or any(j.get('run_id')!=owner['runId'] or j.get('head_sha')!=owner['controlRevision'] or j.get('run_attempt')!=1 for j in jobs)):
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_JOBS_INCOMPLETE')
+    holds = [j for j in jobs if j.get('name')=='native-mac-ownership']
+    if (len(holds)!=1 or holds[0].get('status')!='in_progress'
+        or any(j.get('status')!='completed' or j.get('conclusion')!='skipped' or j.get('steps')!=[] for j in jobs if j is not holds[0])):
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_PUBLISHER_ENTERED')
+    steps=holds[0].get('steps',[])
+    if (sum(s.get('name')=='Verify native ownership request' and s.get('conclusion')=='success' for s in steps)!=1
+        or sum(s.get('name')=='Hold existing publication mutex for native Mac' and s.get('status')=='in_progress' for s in steps)!=1):
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_HOLD_UNPROVEN')
+    try: age=now-datetime.datetime.fromisoformat(holds[0]['started_at'].replace('Z','+00:00')).timestamp()
+    except (KeyError,ValueError,TypeError): age=-1
+    if not 0<=age<6000:
+        raise ReleaseOperationHistoryUnproven('NATIVE_RESOURCE_HOLD_EXPIRED')
+    return run
+
+
+def native_completed_schema_admission(repository, owner, observation, bundle_digest, token):
+    """Consume the existing accepted schema baseline for a distinct native suffix.
+
+    Old UNKNOWN execution stays UNKNOWN. This proves current physical state and
+    a different pending prefix, never an old success or permission to replay SQL.
+    """
+    import datetime
+    assert_native_mac_execution(repository,owner,token)
+    revision=owner['applicationRevision']
+    try: age=time.time()-datetime.datetime.fromisoformat(observation['observedUtc'].replace('Z','+00:00')).timestamp()
+    except (KeyError,ValueError,TypeError): age=-1
+    if (not 0<=age<900 or observation.get('mutationActivity')!='settled' or observation.get('ready') is not False
+        or type(observation.get('pendingCount')) is not int or observation['pendingCount']<1
+        or observation.get('databaseIdentity')!=_fast_track_policy().STABLE_BASELINE_ADOPTION['databaseIdentity']
+        or any(not re.fullmatch('[a-f0-9]{64}',str(value)) for value in (bundle_digest,observation.get('schemaIdentity'),observation.get('baselineIdentity')))):
+        raise ReleaseOperationHistoryUnproven('NATIVE_SCHEMA_OBSERVATION_UNPROVEN')
+    contract=completed_resource_contract(revision)
+    reference=contract['resources'].get('schema') if contract else None
+    if reference is None or not _applied_migration_prefix_separate(reference['sourceRevision'],revision,
+            observation.get('firstPendingMigrationId'),observation.get('lastAppliedMigrationId')):
+        raise ReleaseOperationHistoryUnproven('NATIVE_SCHEMA_PENDING_PREFIX_UNPROVEN')
+    with recovery_admission_proof():
+        proof=completed_resource_receipt(repository,'schema',reference,token)
+        current=completed_resource_currentness(repository,revision,contract,{'schema':proof},token,
+            required_resources={'schema'},native_owner=owner)
+    if current.get('schema')!=reference:
+        raise ReleaseOperationHistoryUnproven('NATIVE_SCHEMA_BASELINE_CHANGED')
+    assert_native_mac_execution(repository,owner,token)
+    if time.time()-datetime.datetime.fromisoformat(observation['observedUtc'].replace('Z','+00:00')).timestamp()>=900:
+        raise ReleaseOperationHistoryUnproven('NATIVE_SCHEMA_OBSERVATION_EXPIRED')
+    material=hashlib.sha256(json.dumps(dict(schemaIdentity=observation['schemaIdentity'],bundleDigest=bundle_digest),sort_keys=True).encode()).hexdigest()
+    partition=hashlib.sha256(json.dumps(dict(resourceGroup='masterapp-rg',authority='masterapp-protect'),sort_keys=True).encode()).hexdigest()
+    return dict(state='proven',candidate=revision,controlRevision=owner['controlRevision'],ownerRunId=owner['runId'],
+        ownerRunAttempt=owner['runAttempt'],observedUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        materialIdentity=material,partitionIdentity=partition,
+        dependencyIdentity=direct_child_operation_identity('migrations',owner['controlRevision'],material),
+        completedResourceProof=proof,historicalExecution='UNKNOWN_PRESERVED_DISTINCT_SUFFIX')
 
 
 def completed_resource_execution(resource, revision=None):
@@ -8658,7 +8787,7 @@ def fast_track_selector_attempts_proven_nonentry(repository, run, revision, toke
         if not same_run(read(f"actions/runs/{run['id']}"), run['run_attempt']):
             return False
         source = _release_history_source(repository, run['head_sha'], path, token)
-        if not source or source != git_show_file(revision, path):
+        if not source or not historical_recovery_workflow_matches(source, git_show_file(revision, path)):
             return False
         evidence_remaining(1)
         seen = set()
