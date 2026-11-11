@@ -4886,9 +4886,12 @@ def fast_track_scope(paths):
         'Domain/Billing/ClientSubscriptionOfferPricing.cs',
         'Domain/Entities/MessageConversation.cs',
         'Domain/Messaging/MessagingModels.cs',
+        'Domain/Messaging/MessagingInterfaces.cs',
         'Infrastructure/Data/Configurations/MarketingConnectionConfiguration.cs',
         'Infrastructure/Data/Configurations/MessagingModelConfiguration.cs',
         'Infrastructure/Messaging/MessagingService.FounderAi.cs',
+        'Infrastructure/Messaging/LegendConnectCloudflareTransport.cs',
+        'Infrastructure/Messaging/LegendConnectModelEvaluation.cs',
         'Infrastructure/Mobile/LegendMemberDirectory.cs',
         'Infrastructure/Reception/ReceptionistAdmissionService.Assistant.cs',
         'Infrastructure/Reception/ReceptionistAdmissionService.AssistantAccounting.cs',
@@ -5093,6 +5096,8 @@ def fast_track_scope(paths):
             return set(dotnet)
         if path.startswith(('Legend-Cloudflare/src/website-routing/', 'Legend-Cloudflare/tests/website-routing/')):
             return set()
+        if founder_cloudflare_release_required([path]):
+            return {'portal'}
         if path.startswith('SHARED/wwwroot/js/finance-') or path in {
             'SHARED/wwwroot/js/legend-living-balance-sheet.js',
             'SHARED/wwwroot/js/expense-lens-projection.js',

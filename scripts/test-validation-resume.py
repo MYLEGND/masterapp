@@ -2461,6 +2461,25 @@ class ReceptionistReleaseImpactTests(unittest.TestCase):
                 self.assertFalse(result['routing'])
                 self.assertNotIn('releaseAdmission', result)
 
+    def test_shared_ai_inputs_select_all_managed_consumers(self):
+        for path in ('Domain/Messaging/MessagingInterfaces.cs',
+                     'Infrastructure/Messaging/LegendConnectCloudflareTransport.cs',
+                     'Infrastructure/Messaging/LegendConnectModelEvaluation.cs'):
+            with self.subTest(path=path):
+                result = m.fast_track_scope([path])
+                self.assertEqual(self.managed, set(result['impacts'][path]))
+                self.assertFalse(result['schema'])
+                self.assertNotIn('website', result['impacts'][path])
+
+    def test_worker_inputs_reuse_canonical_founder_dependency_owner(self):
+        for path in ('Legend-Cloudflare/src/contracts/protocol.mjs',
+                     'Legend-Cloudflare/src/runtime/orchestrator.mjs',
+                     'Legend-Cloudflare/src/runtime/registry.mjs',
+                     'Legend-Cloudflare/src/security/authenticate.mjs'):
+            with self.subTest(path=path):
+                self.assertTrue(m.founder_cloudflare_release_required([path]))
+                self.assertEqual(['portal'], m.fast_track_scope([path])['impacts'][path])
+
     def test_actual_ef_model_mapping_requires_schema_readiness_without_admission(self):
         result = m.fast_track_scope([self.model])
         self.assertEqual(self.managed, set(result['impacts'][self.model]))

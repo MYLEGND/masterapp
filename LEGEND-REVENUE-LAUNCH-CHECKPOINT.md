@@ -6009,3 +6009,29 @@ affected applications plus the existing Cloudflare Worker v2 update. No migratio
 is introduced. Founder latest instruction: "Do not waste time trying browser access,
 I need these deployed if done"; no further browser attempts. No new production
 mutation or live acceptance is claimed yet. Fast-track remains source-only afterward.
+
+### Unified assistant publication-host and release-scope correction
+
+Reviewed source c0ea660fa500d79ffc34150c0174576e06c8ba97 is remotely preserved
+on the existing isolation branch; fast-track integration remains pending. Final
+publication wiring now uses the existing Protect WebsiteContent API via configured
+HTTPS origin, existing protected ticket and one request ID. Redirects are disabled;
+only immutable PublicationStatus readback establishes success. HTTP200 alone leaves
+an uncertain receipt for reconciliation, never automatic repeat publication. Astra
+accepted these three affected files; focused publication transport tests2/2 PASS.
+
+Required CI on c0ea: security43076943794 PASS; architecture43076943893 and
+commerce43076943619 exposed the same missing fast-track dependency classification
+for the new shared messaging/Worker inputs. Canonical impact owner now explicitly
+maps the three shared server files to four .NET consumers and reuses the existing
+Founder Worker matcher for Portal dependency. Unknown paths still fail closed.
+Focused actual carrydiff plus two dependency tests3/3 PASS. Architecture additionally
+reported hosted CRM Chrome session timeout;109 other CRM tests passed. No claim of
+rendered acceptance; Founder instructed no further browser attempts.
+
+No new deployment, shutdown, migration or provider configuration change occurred.
+Current Azure baseline remains39bd1428 for four managed apps, ea128c942 for static
+Website. Final package/native admission and Worker v2 publication remain outstanding.
+Worker deployment owner currently enforces the old protected workflow identity;
+resolve through an authorized existing authority extension, never fabricated CI
+identity or bypass. Do not send manual v2 selections to an unupgraded Worker.

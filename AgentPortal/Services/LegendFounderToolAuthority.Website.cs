@@ -1,3 +1,5 @@
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Json;
 using Domain.Entities;
@@ -179,6 +181,29 @@ internal sealed partial class LegendFounderToolAuthority
         if (state is null || await ResolveAssistantWebsiteAsync(services.ServiceProvider, principal, state, ct) is null) return null;
         return ProjectCloudProposal(row);
     }
+    internal static async Task<IActionResult> PublishAssistantWebsiteAsync(IServiceProvider services,
+        WebsitePlatformController controller, string ticket, long expectedRevision, Guid requestId, CancellationToken ct)
+    {
+        // The same configured endpoint used by Account.WebsiteSession owns
+        // compiler/runtime publication. Never send an editor ticket to a model URL.
+        var config = services.GetRequiredService<IConfiguration>();
+        var configured = config["WebsiteContentApiBaseUrl"] ?? config["LandingRoutes:BaseUrl"];
+        if (!Uri.TryCreate(configured, UriKind.Absolute, out var origin) || origin.Scheme != Uri.UriSchemeHttps ||
+            !string.IsNullOrEmpty(origin.UserInfo) || !string.IsNullOrEmpty(origin.Query) || !string.IsNullOrEmpty(origin.Fragment) ||
+            origin.AbsolutePath != "/")
+            return new BadRequestObjectResult(new { error = "website_publication_endpoint_not_configured" });
+        var endpoint = new Uri(origin, "/api/website-content/manage/publish");
+        using var client = services.GetRequiredService<IHttpClientFactory>().CreateClient("WebsiteStudioPublishing");
+        using var response = await client.PostAsJsonAsync(endpoint,
+            new WebsitePlatformController.PublishRequest(ticket, expectedRevision, requestId), ct);
+        // HTTP success is not publication proof. Read the immutable request ID
+        // through the existing authority before returning an executed receipt.
+        var status = await controller.PublicationStatus(ticket, requestId, ct, expectedRevision);
+        if (status is OkObjectResult observed && JsonSerializer.SerializeToElement(observed.Value, JsonOptions)
+            .GetProperty("found").GetBoolean()) return status;
+        throw new HttpRequestException("website_publication_outcome_unknown");
+    }
+
     internal async Task<string> ApproveWebsiteProposalAsync(ClaimsPrincipal principal, Guid id,
         string expectedRevision, string reviewDigest, Guid operationId, CancellationToken ct)
     {
@@ -232,7 +257,7 @@ internal sealed partial class LegendFounderToolAuthority
         {
             var controller = WebsiteController(services.ServiceProvider, principal);
             var result = action.OperationsJson is null
-                ? await controller.Publish(new(ticket, action.ExpectedRevision, row.Id), ct)
+                ? await PublishAssistantWebsiteAsync(services.ServiceProvider, controller, ticket, action.ExpectedRevision, row.Id, ct)
                 : await controller.ReviewAssistantMutations(new(ticket, action.ExpectedRevision,
                     JsonSerializer.Deserialize<List<WebsiteMutationOperation>>(action.OperationsJson, JsonOptions)), false, ct,
                     committedRevision => {

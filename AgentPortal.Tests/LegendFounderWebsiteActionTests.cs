@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Linq;
 using System.Text.Json;
@@ -114,4 +115,54 @@ public sealed partial class LegendFounderCloudActionApprovalTests
         Assert.Equal(5, (await fixture.Db.Set<WebsiteContentState>().AsNoTracking().SingleAsync()).Revision);
         Assert.Equal("Completed", (await fixture.Db.FounderAiActionAuthorizations.AsNoTracking().SingleAsync(x => x.Id == proposal.Id)).State);
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WebsitePublicationTransportRequiresCanonicalReceipt(bool committed)
+    {
+        await using var fixture = await Fixture.CreateAsync(true);
+        var requestId = Guid.NewGuid();
+        var state = new WebsiteContentState { SiteKey = WebsiteEditorSiteKeys.Legend,
+            OwnerKey = WebsiteEditorSiteKeys.GlobalOwnerKey, Revision = 4, DraftJson = "{}" };
+        fixture.Db.Add(state);
+        if (committed) fixture.Db.Add(new WebsiteContentVersion { Id = requestId, StateId = state.Id,
+            Revision = 5, ActorUserId = FounderId, DocumentJson = "{}" });
+        await fixture.Db.SaveChangesAsync();
+        using var scope = fixture.Scopes.CreateScope();
+        var config = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
+        config["WebsiteContentApiBaseUrl"] = "https://studio.example.test";
+        var tickets = scope.ServiceProvider.GetRequiredService<WebsiteEditorTicketProtector>();
+        var ticket = tickets.Protect(new WebsiteEditorTicket(WebsiteEditorSiteKeys.Legend,
+            WebsiteEditorSiteKeys.GlobalOwnerKey, null, true, DateTime.UtcNow.AddMinutes(5), ActorUserId: FounderId));
+        var controller = new Infrastructure.WebsiteEditing.Controllers.WebsitePlatformController(
+            scope.ServiceProvider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>(), tickets, config);
+        using var handler = new WebsitePublishHandler();
+        using var client = new System.Net.Http.HttpClient(handler);
+        var factory = new Moq.Mock<System.Net.Http.IHttpClientFactory>();
+        factory.Setup(x => x.CreateClient("WebsiteStudioPublishing")).Returns(client);
+        using var transport = new Microsoft.Extensions.DependencyInjection.ServiceCollection()
+            .AddSingleton(config).AddSingleton(factory.Object).BuildServiceProvider();
+        if (committed)
+            Assert.IsType<Microsoft.AspNetCore.Mvc.OkObjectResult>(await LegendFounderToolAuthority.PublishAssistantWebsiteAsync(
+                transport, controller, ticket, 4, requestId, CancellationToken.None));
+        else
+            await Assert.ThrowsAsync<System.Net.Http.HttpRequestException>(() => LegendFounderToolAuthority.PublishAssistantWebsiteAsync(
+                transport, controller, ticket, 4, requestId, CancellationToken.None));
+        Assert.Equal(1, handler.Calls);
+        Assert.Equal("https://studio.example.test/api/website-content/manage/publish", handler.Uri);
+        Assert.DoesNotContain(ticket, handler.Uri);
+    }
+
+    private sealed class WebsitePublishHandler : System.Net.Http.HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+        public string? Uri { get; private set; }
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken ct)
+        {
+            Calls++; Uri = request.RequestUri!.ToString();
+            Assert.Equal(System.Net.Http.HttpMethod.Post, request.Method);
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK));
+        }
+    }
+
 }
