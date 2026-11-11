@@ -269,14 +269,6 @@
       return;
     }
 
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-      return;
-    }
-
-    if (!isOpen && event.key.toLowerCase() === "c" && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault();
-      openHub();
-    }
   });
 
   const params = new URLSearchParams(window.location.search || "");

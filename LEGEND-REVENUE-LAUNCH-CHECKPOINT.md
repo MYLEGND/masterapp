@@ -5490,3 +5490,42 @@ Six existing local launcher Python tests PASS; diff whitespace check PASS.
 Actual browser sign-in remains to be verified after restarting with
 bash scripts/db.sh local run portal and opening http://localhost:5000.
 Do not use the old 127.0.0.1 browser tab. This is not combined release acceptance.
+
+### Clients Copy shortcut and combined deployment request — 2026-11-10
+
+Founder requests removal of the Clients modal opening on Command+C/Control+C and
+direct deployment of the accumulated checkout. Same branch, base
+2149f5cc66fd72b679f7639e94c00b6e02bc7a74; clean preflight PASS.
+Confirmed home-clients-hub.js explicitly intercepted either modifier plus C,
+prevented Copy and called openHub. Removed that binding and the redundant K no-op;
+explicit Clients button, return URL and Escape handling remain unchanged.
+Node syntax and diff checks PASS. Full-script VM regression PASS for both Copy
+modifiers leaving the modal closed without preventDefault, button opening and
+Escape closing (DOM fixture, not browser acceptance). Local HTTP serves the fixed
+script. Native Chrome can now be inspected; browser extension host remains unavailable.
+Fresh localhost page stayed closed after both Copy key commands, but native input
+and AX updates were inconsistent, so full rendered shortcut acceptance is not claimed.
+Screenshot/reproduction also shows lookup HTTP500; its cause is not yet established.
+
+Requested combined deployment is authorized, NOT performed. Conservative canonical
+impact plan /private/tmp/legend-combined-impact.json compares committed checkout to
+prior ea128c942b7d8bd4452b5ec6abc591ee624111fc baseline and includes all five web apps,
+shared dependencies and mobile consumers. Rebind impact to final candidate and fresh
+live baselines before admission. Existing native owner remains pinned to the earlier
+three-target bundle release and its exact waiver/no-migration receipts; it must not
+be invoked for this candidate. Combined candidate CI/security/architecture acceptance,
+two assistant migrations' production admission, exact packages/digests, recovery and
+rendered acceptance remain outstanding. Prior source-preservation reviews are not
+release acceptance. No app stop/upload/restart, production SQL or provider mutation.
+
+Additional Founder scope: LEGEND AI must be available inside the canonical shared
+internal store banner and use the existing assistant for the selected business.
+This is NOT yet implemented. Shared owner is ParfaitApp/Views/Shared/_InternalLayout.cshtml,
+used by shared commerce managers; current assistant controller/orchestration/modal live
+in AgentPortal. Store authentication explicitly must not issue a full Portal session
+(AccountController store login). Preserve that separation, server-derive business scope,
+retain Founder rollout and tool guards, and exclude retail shoppers. Do not insert a
+decorative button, copy an assistant stack, weaken frame policy or claim a plain Portal
+link provides embedded store management. Extend the existing transport/session authority
+with focused tenant/role/continuity tests before the combined release.
+Fresh Azure read-only inventory confirms all five masterapp web apps Running.
