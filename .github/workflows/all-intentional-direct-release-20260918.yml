@@ -92,7 +92,7 @@ jobs:
           PYHOLD
 
   admission:
-    if: inputs.native_mac_revision == '' && github.ref == 'refs/heads/legend/approved-changes'
+    if: github.ref == 'refs/heads/legend/approved-changes' && inputs.native_mac_revision == ''
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:

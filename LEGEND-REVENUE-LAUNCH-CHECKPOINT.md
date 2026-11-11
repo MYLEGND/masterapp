@@ -5569,3 +5569,37 @@ NU1900 feed warnings remain. Exact updated remote CI must still pass.
 Fresh public runtime readback confirms all five apps still at
 ea128c942b7d8bd4452b5ec6abc591ee624111fc; receipt
 /private/tmp/legend-combined-live-baselines.json. No production mutation.
+
+### Package completion and remaining combined admission — 2026-11-10
+
+Application candidate9a2977c2341509044eecf65b3555e691acacc833 is preserved remotely.
+All five app packages and migration bundle built using release-package.py in
+/private/tmp/legend-combined-release-9a2977c23; canonical verify PASS.
+Package identity56a4f62ff7b564c20979acbc8434221283473e6ae276d5d4e25d3148a68d206b,
+contract256cd7c021b0c142152778431782eca35f464bab0988ae5ff0c90f138a970fd1.
+Preserve these bytes; subsequent workflow/test/checkpoint edits do not change app
+source, but exact compatibility/admission must be recorded before reuse.
+
+User explicitly approved read-only production migration-history metadata access.
+Azure SQL initially denied the Mac IP. User then explicitly approved existing
+ZacLocalDev-AutoSync single-IP update via scripts/sync-local-azure-sql-firewall.sh;
+script succeeded with matching readback. Rule remains as authorized. Subsequent
+read-only history inventory succeeded:239 applied, exactly two pending:
+20261110222649_AddBusinessAssistantScopeAndFunding and
+20261110230942_AddAssistantCostReceiptSettlement. Receipt
+/private/tmp/legend-combined-schema-inventory.json. No SQL/schema/customer-data writes.
+
+Security42955784465 PASS. Architecture42955784424 FAILED and contract42955784497 FAILED.
+Concrete remaining findings: migration rehearsal rejects the new assistant suffix
+as MIGRATION_COMPATIBILITY_UNPROVEN; hosted CRM browser POST/session timed out.
+Do not relax migration allowlists or call this rehearsal accepted.
+Corrected two other demonstrated validation defects: reordered the existing direct
+release job AND terms to preserve equivalent approved-branch/native-exclusion guards
+and satisfy its trusted integrity literal; history test harness now loads real
+cancelDictation with inactive dictation state instead of throwing ReferenceError.
+History9PASS. Lifecycle231 ran with228PASS and3missing-PyYAML errors; reran the3
+affected tests using installed Azure CLI Python3.13 (with its existing YAML module),
+all PASS (SingleBranchTopology4PASS plus targeted guard1PASS). No new dependencies.
+No production app stop/upload/restart. Required migration-rehearsal extension,
+independent combined release acceptance, remaining rendered journeys and native-owner
+rebinding remain outstanding. Shared internal-store assistant remains unimplemented.
