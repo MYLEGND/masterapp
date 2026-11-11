@@ -6182,3 +6182,15 @@ keyboard/microphone, paid transcription and authenticated live acceptance NOT VE
 No billable model/audio call or customer data used. Astra reviewed canonical owners,
 privacy exclusions, legacy fingerprints and selector/dictation lifecycle; exact final
 source/package admission and deployment receipts remain to be recorded.
+
+
+Portal application candidate e7b78aa16405870c3a0cbf9346be5f01a1ff5437 is reviewed,
+packaged and preserved remotely. Package manifest84df5f4aa099ecc7082e08656ec0603bea52b306b554cc198b3394bbc9e00f18,
+ZIP498e8fe32664f0ac91f9a0c9ed75bfb65728ab6ecebd6bf646cc75fa8690dacc.
+PR773 continues source integration. Architecture43110238217 failed an obsolete
+48px/single-row CSS assertion and an unrelated CRM browser startup timeout;
+security43110243589 passed. Update only the owning mobile-layout assertion to
+require the intended two-row grid/44px controls/100px composer, preserving viewport
+checks. No application source or package change; retain e7b78 package rather than
+rebuild. Failed gate recovery must preserve passing evidence and retry only
+invalidated/unresolved stages. No production app has been stopped for this repair.
