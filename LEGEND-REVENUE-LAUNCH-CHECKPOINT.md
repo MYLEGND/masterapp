@@ -5816,3 +5816,42 @@ then rejects RESOURCE_RECOVERY_PRIOR_UNJOURNALED_ENTRY for portal. Its existing
 exact preflight attestation is being diagnosed; no historical effect is assumed.
 Logs: /private/tmp/legend-native-observation-disposition-proof.log. All four5fc
 packages and rehearsal remain preserved. No new migration, stop, upload or restart.
+
+### Exact green control preserved; historical shared-schema boundary — 2026-11-11
+
+Control0231c588884532aa99406f049622fe3ee0d2ee4c is remotely preserved. Exact
+architecture42981681443, security42981681442 and commerce42981681510 passed;
+commerce push42981674607 also passed. All four application5fc packages remain
+unchanged. Native owners installed after independent review: deployment1330ed4cebf1ac6e7569c469dff6622eb9b7a5d7e763c01ad59ce724f981fb15,
+migrationd5131b97442fceac529f8d6d42b367d324a135e217e12812aff5369f4721917a.
+Updated migration plana4ea49326d097473668939b93f3300a8acec8f54f1a4e380ececc1377ae23377
+passed PLAN_ONLY against the retained exact bundle/rehearsal. Fresh Azure inventory
+confirmed all5 Running, terminal journals and exact ea128 runtime baselines. Fresh
+managed database recovery window verified. Single-IP firewall was updated through
+the already-authorized owner as egress alternated109.104.115.54/.57; no range added.
+
+Final history admission remains BLOCKED: RESOURCE_RECOVERY_PRIOR_UNJOURNALED_ENTRY.
+Narrow diagnostic identified inner recovery41356851410 attempt1/job124998650015,
+tool3f4953ee733d44bd566f3d1e997f065473dc06d6, original41336371077/applicationf2841ef8d0871ed69be01484024424eb3f63f121.
+A worker exhausted its deadline before upload intent; concurrent workers mean its
+traceback does not prove whole-run nonentry. Earlier41352634254 preflight passes
+its existing exact attestation and is not the actual remaining failing attempt.
+Independent audit identified indirect shared effects: historical deploy restarts
+apps, and historical AgentPortal supports Database:RunMigrationsOnStartup in
+Production. Skipped SQL jobs and five source hashes therefore cannot prove schema
+isolation. No exemption or synthetic success was added. Resolving this boundary
+requires authenticated evidence covering the retained package/startup configuration
+or accepted physical-schema/prefix evidence explicitly covering those effects.
+Keep historical application publication UNKNOWN until legitimately reconciled.
+
+Evidence remains in existing admission/5fc8da452, including ci.json, review.json,
+current-admission-blocker.json, current configuration/provider/runtime/recovery
+observations. Exact diagnostic: /private/tmp/legend-specific-recovery-diagnostic.log;
+full final proof: /private/tmp/legend-native-0231-network-reconciled-proof.log.
+Native hold42981848693 is being released with zero production effects. No apps
+were stopped; no new production migration, upload or restart occurred. Fast-track
+has not been merged: direct deployment still precedes source integration. Do not
+repeat package builds, accepted tests or prior successful releases. Next action is
+resolve only this shared-schema evidence boundary, then rebind final native owner
+and fresh admission before the authorized stop/migrate/deploy/restart sequence.
+This checkpoint-only continuation changes no application/control implementation.
