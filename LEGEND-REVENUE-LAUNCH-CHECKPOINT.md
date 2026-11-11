@@ -5174,3 +5174,110 @@ sends stream=false; its worker adapter also buffers model output. Adaptive Found
 execution includes a planner before final synthesis and may use serial specialists.
 This evidence identifies additional tracing targets, not measured five-minute causality.
 No Cloudflare routing/model/budget changes or worker deployment have been made.
+
+## Non-browser completion continuation after 36b194213
+
+Founder requests completing independent implementation/checks/review/preparation now,
+with one consolidated rendered run on return. Deployment remains held for that gate.
+Continuity preflight PASS at exact clean task/remote36b194213; fast-track4e6554d8 unchanged.
+Current continuation is DIRTY and not yet independently accepted/preserved.
+
+Implemented in current dirty work: existing-modal connection/funding settings editor;
+optional reviewed reasoning/image configuration preserving historical serialized hashes
+through omitted null/default additions; bounded immutable published-page text projection;
+explicit image generation/edit requests using selected tenant credential/project and
+existing shared reservation (one attempt), canonical website permission and media owner,
+up to4 scoped references, PNG output and private existing media-library save/read/download.
+No publication path is invoked; Studio uses its existing media-library/draft flow.
+References and generated bodies are bounded; invalid reference metadata rejected before
+funding admission, permissions/credential revision rechecked before dispatch/persistence.
+Image requests no longer retrieve unrelated analytics/history or apply text-context limits.
+New image API contract based on official OpenAI image-generation documentation; catalog
+support is not organization access, real output quality or cost acceptance.
+
+Automated evidence: context/settings5passed; image/configuration/accounting12passed;
+expanded media/history13passed; final image orchestration/configuration/history7passed.
+The latter uses mocked HTTP and synthetic persistent SQL and checks selected project,
+model/quality/count, actual multipart reference bytes, wrong/missing reference rejection,
+revocation before storage, provider failure/no retry, and private media persistence.
+Logs: `/private/tmp/legend-assistant-context-settings-tests.log`,
+`legend-assistant-media-tests.log`, `legend-assistant-media-exact-tests.log`,
+`legend-assistant-image-orchestration-tests.log`. Existing no-duplicate admission and
+unknown-cost hold tests reused; full real-provider/history/image browser journey pending.
+No billable calls, production/customer data, provider changes or production migration.
+
+Native workspace selection/history-binding implementation in progress: shared mobile
+workspaces/configuration routes call existing authority; Android and iOS preserve selected
+workspace/provider/configuration in requests and scope history reads. Android initial
+focused build/tests PASS53s before later small selection changes; iOS syntax parse PASS,
+full build/testing pending. New exact native tests and independent review remain required.
+
+Founder delegates choosing an EXISTING non-production OpenAI project and approved budget
+by inspecting browser/settings; this does not authorize new credentials, limits or reloads.
+Browser recheck remains: local browser disabled in Work settings; native Mac locked and
+automatic unlock unavailable. Project/funding inspection and real provider benchmarks
+therefore remain BLOCKED. Continue independent work; do not infer test funding or waive
+browser/real-provider acceptance. Outstanding broad capabilities include attachment/
+document retrieval, scoped research/export/action wiring, live Cloudflare latency repair,
+remaining native flows and exact final architecture/security/release gates.
+
+### Consolidated acceptance preparation (current unfinished increment)
+
+Final focused evidence added: model metadata/image integration1passed using mocked
+HTTP, exact selected project/org/model headers and synthetic persistent SQL;
+`/private/tmp/legend-assistant-model-metadata-final-tests.log`. Metadata inspection
+performs no inference, exposes no credential, checks exact revision before each
+request and before returning, and labels model metadata separately from readiness,
+funding, quality and latency. Astra's malformed-body finding corrected with input
+validation; targeted regression result recorded below when complete.
+Android final provider-selection/history tests PASS39s in
+`/private/tmp/legend-assistant-android-provider-final-tests.log`. iOS focused10tests
+PASS in `/private/tmp/legend-assistant-ios-business-final-tests.log`; these are native
+contract tests, not rendered acceptance. Retail-role/shared transport3passed in
+`/private/tmp/legend-assistant-mobile-role-final-tests.log`.
+
+Read-only existing Application Insights searches returned no matching chat request
+or stage traces over7days. This is missing telemetry evidence, not zero latency or
+proof the reported delay is fixed. No before/after p95 or actual organization model
+availability is established. Browser/project inspection remains blocked as above.
+
+One combined browser run, after final candidate is committed and independent checks
+pass, must use `bash scripts/db.sh local status` then supported
+`bash scripts/db.sh local run portal` (and affected store apps through the same owner).
+Record the actual emitted localhost URLs and exact candidate; do not substitute a
+fixture host. Keep the persistent synthetic database and existing synthetic actors.
+The acceptance sequence is:
+1. Desktop and phone: Founder legacy conversation remains functional; select own
+   business/agent, inspect truthful provider/project/readiness, switch scope and
+   reopen history. Confirm a retail actor and foreign workspace cannot enter/read.
+2. Settings: stale revision rejects save; optional absent image settings survive
+   unchanged saves; password fields clear and responses/network logs expose no key.
+   Do not save real provider configuration merely to exercise these states.
+3. Stream: meaningful provisional text, cancellation, provider error and unknown
+   outcome; reopen on web/iOS/Android and verify durable conversation identity and
+   no duplicate completion. Mocked transport is not real-provider latency evidence.
+4. Images, only with an established approved non-production project and existing
+   allocation: generate, edit with multiple own references, preview, download,
+   reopen in tenant media library and reuse in Studio draft without publication.
+   Check revocation/cross-tenant rejection using synthetic data. Record limitations
+   separately for native image flows not yet implemented.
+5. Shared linked bundles: no orphan picker; create/edit multi-product links, common
+   normalized sizes, unmatched explanations, zero-stock unavailable sizes, preserved
+   quantities, save/reopen/cancel and ordinary individual-product editing.
+6. Run actual quality/latency samples only after provider funding admission; capture
+   first meaningful text, completion, stage timings and authoritative cost evidence.
+   Never claim p95 from mocked responses or model catalog metadata.
+
+This is a prepared acceptance sequence, not a completed run. Document/research/
+action/export connections and Cloudflare performance repair remain independent
+implementation work; browser unavailability does not explain those unfinished items.
+No production deployment, schema application, provider configuration or spend has
+occurred. Source preservation is separate from fast-track merge/release acceptance.
+
+Implementation committed as a9ac333a44b0833701dfc0835200a76abe18633b.
+Astra accepted exact24-path manifest df8644171101c751786e60ea0166581e49cbdfb7b436af7e9638fa303bf80c61
+for unfinished source preservation ONLY. Malformed-input regression PASS1/1
+(`/private/tmp/legend-assistant-model-input-tests.log`); JavaScript syntax and diff
+whitespace PASS. Remote preservation for this increment is PENDING until canonical
+session finish readback; fast-track synchronization, rendered and release acceptance
+remain pending. Previous completed source receipts and bundle packages are retained.
