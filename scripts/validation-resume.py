@@ -7247,7 +7247,36 @@ def completed_resource_other_writers(repository,token,*,native_owner=None):
 
 
 
-def completed_resource_recovery_attempts(repository,original,resource,operation,token,*,current_observer=None):
+def native_recovery_schema_prefix_compatible(repository, run, original, resource, operation, context, token):
+    """Bound possible old startup EF effects; never attest old app publication."""
+    if not isinstance(context, dict) or resource not in RELEASE_TARGETS:
+        return False
+    # Exact audited historical executable/application generation. Its possible
+    # SQL Server startup writes are confined to this application's EF migrations.
+    if (run.get('head_sha') != '3f4953ee733d44bd566f3d1e997f065473dc06d6'
+        or original['run'].get('head_sha') != 'f2841ef8d0871ed69be01484024424eb3f63f121'
+        or run.get('status') != 'completed' or original['run'].get('status') != 'completed'):
+        return False
+    observation = context['observation']; owner = context['owner']; revision = context['applicationRevision']
+    assert_native_mac_execution(repository, owner, token)
+    import datetime
+    age = time.time() - datetime.datetime.fromisoformat(observation['observedUtc'].replace('Z', '+00:00')).timestamp()
+    if (not 0 <= age < 900 or owner['applicationRevision'] != revision
+        or observation.get('mutationActivity') != 'settled' or observation.get('ready') is not False
+        or observation.get('databaseIdentity') != _fast_track_policy().STABLE_BASELINE_ADOPTION['databaseIdentity']
+        or type(observation.get('appliedCount')) is not int or observation['appliedCount'] <= 0
+        or type(observation.get('pendingCount')) is not int or observation['pendingCount'] <= 0
+        or type(observation.get('knownCount')) is not int
+        or observation['knownCount'] != observation['appliedCount'] + observation['pendingCount']
+        or any(not re.fullmatch('[a-f0-9]{64}', str(observation.get(k))) for k in ('baselineIdentity', 'schemaIdentity'))
+        or not re.fullmatch('[a-f0-9]{64}', str(context.get('packageDigest')))
+        or operation != retained_operation_id(resource, original['run']['head_sha'], context['packageDigest'])):
+        return False
+    return _applied_migration_prefix_separate(original['run']['head_sha'], revision,
+        observation.get('firstPendingMigrationId'), observation.get('lastAppliedMigrationId'))
+
+
+def completed_resource_recovery_attempts(repository,original,resource,operation,token,*,current_observer=None,native_schema_context=None,resource_holds=None):
     """Reconcile each same-original recovery attempt using existing validators.
 
     A durable inherited intent means reconcile-only under the authenticated
@@ -7307,6 +7336,10 @@ def completed_resource_recovery_attempts(repository,original,resource,operation,
                 or attested_recovery_preintent_failure(repository,run,owner,attempt,revision,token,target=resource,operation_id=operation)
                 or attested_recovery_target_hold(repository,run,owner,attempt,revision,token,resource,operation)):
                 continue
+            if (resource_holds is not None and native_recovery_schema_prefix_compatible(
+                    repository, run, original, resource, operation, native_schema_context, token)):
+                resource_holds[resource] = 'RESOURCE_RECOVERY_PRIOR_UNJOURNALED_ENTRY'
+                continue  # UNKNOWN app effect retained; inspect every later attempt.
             raise ReleaseOperationHistoryUnproven('RESOURCE_RECOVERY_PRIOR_UNJOURNALED_ENTRY')
     return intent_artifact
 
@@ -7429,7 +7462,7 @@ def completed_resource_schema_observation_only(repository, run, attempts, artifa
     return seen
 
 
-def completed_resource_currentness(repository, revision, contract, proofs, token, *, recovery_original=None, recovery_observer=None, required_resources=None, resource_holds=None, native_owner=None):
+def completed_resource_currentness(repository, revision, contract, proofs, token, *, recovery_original=None, recovery_observer=None, required_resources=None, resource_holds=None, native_owner=None, native_schema_observation=None):
     """Authenticate newer effects, not retired source ancestry.
 
     The fixed root is a metadata cut only, never proof that old submissions have
@@ -7438,6 +7471,10 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
     """
     required_resources = set(contract['resources']) if required_resources is None else set(required_resources)
     resource_holds = {} if resource_holds is None else resource_holds
+    if native_schema_observation is not None:
+        if native_owner is None or required_resources != {'schema'}:
+            raise ReleaseOperationHistoryUnproven('NATIVE_SCHEMA_SCOPE_REQUIRED')
+        assert_native_mac_execution(repository, native_owner, token)
     def hold(resource, reason):
         # Only positively classified target evidence may be isolated. Unknown
         # actor/attempt/shared effects still raise at their original global gate.
@@ -7503,7 +7540,11 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
                 proof=historical_acceptance(original,resource);material=fast_track_recovery_material(repository,original,resource,token)
                 digest=fast_track_recovery_package_digest(repository,original,material,resource,token)
                 operation=retained_operation_id(resource,match[2],digest)
-                intent=completed_resource_recovery_attempts(repository,original,resource,operation,token)
+                compatibility = (dict(observation=native_schema_observation, owner=native_owner,
+                    applicationRevision=revision, packageDigest=digest) if native_schema_observation is not None else None)
+                intent=completed_resource_recovery_attempts(repository,original,resource,operation,token,
+                    **(dict(native_schema_context=compatibility, resource_holds=resource_holds) if compatibility is not None else {}))
+                if resource in resource_holds:continue
                 if intent is None:continue
                 if (proof is None or proof['record'].get('operationId')!=operation
                     or proof['reference']['sourceRevision']!=match[2]
@@ -7731,10 +7772,11 @@ def native_completed_schema_admission(repository, owner, observation, bundle_dig
     if reference is None or not _applied_migration_prefix_separate(reference['sourceRevision'],revision,
             observation.get('firstPendingMigrationId'),observation.get('lastAppliedMigrationId')):
         raise ReleaseOperationHistoryUnproven('NATIVE_SCHEMA_PENDING_PREFIX_UNPROVEN')
-    with recovery_admission_proof():
+    historical_app_holds = {}
+    with recovery_material_reuse(), recovery_admission_proof():
         proof=completed_resource_receipt(repository,'schema',reference,token)
         current=completed_resource_currentness(repository,revision,contract,{'schema':proof},token,
-            required_resources={'schema'},native_owner=owner)
+            required_resources={'schema'},native_owner=owner,native_schema_observation=observation,resource_holds=historical_app_holds)
     if current.get('schema')!=reference:
         raise ReleaseOperationHistoryUnproven('NATIVE_SCHEMA_BASELINE_CHANGED')
     assert_native_mac_execution(repository,owner,token)
@@ -7746,7 +7788,8 @@ def native_completed_schema_admission(repository, owner, observation, bundle_dig
         ownerRunAttempt=owner['runAttempt'],observedUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
         materialIdentity=material,partitionIdentity=partition,
         dependencyIdentity=direct_child_operation_identity('migrations',owner['controlRevision'],material),
-        completedResourceProof=proof,historicalExecution='UNKNOWN_PRESERVED_DISTINCT_SUFFIX')
+        completedResourceProof=proof,historicalExecution='UNKNOWN_PRESERVED_DISTINCT_SUFFIX',
+        historicalApplicationHolds=historical_app_holds,physicalSchemaObservation=observation)
 
 
 def completed_resource_execution(resource, revision=None):

@@ -10290,6 +10290,43 @@ class LegacyQueuedRunDispositionTests(unittest.TestCase):
                     m._fast_track_policy().initial_completed_resource_baselines(),{},'token',required_resources=set())
 
 
+class NativeHistoricalSchemaPrefixTests(unittest.TestCase):
+    def fixture(self):
+        import datetime
+        revision='5fc8da4527bac36cb74fd71d69e9c018ced6318e'
+        original=dict(run=dict(head_sha='f2841ef8d0871ed69be01484024424eb3f63f121',status='completed'))
+        run=dict(head_sha='3f4953ee733d44bd566f3d1e997f065473dc06d6',status='completed')
+        observation=dict(observedUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(),mutationActivity='settled',ready=False,
+            databaseIdentity=m._fast_track_policy().STABLE_BASELINE_ADOPTION['databaseIdentity'],baselineIdentity='a'*64,
+            schemaIdentity='b'*64,knownCount=241,appliedCount=239,pendingCount=2,firstPendingMigrationId='20261110222649_AddBusinessAssistantScopeAndFunding',
+            lastAppliedMigrationId='20261110000000_AddCommerceBundleInventory')
+        context=dict(observation=observation,owner=dict(applicationRevision=revision),applicationRevision=revision,packageDigest='c'*64)
+        operation=m.retained_operation_id('portal',original['run']['head_sha'],'c'*64)
+        return run,original,operation,context
+    def invoke(self,run,original,operation,context,*,prefix=True):
+        with patch.object(m,'assert_native_mac_execution'),patch.object(m,'_applied_migration_prefix_separate',return_value=prefix):
+            return m.native_recovery_schema_prefix_compatible('MYLEGND/masterapp',run,original,'portal',operation,context,'fixture')
+    def test_exact_terminal_generation_and_fresh_physical_prefix(self):
+        self.assertTrue(self.invoke(*self.fixture()))
+        self.assertFalse(self.invoke(*self.fixture(),prefix=False))
+    def test_unknown_source_active_history_changed_material_or_physical_state_rejects(self):
+        import copy
+        changes=[lambda r,o,p,c:r.update(head_sha='d'*40),lambda r,o,p,c:r.update(status='in_progress'),
+            lambda r,o,p,c:o['run'].update(head_sha='d'*40),lambda r,o,p,c:c.update(packageDigest='d'*64),
+            lambda r,o,p,c:c['observation'].update(mutationActivity='active'),
+            lambda r,o,p,c:c['observation'].update(baselineIdentity=''),
+            lambda r,o,p,c:c['observation'].update(observedUtc='2000-01-01T00:00:00+00:00'),
+            lambda r,o,p,c:c['observation'].update(databaseIdentity='d'*64)]
+        for change in changes:
+            values=copy.deepcopy(self.fixture());change(*values)
+            with self.subTest(change=change):self.assertFalse(self.invoke(*values))
+    def test_hosted_or_application_consumer_cannot_supply_native_schema_context(self):
+        for owner,required in [(None,{'schema'}),({}, {'portal'})]:
+            with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'NATIVE_SCHEMA_SCOPE_REQUIRED'):
+                m.completed_resource_currentness('MYLEGND/masterapp','a'*40,dict(resources={}),{},'fixture',
+                    required_resources=required,native_owner=owner,native_schema_observation={})
+
+
 class SchemaObservationOnlyHistoryTests(unittest.TestCase):
     def invoke(self, *, sql='skipped', valid=True, missing=False, intent=False, second=False):
         owner=dict(name='Reconcile production schema before publication',status='completed',conclusion='success',steps=[
@@ -10599,6 +10636,19 @@ class CompletedResourceBaselineTests(unittest.TestCase):
              patch.object(m,'attested_recovery_target_hold',return_value=False):
             with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'UNJOURNALED'):
                 m.completed_resource_recovery_attempts('MYLEGND/masterapp',original,'client','b'*64,'fixture')
+            holds={}
+            run['run_attempt']=2
+            with patch.object(m,'native_recovery_schema_prefix_compatible',side_effect=[True,False]) as compatibility:
+                with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'UNJOURNALED'):
+                    m.completed_resource_recovery_attempts('MYLEGND/masterapp',original,'client','b'*64,'fixture',
+                        native_schema_context={'fixture':True},resource_holds=holds)
+                self.assertEqual(2,compatibility.call_count)
+                self.assertEqual({'client':'RESOURCE_RECOVERY_PRIOR_UNJOURNALED_ENTRY'},holds)
+            with patch.object(m,'native_recovery_schema_prefix_compatible',return_value=True) as compatibility:
+                self.assertIsNone(m.completed_resource_recovery_attempts('MYLEGND/masterapp',original,'client','b'*64,'fixture',
+                    native_schema_context={'fixture':True},resource_holds=holds))
+                self.assertEqual(2,compatibility.call_count)
+            run['run_attempt']=1
             nonentry.return_value=True
             self.assertIsNone(m.completed_resource_recovery_attempts('MYLEGND/masterapp',original,'client','b'*64,'fixture'))
             run['display_title']='LEGEND retained recovery original=11 application='+'a'*40
@@ -10866,6 +10916,16 @@ class NativeCompletedSchemaAdmissionTests(unittest.TestCase):
             self.assertEqual(self.owner,currentness.call_args.kwargs['native_owner'])
             self.assertEqual({'schema'},currentness.call_args.kwargs['required_resources'])
             return result
+    def test_material_reuse_is_scoped_to_this_native_decision(self):
+        def current(*args, **kwargs):
+            self.assertIsNotNone(m._RECOVERY_PACKAGE_DIGESTS.get())
+            self.assertIsNotNone(m._RECOVERY_RECEIPT_BYTES.get())
+            return dict(schema=self.reference)
+        result=self.invoke(current_error=current)
+        self.assertEqual(self.observation,result['physicalSchemaObservation'])
+        self.assertEqual({},result['historicalApplicationHolds'])
+        self.assertIsNone(m._RECOVERY_PACKAGE_DIGESTS.get())
+        self.assertIsNone(m._RECOVERY_RECEIPT_BYTES.get())
     def test_native_owner_is_reauthenticated_at_proof_close(self):
         with patch.object(m,'_completed_resource_other_writers',return_value=dict(activeWriters=[])) as read:
             with m.recovery_admission_proof():m.completed_resource_other_writers('owner/repo','synthetic',native_owner=self.owner)

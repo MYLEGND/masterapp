@@ -5855,3 +5855,33 @@ repeat package builds, accepted tests or prior successful releases. Next action 
 resolve only this shared-schema evidence boundary, then rebind final native owner
 and fresh admission before the authorized stop/migrate/deploy/restart sequence.
 This checkpoint-only continuation changes no application/control implementation.
+
+### Native schema compatibility refinement — 2026-11-11
+
+Resumed from clean remotely preserved24580fb384a951b42364883fa38c5bceb81d5b30;
+its architecture42985641963/security42985641824/commerce42985641774 are green.
+Independent historical-source audit confirmed possible SQL Server startup effects
+for retainedf284 are limited to its EF migrations: Portal MigrationHealth rejects
+pending migrations before configurable Migrate; Client Migrate is Development-only;
+Protect/Parfait bootstrappers independently require SQLite. No arbitrary SQL Server
+DDL owner outside the historical migration set was found. Recovery3f imports the
+migration owner but uses observations/recovery-window reads, not bundle execution.
+
+The canonical validator now supports only this exact audited tool/application pair
+for native/schema-only compatibility. Existing producer/material authorities still
+authenticate each attempt and exact package operation. Fresh full physical database
+observation, settled activity, counts, database identity, immutable applied prefix,
+strictly separate pending suffix and native owner are required. Unresolved app
+publication remains an explicit resource hold; no app/schema baseline advances,
+no old execution is relabeled success, and all later attempts remain inspected.
+Unknown sources/shared effects still block.36 focused regressions passed; independent
+review accepted validator4a2db9856859aa86747baafa4ac8f19dae56baf41443f280214b5c4bc39a05e3
+and tests2b5fa24b5e142af82856fb7577066063df53c25cdd9a92bf51a37d040048abb2.
+The native migration adapter is being updated to retain both canonical application
+holds and full physical observation in its durable admission proof. Actual runtime
+history proof and final release admission remain pending. Packages and successful
+checks are retained; no production migration, stop, upload or restart occurred.
+Native history admission also enters the existing recovery_material_reuse context
+for its one decision, retaining digest/receipt/log identities without another cache
+or extending mutable evidence lifetime.7 focused native-admission tests passed;
+new coverage verifies reuse is active only inside the decision and released after it.
