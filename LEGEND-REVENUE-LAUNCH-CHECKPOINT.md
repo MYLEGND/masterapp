@@ -5281,3 +5281,68 @@ for unfinished source preservation ONLY. Malformed-input regression PASS1/1
 whitespace PASS. Remote preservation for this increment is PENDING until canonical
 session finish readback; fast-track synchronization, rendered and release acceptance
 remain pending. Previous completed source receipts and bundle packages are retained.
+
+## Voice continuation on preserved base 1b6ae69756ab475791405c232c6f0a94f407fdd9
+
+Founder adds dictation, separate live conversation and authenticated inbound telephone
+access to this same capability/release flow. No number purchase, new paid service,
+outbound call/message, raised cap or production activation authorized. Session preflight
+PASS at exact task/remote base. Prior source-preservation receipt confirmed that base;
+prior iOS final provider-selector build also PASS (`legend-assistant-ios-provider-final-build.log`).
+
+Verified microphone cause: `legendFounderAiVoiceFocus` click only focused textarea;
+there was no capture or transcription. Current unfinished replacement records bounded
+mono audio through AudioWorklet, requests microphone permission, shows recording/
+transcribing/errors, supports stop/cancel and cancels on background/modal close or
+authentication clear. It preserves current typed text, adds transcript for review,
+blocks Send while recording/transcribing, and binds callbacks to conversation/account/
+configuration. No browser SpeechRecognition fallback or hidden provider is used.
+Selected business OpenAI dictation must be explicitly enabled; legacy/unconfigured
+conversations show an actionable unavailable explanation instead of a silent click.
+
+Backend extends existing conversation service and MarketingConnection configuration,
+credential and ReceptionistAdmission shared funding owners. Canonical WAV validation
+independently bounds 16kHz mono PCM to0.1..60seconds; no trusted client duration.
+One operation reservation permits one transcription attempt, project/org/revision
+remain server-derived, and unknown provider cost retains the hold. No raw audio or
+unsent draft persistence. Optional configuration fields omitted by default preserve
+historical hashes; enabling dictation changes the reviewed cost-bound configuration.
+No real provider configuration or inference was performed.
+
+Official source verified: OpenAI file transcription guide (gpt-transcribe,
+/v1/audio/transcriptions); current Live SIP guide uses signed incoming events,
+/v1/live/sessions and sideband ownership. Repository already implements those provider
+primitives in IOpenAiReceptionistClient and canonical browser/SIP lifecycle owners.
+Public browser sessions are anonymous Shayla intake; owner browser sessions are
+controlled QA only. Neither grants private assistant access. Astra identified missing
+explicit assistant-session purpose, actor/workspace/conversation/revocation binding,
+and phone-caller authentication. Caller ID and signed provider events are not caller
+identity. Existing carrier/number/account pricing and actual route remain unverified;
+no recurring or per-call quote can yet be represented as approved or exact.
+
+Astra dictation findings corrected: authentication clearing now stops microphone and
+account generation fences upload/append; cancellation after upload explicitly says
+provider may have received audio and cost hold remains, rather than claiming discard.
+Focused JS3tests PASS (WAV conversion/bounds and typed-text preservation); C#7tests PASS
+(dictation envelope/input rejection and historical configuration tests) before the
+additional enabled-dictation hash/provider assertions. No real microphone, Safari,
+audible response, interruption, reconnect, native backgrounding or latency acceptance.
+
+Remaining voice implementation: authenticated live-session purpose and lifecycle,
+shared conversation/tool delegation, native dictation/voice adapters, authenticated
+inbound caller linking, carrier configuration/cost inventory and reviewed setup.
+These are unfinished implementation, not browser-only blockers. Existing Shayla
+privacy/limits and live routing are unchanged. The combined browser run must add
+permission denial, microphone stop/cancel, backgrounding/account switch, typed-draft
+preservation, no duplicate send, real transcription, live interruption/mute/end,
+text/voice continuity, denied unauthenticated calls and exhausted budgets. No phone
+number or voice service is claimed active. Current voice diff remains uncommitted
+until exact independent source-preservation review.
+
+Voice implementation commit d499d671c7202cf33f41b726e4367d76bf8af7aa.
+Final focused C#3/3 PASS (`/private/tmp/legend-assistant-dictation-final-tests.log`),
+including enabled dictation configuration hash/provider assertions; earlier focused7
+and JS3 retained. Astra accepted exact10-path manifest
+88ba311ac6d3cd42cd52f721bf73a9bf33fd189af190d487ec9285850a350ed4 for
+source preservation only. No rendered, real-provider, live-voice or release acceptance.
+Canonical finish/remote readback for this increment remains pending. No schema change.
