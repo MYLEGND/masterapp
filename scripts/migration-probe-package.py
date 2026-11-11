@@ -680,7 +680,9 @@ def test_schema_contract(directory):
         ('20261104012500_ParfaitMemberPageRestrictions', '3431b5357098c33623f2fa8d1233439c7cb7fb48f4c761c247406d5957592023', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
         ('20261104014500_TrainingPromotionMemberLimits', '43410794881f1459251f1a7038111ccaa7f752332e5f91a37fbb865e83478cc1', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
         ('20261107153025_AddReceptionistSetupGuide', 'ec54ce063d0ab6f9507b3d337e8dc771bc56f1da56329e42d350e75acd54ed6a', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
-        ('20261110000000_AddCommerceBundleInventory', 'cab09944fee8fcb6c027c64c9dc91f36e93bb58cceec38c765b46bae7f026bc7', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS')]
+        ('20261110000000_AddCommerceBundleInventory', 'cab09944fee8fcb6c027c64c9dc91f36e93bb58cceec38c765b46bae7f026bc7', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
+        ('20261110222649_AddBusinessAssistantScopeAndFunding', '5bf397c3f0aff000ef2f1db6b1fd2b08b3f5d92f34c86dd460b264d647ac34b7', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS'),
+        ('20261110230942_AddAssistantCostReceiptSettlement', '5f3f461c7f86100595f2736947219cf375239fe04440acb75622399811d80e7b', 'LEGEND_TRUSTED_CONTRACT_TESTS:PASS')]
     migrations = current['migrations']
     for index, (migration_id, digest, marker) in enumerate(reviewed):
         entries = [row for row in migrations if row.get('id') == migration_id]
@@ -700,6 +702,8 @@ def test_schema_contract(directory):
         '-c', 'Release', '--nologo', '-o', str(directory), '-m:1', '-nr:false',
         '-p:UseSharedCompilation=false'], check=True)
     scenarios = ['payment-and-successors']
+    if any(row.get('id') == '20261110230942_AddAssistantCostReceiptSettlement' for row in migrations):
+        scenarios.extend(['assistant-both', 'assistant-settlement'])
     if any(row.get('id') == '20261104014500_TrainingPromotionMemberLimits' for row in migrations):
         scenarios.extend(['expanded-store-only', 'standalone-reconciliation-only'])
     if any(row.get('id') == '20261107153025_AddReceptionistSetupGuide' for row in migrations):

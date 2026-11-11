@@ -59,7 +59,12 @@ internal static partial class CandidateContract
         // Verify the whole additive suffix, including earlier pending children
         // after a multi-migration bundle completes. Older operations may have
         // been deliberately superseded by a later non-additive migration.
-        var relevant = contract.Migrations.Reverse().TakeWhile(m => m.Supported).Reverse();
+        var relevant = contract.Migrations.Reverse().TakeWhile(m => m.Supported).Reverse().ToArray();
+        // Assistant transitions alter receptionist-owned objects even when an
+        // intervening historical migration terminates the generic additive suffix.
+        if (relevant.Any(m => IsAssistantMigration(m.Id)))
+            relevant = contract.Migrations.Where(m => relevant.Contains(m) ||
+                m.Id == CoordinationMigration || m.Id == BrowserMigration).ToArray();
         await db.Database.OpenConnectionAsync(cancellation);
         await Plan(relevant, applied, cancellation).Execute(db, cancellation);
     }
@@ -73,10 +78,15 @@ internal static partial class CandidateContract
         if (!storeEntries.Select(m => m.Id).SequenceEqual(StoreMigrations.Take(storeEntries.Length)) ||
             storeEntries.SkipWhile(m => applied.Contains(m.Id)).Any(m => applied.Contains(m.Id)))
             throw new ProbeObservationFailure("MIGRATION_COMPATIBILITY_UNPROVEN");
-        var entries = EffectiveBrowserSchema(original, applied);
+        var entries = EffectiveAssistantSchema(EffectiveBrowserSchema(original, applied), original, applied);
         foreach (var migration in entries)
         {
             var isApplied = applied.Contains(migration.Id, StringComparer.Ordinal);
+            if (IsAssistantMigration(migration.Id))
+            {
+                PlanAssistant(batch, migration, isApplied, applied.Contains(CoordinationMigration), cancellation);
+                continue;
+            }
             if (IsStoreMigration(migration.Id))
             {
                 PlanStore(batch, migration, isApplied, applied, cancellation);

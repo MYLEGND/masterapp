@@ -45,6 +45,7 @@ internal static partial class CandidateContract
 
     internal static Entry Describe(string id, IReadOnlyList<MigrationOperation> operations)
     {
+        if (IsAssistantMigration(id)) return AssistantEntry(id, ExactAssistantOperations(id, operations));
         if (IsStoreMigration(id)) return StoreEntry(id, ExactStoreOperations(id, operations));
         if (id == BrowserMigration) return BrowserEntry(ExactBrowserOperations(operations));
         if (id == CrmMigration) return CrmEntry(ExactCrmOperations(operations));
@@ -124,6 +125,7 @@ internal static partial class CandidateContract
         if (m.Supported && m.Id == TrainingMigration && Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(m, Json))) !=
             "5a543b02a2a1ae2f2bb35d5e2a8fb51f41e9601b1ef4de2707ec6db51029be10") return false;
         if (m.Id == BrowserMigration && m.Supported) return ExactBrowserEntry(m);
+        if (IsAssistantMigration(m.Id) && m.Supported) return ExactAssistantEntry(m);
         if (m.Id == CrmMigration && m.Supported) return ExactCrmEntry(m);
         if (IsStoreMigration(m.Id) && m.Supported) return ExactStoreEntry(m);
         // Unsupported historical migrations remain opaque and cannot become pending supported operations.
@@ -502,6 +504,12 @@ internal static partial class CandidateContract
 
     private static void PlanIndex(CatalogBatch batch, Index i, bool applied, bool primary, bool constraint, CancellationToken cancellation)
     {
+        ProbeObservationFailure Drift()
+        {
+            var error = new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            error.Data["CatalogObject"] = i.Name;
+            return error;
+        }
         batch.AddCatalog(CatalogKind.Index, async reader =>
         {
             var n = 0;
@@ -513,10 +521,10 @@ internal static partial class CandidateContract
                 if (!applied || n >= i.Columns.Length || reader.GetString(0) != i.Columns[n] ||
                     reader.GetBoolean(1) != i.Unique || reader.GetBoolean(2) != primary || !IndexFilterMatches(i, filter) ||
                     reader.GetBoolean(4) || reader.GetBoolean(5) || reader.GetBoolean(6) || reader.GetBoolean(7) ||
-                    reader.GetBoolean(8) != constraint) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+                    reader.GetBoolean(8) != constraint) throw Drift();
                 n++;
             }
-            if (applied && n != i.Columns.Length) throw new ProbeObservationFailure("PHYSICAL_SCHEMA_DRIFT");
+            if (applied && n != i.Columns.Length) throw Drift();
         }, ("@schema", i.Schema), ("@table", i.Table), ("@name", i.Name));
     }
 

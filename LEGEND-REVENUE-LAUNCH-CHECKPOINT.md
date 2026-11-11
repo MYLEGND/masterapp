@@ -5624,3 +5624,44 @@ Migration support has not been loosened, no old acceptance has been relabeled, a
 no production migration or app stop/upload/restart occurred in this continuation.
 Shared internal-store assistant remains unimplemented. Combined release is NOT
 admitted; preserve existing receipts and resume only these outstanding stages.
+
+### Assistant migration validation repair — 2026-11-10
+
+Base3cc5088097124cb88183a7d77da8c7d6fcfa52a4; canonical session preflight PASS.
+Implemented exact tool-owned contracts for20261110222649_AddBusinessAssistantScopeAndFunding
+and20261110230942_AddAssistantCostReceiptSettlement. No migration history, schema
+operation, application source or production data changed. Existing coordination
+owns observed reservation/receipt schema transitions; original descriptor hashes
+remain unchanged. Unknown/edited/reordered operations and noncontiguous assistant
+history reject. No generic AlterColumn/DropIndex/DropCheck waiver was introduced.
+Extended the existing fixture, not a second migration mechanism: preserved legacy
+call reservations/receipts/conversations, owner-period FK, filtered uniqueness,
+exclusive receipt targets, legacy writes, cross-owner operations, exact constraint
+rejections and guarded Down refusal. Catalog mismatch diagnostics expose only a
+bounded schema object identifier in the synthetic fixture, never SQL or credentials.
+
+Zac explicitly approved the existing disposable synthetic SQL rehearsal because
+its prior-schema construction must not mutate persistent MasterAppLocalTest.
+Four SQL scenarios passed initialize/precondition/migrate/verify/adversarial:
+assistant-both, assistant-settlement, payment-and-successors, receptionist-guide-only.
+The both-pending path also verifies physical schema after the first migration before
+the second. Existing disposable owner removed each container; no production SQL or
+persistent local test DB was used. Independent source review accepted exact nine
+code paths conditional on broader SQL passing; both broader scenarios now PASS.
+Contract executable PASS (including assistant metadata/history negatives and existing
+catalog suites); trusted contract compatibility PASS; Python probe57PASS; both probe
+and rehearsal builds0warnings/0errors. A test-only presence guard and deterministic
+synthetic marketing revision followed the focused SQL successes; broader SQL then
+passed. These changes preserve the focused schema/operation evidence; no application
+or migration bytes changed and no successful production operation was repeated.
+
+Receipts retained under existing AgentPortal/App_Data/linked-bundle-release-20261110/admission/:
+migration-repair-contract-tests.log, migration-repair-probe-tests.log,
+migration-repair-focused-sql.log, migration-repair-predecessor-sql.log.
+Application packages at9a2977c2341509044eecf65b3555e691acacc833 remain preserved;
+new observer/contract tooling needs exact-candidate CI/admission binding, not relabeling
+old package provenance. Production migrations NOT APPLIED. No app stop/upload/restart.
+Remaining combined release work: current required CI/admission, unresolved CRM
+browser startup acceptance, unfinished canonical internal-store assistant integration,
+remaining rendered journeys, native deployment-owner rebinding, then governed
+migration/application deployment and live provenance verification/source integration.

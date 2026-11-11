@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 
-internal static class CandidateContractTests
+internal static partial class CandidateContractTests
 {
     internal static void Run()
     {
@@ -15,6 +15,7 @@ internal static class CandidateContractTests
             .UseSqlServer("Server=127.0.0.1;Database=ContractTests;Integrated Security=true").Options);
         var assembly = db.GetService<IMigrationsAssembly>();
         SetupGuideContractTests(db, assembly);
+        AssistantContractTests(db, assembly);
         if (assembly.Migrations.TryGetValue(RehearsalFixture.BundleMigration, out var bundle))
         {
             IReadOnlyList<MigrationOperation> BundleOperations() => assembly.CreateMigration(bundle, db.Database.ProviderName!).UpOperations;
