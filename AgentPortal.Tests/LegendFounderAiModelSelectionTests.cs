@@ -12,6 +12,28 @@ namespace AgentPortal.Tests;
 public sealed partial class LegendFounderAiModeIsolationTests
 {
     [Fact]
+    public async Task ManualCloudflareSelectionIsUnavailableUntilWorkerProtocolIsAdmitted()
+    {
+        using var environment = new FounderEnvironmentScope();
+        await using var db = ControllerTestHelpers.BuildDb();
+        var operations = new Mock<ILegendConnectOperations>(MockBehavior.Strict);
+        var service = CreateService(db, operations.Object, new FounderAiScenarioHandler());
+        var configuration = (Microsoft.Extensions.Configuration.IConfiguration)typeof(LegendFounderAiConversationService)
+            .GetField("_configuration", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(service)!;
+        configuration["LegendConnect:Foundation:HostKind"] = "Cloudflare";
+        configuration["LegendConnect:Foundation:Model"] = "cloudflare:registry";
+        Assert.Null(service.ResolveChatModel("cloudflare:@cf/fixture", false, false));
+        Assert.Equal("openai", service.ResolveChatModel("auto", false, false)!.Provider);
+        Assert.NotNull(service.ResolveChatModel("cloudflare:cloudflare:registry", false, false));
+        configuration["LegendConnect:Foundation:Model"] = "@cf/fixture";
+        Assert.DoesNotContain(service.ConfiguredChatModels(), x => x.Provider == "cloudflare");
+        configuration["LegendConnect:Foundation:Model"] = "cloudflare:registry";
+        configuration["LegendConnect:Foundation:Cloudflare:ProtocolVersion"] = "legend-cloudflare.v2";
+        Assert.NotNull(service.ResolveChatModel("cloudflare:@cf/fixture", false, false));
+        Assert.Null(service.ResolveChatModel("cloudflare:@cf/fixture", true, false));
+    }
+
+    [Fact]
     public async Task ModelSelection_AutoAndManualUseOneCanonicalConversation()
     {
         using var environment = new FounderEnvironmentScope();

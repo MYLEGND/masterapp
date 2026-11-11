@@ -6072,3 +6072,25 @@ is assumed. Native Azure admission also needs rebinding to this candidate/curren
 healthy baseline without replaying the completed241-migration history. No app
 should be stopped before that dependency and remaining required checks reconcile.
 Fast-track PR772 source-only synchronization remains pending after deployment.
+
+### Founder authorizes Azure first; Worker upgrade deferred
+
+Founder explicitly instructed: "deploy the apps first and add Cloudflare later".
+This supersedes the prior all-provider ordering hold. Existing Cloudflare registry
+v1 remains supported; new per-model Cloudflare choices are hidden and rejected
+server-side until the existing configuration
+LegendConnect:Foundation:Cloudflare:ProtocolVersion is admitted as legend-cloudflare.v2.
+Transport also rejects explicit @cf model calls before any provider request when
+v2 is absent. OpenAI Auto/manual and history remain available. No credential,
+provider limit, Worker deployment or production setting change is part of this
+staged rollout. Legacy answer gates remain bypassed for direct provider chats.
+
+Focused compatibility tests16/16 PASS in/private/tmp/legend-ai-deferred-worker-final.log;
+TRX/private/tmp/legend-unified-ai-results/deferred-worker-final.trx. Astra catalog
+finding corrected: provider readiness cannot revive a disabled model choice.
+The enabled-v2 test exposed an older manual-ID parser omission of @; corrected.
+Prior Worker151 and JS8 checks remain compatible. Four native packages must be
+rebuilt for the changed shared transport; preserve earlier3b78 receipts as history.
+Previous architecture43081371822 and commerce43081371643 were cancelled, not PASS.
+Required new-candidate checks remain mandatory; avoid checkpoint-only pushes while
+those checks run. No rendered browser attempt is authorized/requested here.

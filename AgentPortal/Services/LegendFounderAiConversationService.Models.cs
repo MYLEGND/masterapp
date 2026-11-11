@@ -42,12 +42,15 @@ public sealed partial class LegendFounderAiConversationService
         {
             var live = await _legend.GetCloudflareFoundationStatusAsync(principal, ct);
             var enabled = live.Reachable && live.Budget is { Paused: false, RemainingMicrousd: > 0 };
-            options = options.Select(x => x.Provider == "cloudflare" ? x with { Configured = enabled } : x).ToList();
-            foreach (var model in live.Models)
+            options = options.Select(x => x.Provider == "cloudflare" ? x with { Configured = x.Configured && enabled } : x).ToList();
+            foreach (var model in CloudflareManualSelectionReady ? live.Models : [])
                 options.Add(new("cloudflare:" + model.Id, "cloudflare", model.Id, "Cloudflare · " + model.Id, enabled));
         }
         return options;
     }
+
+    private bool CloudflareManualSelectionReady =>
+        _configuration["LegendConnect:Foundation:Cloudflare:ProtocolVersion"] == "legend-cloudflare.v2";
 
     internal IReadOnlyList<ChatModelOption> ConfiguredChatModels()
     {
@@ -61,12 +64,15 @@ public sealed partial class LegendFounderAiConversationService
         foreach (var model in models)
             result.Add(new("openai:" + model, "openai", model, "OpenAI · " + model, openAiConfigured));
         var foundation = _configuration["LegendConnect:Foundation:Model"]?.Trim();
-        if (!string.IsNullOrWhiteSpace(foundation))
+        if (!string.IsNullOrWhiteSpace(foundation) &&
+            !(_configuration["LegendConnect:Foundation:HostKind"] == "Cloudflare" &&
+              foundation.StartsWith("@cf/", StringComparison.Ordinal) && !CloudflareManualSelectionReady))
         {
             var provider = _configuration["LegendConnect:Foundation:HostKind"] == "Cloudflare" ? "cloudflare" : "local";
             result.Add(new(provider + ":" + foundation, provider, foundation,
                 (provider == "cloudflare" ? "Cloudflare" : "Local") + " · " + foundation,
-                _configuration.GetValue<bool>("LegendConnect:Foundation:Enabled") && _modelInference is not null));
+                _configuration.GetValue<bool>("LegendConnect:Foundation:Enabled") && _modelInference is not null &&
+                (provider != "cloudflare" || !foundation.StartsWith("@cf/", StringComparison.Ordinal) || CloudflareManualSelectionReady)));
         }
         return result;
     }
@@ -80,8 +86,8 @@ public sealed partial class LegendFounderAiConversationService
             return choices.FirstOrDefault(x => x.Provider == "openai" && x.Model == ResolveProviderModel())
                 ?? choices.FirstOrDefault(x => x.Provider == "cloudflare")
                 ?? choices.FirstOrDefault(x => x.Provider == "local");
-        if (!(nativeOnly || externalAnsweringBlocked) && selection.StartsWith("cloudflare:@cf/", StringComparison.Ordinal) &&
-            selection.Length <= 210 && selection.All(c => char.IsAsciiLetterOrDigit(c) || c is ':' or '/' or '-' or '_' or '.') &&
+        if (CloudflareManualSelectionReady && !(nativeOnly || externalAnsweringBlocked) && selection.StartsWith("cloudflare:@cf/", StringComparison.Ordinal) &&
+            selection.Length <= 210 && selection.All(c => char.IsAsciiLetterOrDigit(c) || c is ':' or '/' or '-' or '_' or '.' or '@') &&
             choices.Any(x => x.Provider == "cloudflare"))
             // The signed Worker registry is the canonical model-qualification,
             // budget and capability authority; it must honor this exact ID or fail.

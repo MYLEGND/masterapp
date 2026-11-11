@@ -20,6 +20,9 @@ internal sealed partial class LegendConnectModelInferenceTransport
         const string prefix = "LegendConnect:Foundation:";
         if (task.ProviderPolicy is not { AllowExternalProviders: true, AllowCloudflareInference: true })
             return new(false, null, "cloudflare_inference_forbidden_by_policy");
+        if (model.StartsWith("@cf/", StringComparison.Ordinal) &&
+            _configuration[prefix + "Cloudflare:ProtocolVersion"] != "legend-cloudflare.v2")
+            return new(false, null, "cloudflare_manual_model_update_required");
         var scope = task.CloudflareScope;
         if (scope is null || scope.UserId != task.RequestingActorId ||
             new[] { scope.RequestId, scope.TenantId, scope.UserId, scope.SessionId,
