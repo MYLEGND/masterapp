@@ -5905,3 +5905,35 @@ transient read failure; retained at/private/tmp/legend-historical-protect-artifa
 No new application packages or schema bundle were built. Production effects remain
 zero. Fresh SQL observations remain required because the Mac egress IP has changed;
 only the previously authorized existing single-IP rule is used, never a range.
+
+
+## 2026-11-11 — manual upload reconciliation and production migration completed
+
+Founder manually deployed application revision `39bd1428d651e375f55bab0f40b649eb8f268bd3`
+to Portal, ClientApp, Protect and Parfait. Successful uploads were preserved and not
+replayed. Portal startup was blocked by the two pending AI migrations.
+
+The existing native migration adapter received independently accepted manual-upload
+reconciliation (adapter `bdc7e7e326d78d6d9fd4fd502320eb0345f5c28eda02623aabfaa3bd518f135d`;
+six focused validation checks passed). Intermittent GitHub DNS/artifact failures
+blocked earlier attempts before SQL; all apps were restarted after each failed
+admission. The full recovered admission passed, followed by execution-time checks.
+
+At 2026-11-11T15:18:26Z both `20261110222649_AddBusinessAssistantScopeAndFunding`
+and `20261110230942_AddAssistantCostReceiptSettlement` were applied and physically
+verified: 241 applied, zero pending. The canonical migration receipt is
+`AgentPortal/App_Data/linked-bundle-release-20261110/native-deployment-receipts/5fc8da452/migration-intent.json`,
+SHA-256 `7eb112b2ec925376443bda24bea77cf77590c89c67a6d937dd133675bc9b0aa7`.
+Do not replay this migration or any successful upload. All four apps were restarted;
+all returned HTTP200 runtime provenance for exact revision39bd1428 above, including
+`https://portal.mylegnd.com/api/runtime-provenance`. The unaffected website remains
+on `ea128c942b7d8bd4452b5ec6abc591ee624111fc`. Cold-start timeouts cleared on readback.
+Operational receipts remain in the existing admission/native-deployment directories.
+Rendered business-journey acceptance remains Founder-deferred, not claimed passed.
+
+Source-only fast-track integration is still pending. PR772 is green at39bd1428, but
+independent review confirmed its sourceIntegration marker still names e38aa2fa and
+would fail closed after merging. Correct only the existing request metadata to the
+reviewed source and fresh fast-track base, run required checks and merge normally;
+do not trigger a duplicate production deployment. This checkpoint addition is local
+and not yet remotely preserved.
