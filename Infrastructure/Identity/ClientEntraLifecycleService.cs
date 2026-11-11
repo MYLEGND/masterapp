@@ -40,6 +40,9 @@ public interface IClientEntraLifecycleService
         string email,
         CancellationToken cancellationToken = default);
 
+    Task<ClientEntraIdentityResult> EnsureExistingClientIdentityAsync(
+        Guid clientProfileId, CancellationToken cancellationToken = default);
+
     Task<ClientEntraIdentitySynchronizationResult> SynchronizeClientIdentityAsync(
         Guid clientProfileId,
         CancellationToken cancellationToken = default);
@@ -234,11 +237,22 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
         return result;
     }
 
-    public async Task<ClientEntraIdentityResult> EnsureExternalIdentityAsync(
-        string firstName,
-        string lastName,
-        string email,
-        CancellationToken cancellationToken = default)
+    public Task<ClientEntraIdentityResult> EnsureExternalIdentityAsync(
+        string firstName, string lastName, string email, CancellationToken cancellationToken = default) =>
+        EnsureExternalIdentityCoreAsync(firstName, lastName, email, null, cancellationToken);
+
+    public async Task<ClientEntraIdentityResult> EnsureExistingClientIdentityAsync(Guid clientProfileId, CancellationToken cancellationToken = default)
+    {
+        var profile = await _db.ClientProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == clientProfileId, cancellationToken)
+            ?? throw new InvalidOperationException("The existing client profile was not found.");
+        var expected = NormalizeToken(profile.ExternalIdentityObjectId);
+        if (string.IsNullOrWhiteSpace(expected)) throw new InvalidOperationException("The existing login requires identity reconciliation.");
+        return await EnsureExternalIdentityCoreAsync(profile.FirstName, profile.LastName,
+            profile.NormalizedEmail ?? profile.Email, expected, cancellationToken);
+    }
+
+    private async Task<ClientEntraIdentityResult> EnsureExternalIdentityCoreAsync(
+        string firstName, string lastName, string email, string? expectedObjectId, CancellationToken cancellationToken)
     {
         var normalizedEmail = NormalizeEmail(email);
         if (string.IsNullOrWhiteSpace(normalizedEmail))
@@ -249,7 +263,11 @@ public sealed class ClientEntraLifecycleService : IClientEntraLifecycleService
 
         var existing = await FindByEmailAsync(
             normalizedEmail,
-            cancellationToken);
+            cancellationToken,
+            requireUnique: expectedObjectId is not null);
+
+        if (expectedObjectId is not null && !string.Equals(expectedObjectId, NormalizeToken(existing?.Id), StringComparison.Ordinal))
+            throw new InvalidOperationException("The existing login identity changed. Reconcile it before accepting a household invitation.");
 
         var created = false;
         string? redemptionUrl = null;

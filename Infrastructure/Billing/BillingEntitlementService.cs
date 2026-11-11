@@ -35,6 +35,7 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
                 .Where(x => x.ClientProfileId == request.ClientProfileId && x.SubscriptionScope == scope &&
                     x.CommerceBusinessId == businessId && x.CommerceProductId == productId)
                 .OrderByDescending(x => x.UpdatedUtc).ThenByDescending(x => x.CreatedUtc)
+            .ThenByDescending(x => x.Id)
                 .FirstOrDefaultAsync(cancellationToken);
             return BillingStateMapper.EvaluateSubscription(training, request.EntitlementKey, request.EvaluatedUtc);
         }
@@ -64,6 +65,7 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
             .Where(x => x.ClientProfileId == ownerProfileId && x.SubscriptionScope == ClientSubscriptionScope.LegendMembership)
             .OrderByDescending(x => x.UpdatedUtc)
             .ThenByDescending(x => x.CreatedUtc)
+            .ThenByDescending(x => x.Id)
             .FirstOrDefaultAsync(cancellationToken);
 
         return BillingStateMapper.EvaluateSubscription(subscription, request.EntitlementKey, request.EvaluatedUtc);

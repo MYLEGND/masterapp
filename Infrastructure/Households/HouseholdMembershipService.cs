@@ -380,6 +380,10 @@ public sealed class HouseholdMembershipService : IHouseholdMembershipService
     {
         var partnerEmail = NormalizeEmail(command.PartnerEmail);
 
+        var existingPerson = await _db.ClientProfiles.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.NormalizedEmail == partnerEmail, cancellationToken);
+        await ValidateExistingPartnerAsync(existingPerson, household, cancellationToken);
+
         var nowUtc = DateTime.UtcNow;
         var membership = await _db.HouseholdMemberships
             .SingleOrDefaultAsync(
@@ -445,11 +449,12 @@ public sealed class HouseholdMembershipService : IHouseholdMembershipService
             // Entra is a downstream projection. The membership and invitation
             // were written first, so a transient Graph failure cannot create
             // an untracked paid or active partner.
-            var identity = await _entraLifecycle.EnsureExternalIdentityAsync(
-                command.PartnerFirstName ?? string.Empty,
-                command.PartnerLastName ?? string.Empty,
-                partnerEmail,
-                cancellationToken);
+            var identity = existingPerson is not null
+                ? await _entraLifecycle.EnsureExistingClientIdentityAsync(existingPerson.Id, cancellationToken)
+                : await _entraLifecycle.EnsureExternalIdentityAsync(command.PartnerFirstName ?? string.Empty,
+                    command.PartnerLastName ?? string.Empty, partnerEmail, cancellationToken);
+            if (existingPerson is not null && !string.Equals(existingPerson.ExternalIdentityObjectId, identity.ObjectId, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The existing login identity requires explicit reconciliation.");
             membership.ExternalIdentityObjectId = identity.ObjectId;
             membership.UpdatedUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync(cancellationToken);
@@ -512,14 +517,18 @@ public sealed class HouseholdMembershipService : IHouseholdMembershipService
                 "The primary household subscription is not active, so this invitation cannot be accepted.");
         }
 
-        var identity = await _entraLifecycle.EnsureExternalIdentityAsync(
-            command.FirstName,
-            command.LastName,
-            email,
-            cancellationToken);
-
         var profile = await _db.ClientProfiles
             .SingleOrDefaultAsync(x => x.NormalizedEmail == email, cancellationToken);
+        await ValidateExistingPartnerAsync(profile, household, cancellationToken);
+
+        var identity = profile is not null
+            ? await _entraLifecycle.EnsureExistingClientIdentityAsync(profile.Id, cancellationToken)
+            : await _entraLifecycle.EnsureExternalIdentityAsync(command.FirstName, command.LastName, email, cancellationToken);
+        if (profile is not null &&
+            (string.IsNullOrWhiteSpace(profile.ExternalIdentityObjectId) ||
+             !string.Equals(profile.ExternalIdentityObjectId.Trim(), identity.ObjectId, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("The existing login identity requires explicit reconciliation before this invitation can be accepted.");
+
         var profileCreated = profile is null;
         if (profile is null)
         {
@@ -536,25 +545,8 @@ public sealed class HouseholdMembershipService : IHouseholdMembershipService
             };
             _db.ClientProfiles.Add(profile);
         }
-        else
-        {
-            var existingHousehold = await _db.HouseholdMemberships
-                .AsNoTracking()
-                .AnyAsync(
-                    x => x.ClientProfileId == profile.Id && x.HouseholdAccountId != household.Id &&
-                         x.Status != HouseholdMembershipStatus.Removed,
-                    cancellationToken);
-            if (existingHousehold)
-                throw new InvalidOperationException("This person is already part of another household.");
-
-            profile.FirstName = (command.FirstName ?? profile.FirstName ?? string.Empty).Trim();
-            profile.LastName = (command.LastName ?? profile.LastName ?? string.Empty).Trim();
-            profile.Email = email;
-            profile.NormalizedEmail = email;
-            profile.ClientUserId = identity.ObjectId;
-            profile.ExternalIdentityObjectId = identity.ObjectId;
-            profile.UpdatedUtc = nowUtc;
-        }
+        // Existing profiles keep their names, photo, preferences and both login
+        // identifiers. Membership links the person; it never rewrites the person.
 
         membership.ClientProfileId = profile.Id;
         membership.ExternalIdentityObjectId = identity.ObjectId;
@@ -751,6 +743,20 @@ public sealed class HouseholdMembershipService : IHouseholdMembershipService
         return household;
     }
 
+    private async Task ValidateExistingPartnerAsync(ClientProfile? profile, HouseholdAccount household, CancellationToken ct)
+    {
+        if (profile is null) return;
+        if (string.IsNullOrWhiteSpace(profile.ExternalIdentityObjectId))
+            throw new InvalidOperationException("The existing login identity requires explicit reconciliation.");
+        if (profile.Id == household.SubscriptionOwnerClientProfileId ||
+            await _db.ClientSubscriptions.AsNoTracking().AnyAsync(x => x.ClientProfileId == profile.Id &&
+                x.SubscriptionScope == ClientSubscriptionScope.LegendMembership, ct) ||
+            await _db.HouseholdAccounts.AsNoTracking().AnyAsync(x => x.SubscriptionOwnerClientProfileId == profile.Id, ct) ||
+            await _db.HouseholdMemberships.AsNoTracking().AnyAsync(x => x.ClientProfileId == profile.Id &&
+                x.HouseholdAccountId != household.Id && x.Status != HouseholdMembershipStatus.Removed, ct))
+            throw new InvalidOperationException("This person has an existing household or membership billing relationship. Review it before accepting this invitation.");
+    }
+
     private async Task<bool> HasUsableOwnerSubscriptionAsync(
         Guid ownerClientProfileId,
         CancellationToken cancellationToken)
@@ -760,6 +766,7 @@ public sealed class HouseholdMembershipService : IHouseholdMembershipService
             .Where(x => x.ClientProfileId == ownerClientProfileId)
             .OrderByDescending(x => x.UpdatedUtc)
             .ThenByDescending(x => x.CreatedUtc)
+            .ThenByDescending(x => x.Id)
             .FirstOrDefaultAsync(cancellationToken);
 
         var evaluation = BillingStateMapper.EvaluateSubscription(
