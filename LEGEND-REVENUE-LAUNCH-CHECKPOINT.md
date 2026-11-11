@@ -5713,3 +5713,41 @@ This test/document-only correction changes no application or migration bytes;
 previous CRM22PASS and migration repair evidence remain compatible. Required
 failed CI lanes still need current-candidate success. Rendered acceptance remains
 NOT_RUN, not waived by a prior candidate. No production mutation or app shutdown.
+
+### Native release route correction and retained admission — 2026-11-10
+
+Founder explicitly waived remaining rendered localhost checks for application
+5fc8da4527bac36cb74fd71d69e9c018ced6318e and will perform rendered checks after
+deployment. This does not claim rendered or live acceptance. Source correction
+was preserved remotely asdae42b7503cd95867bcb44005158c38a85adf9e7.
+Architecture42971620955, security42971620974, focused commerce42971621003 and
+validated migration probe PASS. Exact retained migration bundle producer9a2977c23,
+SHA256993c44190734c4cba9faeb2cc42733f6380b2c5420e3851b89b5891e25d66f15,
+was independently accepted as migration-input compatible and passed canonical
+synthetic exact-bundle rehearsal: one mutation, one intent, two success receipt
+attempts, with lost acknowledgment recovered without repeating SQL. Existing
+synthetic owner disposed its container. Production metadata read confirms239
+applied/two pending; managed Azure restore-window evidence verified. Current live
+five-app identities remainea128c942b7d8bd4452b5ec6abc591ee624111fc; journals terminal.
+
+GitHub rejected native-lock dispatchHTTP422 because the legacy approved direct
+workflow is manually disabled. Founder explicitly refused re-enabling it and
+ordered removal of that native path, retaining fast-track as default source and
+Mac deployment BEFORE fast-track synchronization. Moved only the existing native
+ownership job/input into enabledlegend-fast-track-ui.yml, preserving its exact
+read-only verification and shared publication mutex. Native dispatch excludes
+hosted recovery and cannot enter push-only hosted deployment. Removed the old
+native mode from the disabled approved workflow. No branch merge is required for
+this task-branch coordination. Independent review accepted three paths; focused
+ownership3PASS. Native receipts remain essential: isolation dispatch is not a
+hosted fast-track producer, and absence from hosted history never proves no writes.
+
+Parfait and Portal application5fc packages completed and are preserved. Initial
+concurrent package builds encountered compilerexit137 under8GB Docker memory;
+only failed components are being recovered serially. Existing package receipts
+retain their original identities; no application-source change followed5fc.
+No production migration, stop, upload or restart has occurred. Native owner
+adaptations were independently reviewed and installed with previous bytes retained
+in existing admission/5fc8da452; their control/workflow binding must now follow this
+reviewed coordination move before any effect. All current evidence remains under
+existing admission and/private/tmp/legend-combined-* paths, not a new release lane.

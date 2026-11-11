@@ -1,13 +1,9 @@
 name: LEGEND approved direct release
-run-name: ${{ inputs.native_mac_revision != '' && format('LEGEND native Mac coordination candidate={0}', inputs.native_mac_revision) || format('LEGEND release pr={0} candidate={1} authority={2}', inputs.source_pr || '0', inputs.validated_sha || inputs.merge_sha || github.sha, inputs.merge_sha || github.sha) }}
+run-name: ${{ format('LEGEND release pr={0} candidate={1} authority={2}', inputs.source_pr || '0', inputs.validated_sha || inputs.merge_sha || github.sha, inputs.merge_sha || github.sha) }}
 
 on:
   workflow_dispatch:
     inputs:
-      native_mac_revision:
-        description: Exact reviewed isolation branch HEAD; reserve publication mutex only, no hosted deployment
-        type: string
-        default: ''
       automatic:
         description: Canonical lifecycle handoff from one fully validated merged PR
         type: boolean
@@ -45,54 +41,8 @@ env:
   RELEASE_SHA: ${{ inputs.merge_sha || github.sha }}
   RELEASE_CANDIDATE_SHA: ${{ inputs.validated_sha || inputs.merge_sha || github.sha }}
 jobs:
-  native-mac-ownership:
-    if: inputs.native_mac_revision != ''
-    runs-on: ubuntu-24.04
-    timeout-minutes: 120
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - name: Verify native ownership request
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NATIVE_REVISION: ${{ inputs.native_mac_revision }}
-          NORMAL_INPUTS: ${{ toJSON(inputs) }}
-        run: |
-          python3 - <<'PYOWNERSHIP'
-          import json, os, re, urllib.request
-          revision = os.environ['NATIVE_REVISION']
-          values = json.loads(os.environ['NORMAL_INPUTS'])
-          assert os.environ['GITHUB_REPOSITORY'] == 'MYLEGND/masterapp'
-          assert os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch'
-          assert os.environ['GITHUB_REF'].startswith('refs/heads/isolation/')
-          assert re.fullmatch(r'[0-9a-f]{40}', revision)
-          assert revision == os.environ['GITHUB_SHA']
-          assert all(value in ('', False) for key, value in values.items()
-                     if key != 'native_mac_revision')
-          request = urllib.request.Request(
-              'https://api.github.com/repos/MYLEGND/masterapp/git/ref/' + os.environ['GITHUB_REF'][5:],
-              headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-                       'Accept': 'application/vnd.github+json'})
-          with urllib.request.urlopen(request, timeout=20) as response:
-              assert json.load(response)['object']['sha'] == revision
-          print('Native ownership validated for ' + revision)
-          PYOWNERSHIP
-      - name: Hold existing publication mutex for native Mac
-        run: |
-          echo 'Coordination only. No validation, credentials, migration or deployment runs here.'
-          echo 'Mac must observe this step in progress before writing and before each new mutation.'
-          echo 'Stop native writes before minute 100; cancel this run only after operations reconcile.'
-          python3 - <<'PYHOLD'
-          import time
-          for minute in range(115):
-              print(f'Native publication mutex held: minute {minute}/115', flush=True)
-              time.sleep(60)
-          raise SystemExit('Native ownership window expired; reconcile before another write')
-          PYHOLD
-
   admission:
-    if: github.ref == 'refs/heads/legend/approved-changes' && inputs.native_mac_revision == ''
+    if: github.ref == 'refs/heads/legend/approved-changes'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
@@ -1415,7 +1365,7 @@ jobs:
   release-state-receipt:
     name: release-state-receipt
     needs: [discover-live, release]
-    if: always() && inputs.native_mac_revision == ''
+    if: always()
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -1536,7 +1486,7 @@ jobs:
   wake-release-lifecycle-after-terminal-release:
     name: wake-release-lifecycle-after-terminal-release
     needs: [target-release-receipts, release-state-receipt]
-    if: always() && inputs.native_mac_revision == ''
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:
