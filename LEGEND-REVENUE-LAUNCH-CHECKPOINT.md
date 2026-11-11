@@ -5427,3 +5427,51 @@ Implementation commit 927965d03fdd2eddf2945a047c81f155939fd569.
 Astra accepted14-path manifest5c26efd0537883e3ceb10197217a6424dbf3a19942d280db0bee91f69ce6f81d
 for source preservation only. Checkpoint/remote finish pending; full feature and release
 acceptance explicitly not granted. No schema change in this increment.
+
+### Shared LEGEND AI public receptionist role and durable intake — 2026-11-10
+
+Continues the same checkout/branch from b581e10ac832f48872920b82d614c580d5810685.
+Session preflight PASS with exact local/remote equality and no dirty work before this
+increment. Previous household checkpoint was preserved at that remote SHA; its older
+pending-finish wording above is superseded by this verified continuation.
+
+Shayla is the public receptionist persona/channel of LEGEND AI. AGENTS.md and the
+existing implementation ledger now record the shared-owner/role-policy architecture.
+Existing conversation, voice, accounting, capability and diagnostics owners remain;
+no second assistant, history store, permission registry or background synchronizer.
+Public call records do not grant access to private authenticated conversations.
+Public intake uses provider-verified ingress, pinned business/configuration and fenced
+canonical service actions, independently of employee login or browser automation.
+
+Corrected ReceptionistInquiryAuthority: a missing optional notification recipient no
+longer blocks transactional canonical lead/CRM persistence. Canonical CRM ownership,
+tenant/call/action/confirmation validation and independent readback remain mandatory.
+Existing notification recovery retains delivery-pending inquiries for later repair.
+Booking runs after saved intake; uncertain booking outcomes do not repeat the action.
+Existing bounded receptionist worker, backend tasks, deadlines and named HTTP transport
+remain distinct from long-running assistant requests. This is source evidence, not a
+measured capacity or latency guarantee. No cause is claimed for the reported live call.
+
+Validation: 84 existing application-service tests passed with this production change.
+The added SQL fixture initially failed for omitted required budget/call fields, then
+missing storefront preferences; fixture setup corrected without production changes.
+Final focused run 2 PASS/0 FAIL/0 SKIP, log
+/private/tmp/legend-shared-intake-final-tests.log, using supported db.sh local test and
+only persistent synthetic MasterAppLocalTest. SQL test verifies no employee context,
+missing recipient -> committed inquiry/pending delivery -> replay once -> repaired
+recipient delivered once through existing notification authority with a fake sender.
+It does not execute the recovery background worker or live SIP/provider admission.
+The second test verifies downstream booking failure retains saved intake and does not
+repeat an uncertain booking. Synthetic fixtures are cleaned by their exact IDs.
+NU1900 vulnerability-feed warnings remain; no package-security pass is inferred.
+
+Astra accepted exact five-path manifest
+ce32f616efe1eb8262e8ed45c86ec81f82df9240f91712674b1381a800876bf8 for source preservation
+only; no blocking defect found. Implementation a3b36b249 (full identity in Git).
+No migration, production data change, provider call, purchase, merge or deployment.
+Rollback is the bounded source change; no schema reversal is required.
+Combined browser/mobile/microphone/live-call acceptance, real-provider funding and
+latency evidence, remaining AI/voice/household implementation, required release checks,
+fast-track integration and deployment remain open. Do not reuse an earlier visual
+waiver or replay successful prior deployments. Next: preserve this checkpoint through
+the existing session finish owner, then continue the outstanding combined work.
