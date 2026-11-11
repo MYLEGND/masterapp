@@ -6138,3 +6138,47 @@ base4e6554d8a34ca89ef7f98f77773be5fa75f92835. Integration must not redeploy.
 Task branch source preservation and merge readback remain distinct; record exact
 result in the final session receipt. Cloudflare setup and authenticated live UI/
 provider acceptance remain outstanding, not silently reported complete.
+
+
+### 2026-11-11 focused mobile composer, current page and dictation repair
+
+Founder requested the attached GPT-style mobile arrangement, current-page visibility,
+and microphone repair, then direct deployment of affected apps. Same task branch;
+canonical intake imported actual fast-track ad1b501da64455e2f2cb06aeb336bfa848cfcca8,
+with no checkout/database replacement. Working tree was clean before this repair.
+Canonical impact selects Portal only; no schema, routing or Cloudflare changes.
+
+The existing mobile CSS now provides two composer rows, minimum44px lower actions,
+and an auto-height unclipped header. The ONE existing selector moves through
+syncControlPlacement to the composer on mobile and returns to its original header
+on desktop. Existing visualViewport/sheet/autosizing controllers are retained.
+The sidebar plus remains unchanged/hidden on mobile: no working chat attachment
+picker/upload flow is wired here; image-reference selection is existing saved-media
+selection, not camera/files upload. Attachment parity requires separately wiring an
+existing authorized tenant-media upload and chat attachment contract; none is faked.
+
+Each sent turn captures displayed current-page text, bounded24000characters,
+excluding assistant UI, hidden regions, inputs/selects/textareas, contenteditable,
+textbox and explicitly private/sensitive/excluded regions. Server validates bounds,
+binds text to idempotency and supplies it as untrusted user evidence, never tool
+permission or verified database facts. Legacy replay hashes remain unchanged when
+new context is absent. Existing business context remains canonical and scoped.
+Dictation now permits the explicitly selected authorized enabled OpenAI workspace
+in regular chat, using the same recording/transcription/funding endpoint. Missing
+setup opens existing settings with readable feedback. Privacy blocks remain enforced;
+no credentials, budget changes or new provider fallback. This does not make a global
+OpenAI chat key a funded workspace dictation connection.
+
+Focused JS13/13 and .NET6/6 PASS; latest TRX:
+/private/tmp/legend-unified-ai-results/mobile-page-dictation-final.trx.
+Synthetic rendered assistant geometry PASS at320,375,390,430,820,860,900,901,1363;
+requested mobile widths also exercise landscape, multiline text, long transcript,
+menus/sheet and simulated visualViewport keyboard. Matched before/after screenshots
+/private/tmp/legend-mobile-composer-before and /private/tmp/legend-mobile-composer-after.
+The existing fixture's Razor interpolation was corrected so textarea closing markup
+is preserved. The full fixture still FAILS the unrelated Messages palette assertion
+on both ad1b501 baseline and candidate; no Messages styles changed. Actual iPhone
+keyboard/microphone, paid transcription and authenticated live acceptance NOT VERIFIED.
+No billable model/audio call or customer data used. Astra reviewed canonical owners,
+privacy exclusions, legacy fingerprints and selector/dictation lifecycle; exact final
+source/package admission and deployment receipts remain to be recorded.
