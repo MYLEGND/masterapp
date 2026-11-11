@@ -5885,3 +5885,23 @@ Native history admission also enters the existing recovery_material_reuse contex
 for its one decision, retaining digest/receipt/log identities without another cache
 or extending mutable evidence lifetime.7 focused native-admission tests passed;
 new coverage verifies reuse is active only inside the decision and released after it.
+
+The b8 control is remotely preserved and exact architecture43028529533,
+security43028529687, commerce43028529740 are green. Native owner4cbc0378c536089612e7405f67f472f3acf6daab6dda5a661ab99b5a9a8c9412
+and migration adapter2adadb3fb8c4d225e1e8b5728ddf83adfbcebb3d4e054e803ddce95fa00176d0
+installed; plan e747f0999cb1f1b8af2196487a9a5a30bdb1f43e18ecc0b5a8ff60373c4f1f67
+validated PLAN_ONLY. Actual history proof passed the old recovery boundary and
+reached41414200795, a failed selector with all downstream jobs skipped and no
+artifacts. Currentness checked promotion success before its existing nonentry
+classifier. Moved that same complete-attempt nonentry check before source-mode
+classification; removed the later duplicate. It grants no promotion/publication
+and advances no baseline.43 focused tests pass; independent review accepted
+validator5b47047ac77d8cf78ae6786fa54bbea5aaf779202174e5f09e380855d728ed4b and
+tests5fe6e0b9424532ee2e801b40e57e3cec12b6b74cbea9bbfcf6f25af52d4ba681.
+All seven remaining failed selector runs (41414200795 through41600111853) passed
+the existing complete-attempt nonentry authority; log/private/tmp/legend-historical-selector-readback.log. Historical Protect
+artifact13095892226 was independently downloaded and SHA256 verified after a
+transient read failure; retained at/private/tmp/legend-historical-protect-artifact-13095892226.zip.
+No new application packages or schema bundle were built. Production effects remain
+zero. Fresh SQL observations remain required because the Mac egress IP has changed;
+only the previously authorized existing single-IP rule is used, never a range.

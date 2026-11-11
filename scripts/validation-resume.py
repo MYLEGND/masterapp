@@ -7553,6 +7553,9 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
                     continue
                 latest[resource]=proof['reference']
             continue
+        artifacts = _completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts')
+        if completed_resource_failed_selector_nonentry(repository, run, revision, token, artifacts):
+            continue  # No downstream owner entered; historical intent remains unchanged.
         request = _fast_track_policy().read_request(run['head_sha'])
         if _fast_track_policy().source_integration_requested(run['head_sha']):
             fast_track_source_integration_parent(repository, run, token)
@@ -7564,14 +7567,11 @@ def completed_resource_currentness(repository, revision, contract, proofs, token
         if completed_resource_contract(run['head_sha']) is None:
             raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_NEW_LEGACY_WRITER')
         fast_track_merged_source_proof(repository,run['head_sha'],token)
-        artifacts = _completion_inventory(api_get(repository,f"actions/runs/{run['id']}/artifacts?per_page=100",token),'artifacts')
         attempts = _completion_jobs(repository,run,token)
         parents=subprocess.check_output(['git','rev-list','--parents','-n','1',run['head_sha']],text=True).split()
         if len(parents)!=3:raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_PRODUCER_PARENT_UNKNOWN')
         recorded=completed_resource_scope(parents[1],run['head_sha'],completed_resource_contract(run['head_sha']))
         selected={r['key'] for r in recorded['matrix']['include']}
-        if completed_resource_failed_selector_nonentry(repository, run, revision, token, artifacts):
-            continue  # No downstream owner entered; historical intent remains unchanged.
         if set(request.get('targets',[]))!={r['azure_app'] for r in recorded['matrix']['include']}:
             raise ReleaseOperationHistoryUnproven('RESOURCE_BASELINE_RECORDED_SCOPE_CHANGED')
         for resource in ('portal','client','protect','parfait','website','schema','routing'):

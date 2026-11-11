@@ -10512,6 +10512,16 @@ class CompletedResourceBaselineTests(unittest.TestCase):
             with patch.object(m,'fast_track_selector_attempts_proven_nonentry',return_value=False):
                 with self.assertRaisesRegex(m.ReleaseOperationHistoryUnproven,'RESOURCE_BASELINE_RECORDED_SCOPE_CHANGED'):
                     m.completed_resource_currentness('MYLEGND/masterapp','d'*40,contract,{},'token')
+            fake.tool_promotion_requested=lambda sha:True
+            with patch.object(m,'fast_track_promotion_parent',side_effect=ValueError('PROMOTION_REQUIRED')) as promotion:
+                with patch.object(m,'fast_track_selector_attempts_proven_nonentry',return_value=True):
+                    self.assertEqual({k:v for k,v in contract['resources'].items() if v is not None},
+                        m.completed_resource_currentness('MYLEGND/masterapp','d'*40,contract,{},'token'))
+                    promotion.assert_not_called()
+                with patch.object(m,'fast_track_selector_attempts_proven_nonentry',return_value=False):
+                    with self.assertRaisesRegex(ValueError,'PROMOTION_REQUIRED'):
+                        m.completed_resource_currentness('MYLEGND/masterapp','d'*40,contract,{},'token')
+
 
     def test_no_change_tooling_does_not_advance_any_resource(self):
         value=self.contract();before=json.dumps(value,sort_keys=True)
