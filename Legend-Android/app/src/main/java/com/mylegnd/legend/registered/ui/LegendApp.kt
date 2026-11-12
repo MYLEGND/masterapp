@@ -2314,10 +2314,34 @@ private fun LegendAgentClientCreationPortal(
                                         onSessionExpired = recoverExpiredTicket,
                                         onFailure = { failure = it },
                                     )
-                                    openLegendClientCreationPortal(launchPath)
+                                    if (!assistantHostInUse.compareAndSet(false, true)) {
+                                        post { failure = "Close the other secure portal window and retry." }
+                                    } else {
+                                        tag = "legend-pending-portal-host"
+                                        val origin = Uri.parse(launchPath).buildUpon().path("/").clearQuery().fragment(null).build().toString()
+                                        android.webkit.CookieManager.getInstance().setCookie(origin,
+                                            "__Secure-LegendAssistant=; Path=/founder/legend-ai; Max-Age=0; Secure; HttpOnly; SameSite=Strict") { removed ->
+                                            if (!removed) {
+                                                tag = "legend-failed-cookie-cleanup"
+                                                failure = "Secure session cleanup failed. Close and restart the app before retrying."
+                                            } else if (tag == "legend-pending-portal-host") {
+                                                tag = "legend-exclusive-portal-host"
+                                                openLegendClientCreationPortal(launchPath)
+                                            } else assistantHostInUse.set(false)
+                                        }
+                                    }
                                 }
                             },
                             modifier = Modifier.fillMaxSize(),
+                            onRelease = { web ->
+                                val owned = web.tag == "legend-exclusive-portal-host"
+                                web.tag = null
+                                web.stopLoading()
+                                web.webChromeClient = null
+                                web.removeAllViews()
+                                web.destroy()
+                                if (owned) assistantHostInUse.set(false)
+                            },
                         )
                     }
                 } else {
@@ -2411,7 +2435,8 @@ private class LegendClientCreationPortalWebViewClient(
         destination.scheme.equals("https", ignoreCase = true) &&
             destination.scheme.equals(origin.scheme, ignoreCase = true) &&
             destination.host.equals(origin.host, ignoreCase = true) &&
-            normalizedPort(destination) == normalizedPort(origin)
+            normalizedPort(destination) == normalizedPort(origin) &&
+            !destination.path.orEmpty().startsWith("/founder/legend-ai")
 
     private fun isApprovedPortalResource(destination: Uri): Boolean =
         isApprovedPortalLocation(destination) ||

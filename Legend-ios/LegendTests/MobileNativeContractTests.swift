@@ -1807,6 +1807,59 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertTrue(condition(), "Expected the canonical history refresh to finish")
     }
 
+    func testFounderSurfaceUsesAuthenticatedBootstrapAndExactScopedCookie() async throws {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        StubURLProtocol.responseBody = try surfaceBootstrapBody()
+        let (origin, launch) = try await store.surfaceLaunch()
+        XCTAssertEqual(origin.host, "api.example.test")
+        XCTAssertEqual(launch.cookiePath, "/founder/legend-ai")
+        XCTAssertEqual(StubURLProtocol.requests.count, 1)
+        XCTAssertEqual(StubURLProtocol.requests[0].httpMethod, "POST")
+        XCTAssertEqual(StubURLProtocol.requests[0].url?.path, "/api/v1/mobile/founder/legend-ai/surface")
+        XCTAssertNil(StubURLProtocol.requests[0].url?.query)
+        XCTAssertEqual(StubURLProtocol.requests[0].value(forHTTPHeaderField: "X-Legend-Participant-Type"), "Agent")
+    }
+
+    func testFounderSurfaceRejectsBroaderCookieAndExpiredLaunch() async throws {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        for (path, expiry) in [("/", Date().addingTimeInterval(600)), ("/founder/legend-ai", Date().addingTimeInterval(-1))] {
+            StubURLProtocol.responseBody = try surfaceBootstrapBody(path: path, expiry: expiry)
+            do { _ = try await store.surfaceLaunch(); XCTFail("Invalid bootstrap must not enter WebKit") }
+            catch { }
+        }
+    }
+
+    func testFounderSurfaceRejectsBootstrapAfterSessionGenerationChanges() async throws {
+        resetFounderStreamStub()
+        defer { resetFounderStreamStub() }
+        var delay = false
+        var waiting: CheckedContinuation<String, Never>?
+        let store = LegendFounderAiStore(client: MobileHTTPClient(runtimeDiagnostics: nil,
+            baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: .agent,
+            accessTokenProvider: {
+                if delay { return await withCheckedContinuation { waiting = $0 } }
+                return "test-token"
+            })
+        StubURLProtocol.responseBody = Data("{\"available\":true}".utf8)
+        await store.resolveAvailability()
+        delay = true
+        let pending = Task { try await store.surfaceLaunch() }
+        await waitForFounderHistory { waiting != nil }
+        store.clearConversation()
+        StubURLProtocol.responseBody = try surfaceBootstrapBody()
+        waiting?.resume(returning: "test-token")
+        do { _ = try await pending.value; XCTFail("Stale account generation must not install a cookie") }
+        catch { }
+    }
+
+    private func surfaceBootstrapBody(path: String = "/founder/legend-ai", expiry: Date = Date().addingTimeInterval(600)) throws -> Data {
+        try JSONSerialization.data(withJSONObject: ["launchPath": "/founder/legend-ai/surface",
+            "cookieName": "__Secure-LegendAssistant", "cookieValue": "synthetic-protected-ticket",
+            "cookiePath": path, "expiresUtc": ISO8601DateFormatter().string(from: expiry)])
+    }
+
     private func availableFounderStore() async -> LegendFounderAiStore {
         resetFounderStreamStub()
         StubURLProtocol.responseStatus = 200

@@ -3,6 +3,7 @@
 
     const trigger = document.getElementById('legendFounderAiTrigger');
     const modalElement = document.getElementById('legendFounderAiModal');
+    const nativeSurface = document.documentElement.hasAttribute('data-legend-ai-native-surface');
 
     if (!trigger || !modalElement || typeof bootstrap === 'undefined') {
         return;
@@ -153,7 +154,7 @@
         const credential = businessCredential.value || null;
         businessCredential.value = '';
         try {
-            const response = await fetch('/founder/legend-ai/business/configuration', {
+            const response = await authenticatedFetch('/founder/legend-ai/business/configuration', {
                 method: 'POST', credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json',
                     'RequestVerificationToken': form.querySelector('input[name="__RequestVerificationToken"]')?.value || '' },
@@ -179,7 +180,7 @@
         businessInspectModels.disabled = true;
         businessSaveStatus.textContent = 'Checking configured model metadata…';
         try {
-            const response = await fetch('/founder/legend-ai/business/model-access', {
+            const response = await authenticatedFetch('/founder/legend-ai/business/model-access', {
                 method: 'POST', credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json',
                     'RequestVerificationToken': form.querySelector('input[name="__RequestVerificationToken"]')?.value || '' },
@@ -429,6 +430,7 @@
         setSidebarOpen(false);
         closeSettingsPanel();
         input?.blur();
+        if (nativeSurface) window.location.replace('/founder/legend-ai/native-close');
     });
 
     document.addEventListener('visibilitychange', () => {
@@ -502,7 +504,7 @@
         historyRequest = null;
     }
 
-    function clearAuthenticatedHistory() {
+    function clearAuthenticatedHistory(authenticationExpired = false) {
         cancelDictation();
         accountGeneration++;
         const request = activeRequest;
@@ -515,12 +517,13 @@
         setBusy(false);
         if (input) input.value = '';
         renderAll();
+        if (nativeSurface && authenticationExpired === true) window.location.replace('/founder/legend-ai/native-expired');
     }
 
     async function readHistory(url, signal, requireHistoryResult = true) {
-        const response = await fetch(url, { credentials: 'same-origin', cache: 'no-store', signal });
+        const response = await authenticatedFetch(url, { credentials: 'same-origin', cache: 'no-store', signal });
         if (response.status === 401 || response.status === 403 || response.redirected) {
-            clearAuthenticatedHistory();
+            clearAuthenticatedHistory(true);
             throw new Error('Conversation history is unavailable for this account.');
         }
         const result = await response.json();
@@ -1093,7 +1096,7 @@
                 const link = document.createElement('a');
                 link.href = reviewLink[2];
                 link.textContent = reviewLink[1];
-                link.target = '_blank';
+                link.target = nativeSurface ? '_self' : '_blank';
                 link.rel = 'noopener';
                 parent.appendChild(link);
                 i += reviewLink[0].length;
@@ -1630,14 +1633,14 @@
             session.chunks.length = 0;
             let binary = '';
             for (let i = 0; i < wave.length; i += 8192) binary += String.fromCharCode(...wave.subarray(i, i + 8192));
-            const response = await fetch('/founder/legend-ai/business/dictation', {
+            const response = await authenticatedFetch('/founder/legend-ai/business/dictation', {
                 method: 'POST', credentials: 'same-origin', signal: session.abort.signal,
                 headers: { 'Content-Type': 'application/json',
                     'RequestVerificationToken': form.querySelector('input[name="__RequestVerificationToken"]')?.value || '' },
                 body: JSON.stringify({ workspace: session.workspace, configurationRevision: session.revision,
                     operationId: session.operationId, audioBase64: btoa(binary) })
             });
-            if (response.status === 401 || response.status === 403 || response.redirected) { clearAuthenticatedHistory(); return; }
+            if (response.status === 401 || response.status === 403 || response.redirected) { clearAuthenticatedHistory(true); return; }
             const result = await response.json();
             if (!response.ok) throw new Error(result.error || 'Transcription failed. Check dictation configuration and funding.');
             if (dictation !== session || session.accountGeneration !== accountGeneration || activeConversation().id !== session.conversationId ||
@@ -1767,9 +1770,17 @@
         // A model is a per-turn selection, never a new identity or transcript.
         renderModes();
     });
+    async function authenticatedFetch(url, options) {
+        const response = await fetch(url, options);
+        if (response.status === 401 || response.status === 403 || response.redirected) {
+            clearAuthenticatedHistory(true);
+            throw new Error('Your assistant session expired. Reopen it to continue.');
+        }
+        return response;
+    }
     async function loadChatModels() {
         try {
-            const response = await fetch(modalElement.dataset.modelsUrl, { credentials: 'same-origin', cache: 'no-store' });
+            const response = await authenticatedFetch(modalElement.dataset.modelsUrl, { credentials: 'same-origin', cache: 'no-store' });
             if (!response.ok) throw new Error('model_catalog_unavailable');
             const catalog = await response.json();
             chatModels = Array.isArray(catalog.models) ? catalog.models : [];
@@ -1849,7 +1860,7 @@
         let provisionalAnswer = null;
         try {
             const token = form.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
-            const response = await fetch(modalElement.dataset.chatUrl, {
+            const response = await authenticatedFetch(modalElement.dataset.chatUrl, {
                 method: 'POST', credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/x-ndjson',
                     'RequestVerificationToken': token, 'X-Requested-With': 'XMLHttpRequest',
@@ -1858,7 +1869,7 @@
                 body: operation.body, signal: request.signal
             });
             if (response.status === 401 || response.status === 403 || response.redirected) {
-                clearAuthenticatedHistory();
+                clearAuthenticatedHistory(true);
                 return;
             }
             const result = await consumeChatResultStream(response, request.signal, delta => {
@@ -1927,6 +1938,8 @@
     }
 
     function captureCurrentPage() {
+        // An embedded assistant is not the native screen beneath it.
+        if (nativeSurface) return undefined;
         // Read only displayed page text, never form values, hidden application
         // state, credentials, or this assistant's own transcript. This is user
         // supplied evidence, not permission to execute instructions on a page.
@@ -1979,7 +1992,7 @@
         const operation = { id: operationId, localUserMessageId, body: JSON.stringify({
             mode: conversation.mode, nativeOnly: conversation.nativeOnly === true,
             modelSelection: conversation.mode === 'business' ? null : (modelSelection?.value || 'auto'),
-            pagePath: window.location.pathname,
+            pagePath: nativeSurface ? null : window.location.pathname,
             pageContent: captureCurrentPage(),
             assistantWorkspaceKey: conversation.assistantWorkspaceKey || null,
             assistantProvider: conversation.assistantProvider || null,
@@ -2021,4 +2034,5 @@
     );
 
     renderAll({ forceBottom: true });
+    if (nativeSurface) trigger.click();
 })();

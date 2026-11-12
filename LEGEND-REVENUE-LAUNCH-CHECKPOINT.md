@@ -6324,3 +6324,63 @@ acceptance is inferred from runtime/assets. The prior incomplete notes above are
 PR774 source-only synchronization remains next; refresh its sourceIntegration marker
 against actual fast-track6077ef21e21f0708e462d66cbd912cae2272ebf0 before merge.
 Preserve this application candidate/packages and do not replay uploads or restarts.
+
+### Native assistant canonical web surface — 2026-11-11 continuation
+Founder authorized continuing the existing dirty mobile consolidation, preserving
+all source, with no archive/submission/signing/credential/billing changes. Actual
+local and fast-track HEAD are 8ce18161bcdaf4a396d4a831c7b55f31612b3da3 (PR774).
+Task remote is 408f7299f67fad5fde9fc396d097e3a03d89e33a, its pre-merge ancestor.
+PR774 source-only workflow43128484745 completion is supplied in the handoff;
+this continuation did not replay prior release effects. Existing Portal cbaf306d8
+and other-app c71cde5e1 live receipts remain the production baseline.
+
+Uncommitted implementation hosts the actual _LegendFounderAiModal.cshtml and
+canonical CSS/JS at /founder/legend-ai/surface. Removed copied Swift/Compose chat
+presentation; retained protocol/store compatibility pending further consumer audit.
+Purpose-protected cookie bootstrap retains bearer Founder/Agent checks, bounded
+expiry, no sliding renewal and per-request tenant/profile/lifecycle validation.
+iOS uses a nonpersistent WKWebView. Android's two WebView factories now share
+exclusive ownership; the client portal clears only the scoped assistant cookie
+before loading and denies assistant routes. Disposal/pending cookie callbacks
+retain ownership until cleanup succeeds; cleanup failure fails closed. No other
+WebView workflows' cookies are cleared. All authenticated assistant fetches now
+share expiry cleanup, including settings/model access; static token fetch is separate.
+
+Independent Astra review found shared Android cookie access and incomplete settings
+expiry handling; both source corrections implemented, plus fail-closed cookie cleanup.
+Final exact-source acceptance remains pending; source review does not prove runtime
+cookie lifecycle, keyboard/audio or authenticated rendering.
+
+Current focused evidence: JS23/23 (/private/tmp/legend-mobile-surface-js-final.log),
+server security10/10 including real cookie-handler expired/invalid-ticket denial
+(/private/tmp/legend-mobile-surface-security-final.log), changed presentation
+contract1/1 (/private/tmp/legend-mobile-surface-contract-final.log), Android
+compileDebugKotlin PASS (/private/tmp/legend-mobile-surface-android-final.log),
+iOS three bootstrap Simulator tests PASS (/private/tmp/legend-mobile-surface-ios-final.log;
+/tmp/legend-assistant-ios-build/Logs/Test/Test-Legend-2026.11.11_20-45-58--0700.xcresult).
+Broader Founder contract run:49PASS/3FAIL. Failures concern an outdated service-method
+list, governed proposal flags, and an Android language argument substring already
+present unchanged at HEAD; no unrelated assertion was weakened. Full suite is not PASS.
+Npm dependencies restored from package-lock with npm ci, no upgrades. NU1900 audit
+network warnings were emitted by dotnet; focused tests passed despite those warnings.
+
+LOCAL AUTHENTICATED PRETEST BLOCKED: existing MasterAppLocalTest identity verified
+ready, no customer data imported. Existing localhost certificate is valid; supported
+local launcher still binds HTTP and strips operator secrets/provider configuration.
+No configured synthetic Founder mobile sign-in is supplied by that launcher; Apple
+review login is client-only and must not become Founder authority. Do not forge a
+production identity or weaken HTTPS/cookies. Simulator control works and the updated
+app opens to secure sign-in. New production surface endpoint is not deployed.
+Actual shared chat render, keyboard/safe areas, authenticated account switch, action
+review, real microphone and paid transcription remain NOT VERIFIED. No paid calls.
+
+Session preflight with merge base8ce rejects remote ancestry; with actual shared
+base408 it reports local-ahead1/remote-only0 and dirty work, preserved as instructed.
+Initial18 dirty source files were independently read-back verified in existing Mac
+recovery/mobile-source-20261111T204417/dirty-source.tar.gz, SHA256
+8cad03471867e97a006853f51647102dc616cdda57a13b115f9fe8ec5ec6c63f.
+That snapshot predates this continuation's review fixes; retain a fresh final snapshot.
+Existing committed bundle covers HEAD only, never dirty work. No commit/push/merge or
+new deployment is claimed. Remaining: authenticated local test setup through canonical
+owners, exact source acceptance, preservation/protected integration, Portal admission
+and selective direct deployment, then actual Simulator acceptance before archiving.

@@ -1,5 +1,9 @@
 @{ ViewData["Title"] = "Review exact LEGEND action"; }
 <section class="container py-4" aria-labelledby="action-review-title">
+    @if (User.Identity?.AuthenticationType == AgentPortal.Mobile.MobileAssistantSurface.Scheme)
+    {
+        <a href="/founder/legend-ai/surface" class="btn btn-outline-primary">Return to LEGEND AI</a>
+    }
     <h1 id="action-review-title">Review exact action</h1>
     @if (ViewData["State"] as string == "Proposed")
     {

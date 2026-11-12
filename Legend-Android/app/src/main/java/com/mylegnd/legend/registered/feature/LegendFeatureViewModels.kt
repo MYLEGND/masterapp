@@ -81,6 +81,12 @@ class FounderAiViewModel(
     private val repository: FounderAiRepository,
     private val role: String,
 ) : ViewModel() {
+    suspend fun surfaceLaunch(): LoadState<Pair<String, com.mylegnd.legend.registered.core.network.AssistantSurfaceLaunch>> {
+        val epoch = generation
+        if (retired || !role.equals("Agent", ignoreCase = true)) return LoadState.Error("This assistant is unavailable for this account.")
+        val result = repository.surface(role)
+        return if (retired || epoch != generation) LoadState.Error("Your account changed. Reopen the assistant.") else result
+    }
     private val _state = MutableStateFlow(FounderAiConversationState())
     val state: StateFlow<FounderAiConversationState> = _state.asStateFlow()
     private var conversationId = UUID.randomUUID().toString()
@@ -109,7 +115,6 @@ class FounderAiViewModel(
                 is LoadState.Error -> LoadState.Error(result.message)
                 else -> LoadState.Error("Founder AI availability could not be determined.")
             }) }
-            refresh()
         }
     }
 

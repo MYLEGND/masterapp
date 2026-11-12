@@ -21,6 +21,10 @@ import okhttp3.MediaType.Companion.toMediaType
 import kotlinx.serialization.json.JsonObject
 
 @Serializable data class ReactionPreferences(val preferredReactionSkinTone: Int)
+@Serializable class AssistantSurfaceLaunch(val launchPath: String, val cookieName: String,
+    val cookieValue: String, val cookiePath: String, val expiresUtc: String) {
+    override fun toString() = "AssistantSurfaceLaunch(redacted)"
+}
 interface AccessTokenProvider { suspend fun accessToken(): String? }
 class LegendApiException(val status: Int, val problem: MobileApiProblem?, cause: Throwable? = null) : IOException(problem?.message ?: "Legend request failed.", cause)
 
@@ -40,6 +44,7 @@ interface LegendApi {
     @POST("api/v1/mobile/session/select-role") suspend fun selectRole(@Body request: SelectRoleRequest): Response<MobileRoleSelectionResponse>
     @GET("api/v1/mobile/localization/catalog") suspend fun localizationCatalog(@Header("X-Legend-Participant-Type") participantType: String): Response<ApplicationLocalizationCatalog>
     @GET("api/v1/mobile/founder/legend-ai/access") suspend fun founderAiAccess(@Header("X-Legend-Participant-Type") participantType: String): Response<FounderAiAccessResponse>
+    @POST("api/v1/mobile/founder/legend-ai/surface") suspend fun founderAiSurface(@Header("X-Legend-Participant-Type") participantType: String): Response<AssistantSurfaceLaunch>
     @GET("api/v1/mobile/founder/legend-ai/business/workspaces") suspend fun businessAssistantWorkspaces(@Header("X-Legend-Participant-Type") role: String): Response<List<BusinessAssistantWorkspace>>
     @GET("api/v1/mobile/founder/legend-ai/business/configuration") suspend fun businessAssistantConfiguration(@Header("X-Legend-Participant-Type") role: String, @Query("workspace") workspace: String, @Query("provider") provider: String): Response<BusinessAssistantConnection>
     @GET("api/v1/mobile/founder/legend-ai/conversations") suspend fun founderAiConversations(@Header("X-Legend-Participant-Type") role: String, @Query("take") take: Int = 50, @Query("skip") skip: Int = 0, @Query("assistantWorkspaceKey") workspace: String? = null): Response<FounderAiHistoryList>

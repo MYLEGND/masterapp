@@ -15,7 +15,7 @@ function environment(fetch) {
   const conversation = { id: 'thread', persisted: true, messages: [], lastMessageId: null, mode: 'legend' };
   const c = { AbortController, URLSearchParams, Set, Map, TextDecoder, DOMException, crypto: { randomUUID: () => 'new-id' },
     HISTORY_URL: '/founder/legend-ai/conversations', HISTORY_REFRESH_MS: 20000,
-    busy: false, dictation: null, historyRequest: null, historyTimer: null, historySkip: 0, historyHasMore: false,
+    nativeSurface: false, busy: false, dictation: null, historyRequest: null, historyTimer: null, historySkip: 0, historyHasMore: false,
     accountGeneration: 0, activeRequest: null, state: { activeConversationId: 'thread', conversations: [conversation] },
     document: { hidden: false }, modalElement: { dataset: { chatUrl: '/chat' }, classList: { contains: () => true } },
     window: { crypto: { randomUUID: () => 'new-id' }, clearTimeout() {}, setTimeout() { return 1; } },
@@ -28,7 +28,7 @@ function environment(fetch) {
     updateThinkingStatus(message = '') { c.status.textContent = message; },
   };
   vm.createContext(c);
-  for (const name of ['createId', 'newConversationRecord', 'stopHistoryRefresh', 'cancelDictation', 'clearAuthenticatedHistory', 'readHistory', 'storedMessage',
+  for (const name of ['authenticatedFetch', 'createId', 'newConversationRecord', 'stopHistoryRefresh', 'cancelDictation', 'clearAuthenticatedHistory', 'readHistory', 'storedMessage',
     'loadConversationPage', 'refreshHistory', 'scheduleHistoryRefresh', 'structuredFailureMessage',
     'consumeChatResultStream', 'executeConversationRequest']) vm.runInContext(implementation(name), c);
   return c;
@@ -175,3 +175,25 @@ test('history refresh preserves explicit existing provider restrictions', async 
     assert.equal(restricted.externalAnsweringBlocked, policy.externalAnsweringBlocked);
   }
 });
+
+test('embedded authentication expiry closes the scoped surface without replaying a mutation', async () => {
+  let calls = 0; let destination;
+  const c = environment(async () => { calls++; return { status: 401 }; });
+  c.nativeSurface = true;
+  c.window.location = { replace(value) { destination = value; } };
+  await assert.rejects(c.readHistory('/history'));
+  assert.equal(calls, 1);
+  assert.equal(destination, '/founder/legend-ai/native-expired');
+  assert.equal(c.input.value, '');
+});
+
+for (const status of [401, 403]) {
+  test(`all authenticated surface requests close on ${status} without retry`, async () => {
+    let calls = 0, closed = 0;
+    const c = environment(async () => { calls++; return { status, redirected: false, ok: false }; });
+    c.nativeSurface = true;
+    c.window.location = { replace(path) { assert.equal(path, '/founder/legend-ai/native-expired'); closed++; } };
+    await assert.rejects(c.authenticatedFetch('/founder/legend-ai/business/configuration', { method: 'POST' }));
+    assert.equal(calls, 1); assert.equal(closed, 1);
+  });
+}

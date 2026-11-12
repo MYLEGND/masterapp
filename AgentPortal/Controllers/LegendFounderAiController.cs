@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace AgentPortal.Controllers;
 
-[Authorize]
+[Authorize(AuthenticationSchemes = AgentPortal.Mobile.MobileAssistantSurface.PolicyScheme)]
 [FounderOnly]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None, Duration = 0)]
 public sealed class LegendFounderAiController : Controller
@@ -25,6 +25,13 @@ public sealed class LegendFounderAiController : Controller
     }
 
     private LegendFounderAiHttpTransport Transport => new(HttpContext, _conversation, _progress, _logger);
+
+    [HttpGet("founder/legend-ai/surface")]
+    public async Task<IActionResult> Surface([FromServices] Shared.PortalShell.IPortalShellIdentityResolver identity, CancellationToken ct)
+    {
+        Response.Headers["Referrer-Policy"] = "no-referrer";
+        return View("Surface", await identity.ResolveAsync(User, HttpContext, ct));
+    }
 
     [HttpGet("founder/legend-ai/models")]
     public async Task<IActionResult> Models(CancellationToken ct) => Ok(new { models = await _conversation.GetChatModelsAsync(User, ct),

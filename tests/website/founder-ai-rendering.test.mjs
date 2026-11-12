@@ -19,7 +19,7 @@ function fixture(t) {
     Object.assign(w, {
         transcript: w.document.getElementById('transcript'), logoSource: '/legend.svg',
         userInitials: 'FO', userAvatarSource: '', retryRequest: null, welcome: null,
-        conversationState: null, status: null, busy: false, TextDecoder,
+        nativeSurface: false, conversationState: null, status: null, busy: false, TextDecoder,
         applyOperationalProgress() {}, updateThinkingStatus() {}
     });
     for (const name of ['appendAssistantInline', 'renderAssistantContent', 'appendBubble',
@@ -161,7 +161,7 @@ test('current page capture excludes assistant, hidden content and form values', 
       <div contenteditable="true">Unsent editor</div><div role="textbox">Editor value</div><div data-private>Private account</div><script>secret()</script></main>`, { runScripts: 'outside-only' });
     t.after(() => dom.window.close());
     const w = dom.window; w.modalElement = w.document.getElementById('ai');
-    w.eval(implementation('captureCurrentPage'));
+    w.nativeSurface = false; w.eval(implementation('captureCurrentPage'));
     assert.equal(w.captureCurrentPage(), 'Sales overview\nVisible result: 7 inquiries');
     w.document.querySelector('[data-legend-page-content]').removeAttribute('data-legend-page-content');
     assert.equal(w.captureCurrentPage(), 'Sales overview\nVisible result: 7 inquiries');
@@ -185,4 +185,10 @@ test('mobile model placement moves one control and preserves selection and liste
     assert.equal(select.closest('header'), w.modelHeaderHome);
     select.dispatchEvent(new w.Event('change')); assert.equal(changes, 1);
     assert.equal(w.document.querySelectorAll('select').length, 1);
+});
+
+test('embedded action review stays in the same scoped window', t => {
+    const w = fixture(t); w.nativeSurface = true;
+    const rendered = w.show('[Review](/founder/legend-ai/actions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa)');
+    assert.equal(rendered.querySelector('a').target, '_self');
 });

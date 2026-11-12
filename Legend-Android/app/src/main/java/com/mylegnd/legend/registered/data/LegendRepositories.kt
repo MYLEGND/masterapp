@@ -28,6 +28,7 @@ catch (error: Exception) {
     }) }
 class HomeRepository(private val client: LegendApiClient) { suspend fun load(role: String) = request { client.api.home(role).legendBody() } }
 class FounderAiRepository(private val client: LegendApiClient) {
+    suspend fun surface(role: String) = request { client.baseUrl to client.api.founderAiSurface(role).legendBody() }
     suspend fun access(role: String): LoadState<FounderAiAccessResponse> = request {
         client.api.founderAiAccess(role).legendBody()
     }
