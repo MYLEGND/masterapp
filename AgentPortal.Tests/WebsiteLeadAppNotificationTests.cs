@@ -246,7 +246,7 @@ public class WebsiteLeadAppNotificationTests
     }
 
     private static Guid ExistingNotificationId(Guid leadId) => (Guid)typeof(WebsiteLeadAppNotificationService)
-        .GetMethod("NotificationId", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, new object[] { leadId })!;
+        .GetMethod("NotificationId", BindingFlags.Static | BindingFlags.Public)!.Invoke(null, new object[] { leadId })!;
 
     [Fact]
     public async Task DeliveredPrefixCannotHideNextPendingLead()

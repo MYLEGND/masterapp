@@ -46,6 +46,11 @@ struct MobileWorkOrder: Codable, Equatable, Identifiable, Sendable {
     let businessName: String?
     let orderNumber: String
     let fulfillmentStatus: String
+    var bucket: String? = nil
+    var tone: String? = nil
+    var notificationId: UUID? = nil
+    var paymentStatus: String? = nil
+    var returnStatus: String? = nil
     let allowedStatuses: [String]
     let trackingCarrier: String?
     let trackingNumber: String?
@@ -63,6 +68,30 @@ struct MobileWorkOrder: Codable, Equatable, Identifiable, Sendable {
         let size: String
         let quantity: Int
     }
+}
+
+struct MobileWorkLead: Decodable, Identifiable, Sendable {
+    let id: String
+    let kind: String
+    let recordId: String
+    let businessId: UUID?
+    let profileId: UUID?
+    let businessName: String
+    let displayName: String
+    let email: String?
+    let phone: String?
+    let detail: String?
+    let stage: String
+    let bucket: String
+    let tone: String
+    let allowedStages: [String]
+    let notificationId: UUID?
+    let updatedUtc: String?
+    let revision: String?
+}
+private struct MobileWorkStageInput: Encodable {
+    let kind: String; let recordId: String; let businessId: UUID?; let profileId: UUID?
+    let stage: String; let expectedStage: String; let note: String?; let expectedUpdatedUtc: String?; let revision: String?
 }
 
 private struct MobileWorkFulfillmentInput: Encodable {
@@ -114,6 +143,15 @@ enum MobilePushRegistrationState: Equatable, Sendable {
 }
 
 protocol MobileNotificationAPI: Sendable {
+    func workLeadRecord(_ lead: MobileWorkLead, accessToken: String) async throws -> MobileWorkLead
+    func workOrderRecord(_ order: MobileWorkOrder, accessToken: String) async throws -> MobileWorkOrder
+    func workLeadTarget(_ id: UUID, accessToken: String) async throws -> [MobileWorkLead]
+    func workOrderTarget(_ id: UUID, accessToken: String) async throws -> [MobileWorkOrder]
+    func workOrdersPage(skip: Int, accessToken: String) async throws -> [MobileWorkOrder]
+    func workLeadsPage(skip: Int, accessToken: String) async throws -> [MobileWorkLead]
+    func workLeads(accessToken: String) async throws -> [MobileWorkLead]
+    func updateStage(_ lead: MobileWorkLead, stage: String, note: String?, accessToken: String) async throws
+
     func engineeringSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot
     func dismissEngineering(id: UUID, accessToken: String) async throws
     func workSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot
@@ -133,6 +171,23 @@ protocol MobileNotificationAPI: Sendable {
 }
 
 extension MobileNotificationAPI {
+    func workLeadRecord(_ lead: MobileWorkLead, accessToken: String) async throws -> MobileWorkLead {
+        guard let row = try await workLeads(accessToken: accessToken).first(where: { $0.id == lead.id }) else { throw MobileAPIError.invalidServerResponse }; return row
+    }
+    func workOrderRecord(_ order: MobileWorkOrder, accessToken: String) async throws -> MobileWorkOrder {
+        guard let row = try await workOrders(accessToken: accessToken).first(where: { $0.id == order.id }) else { throw MobileAPIError.invalidServerResponse }; return row
+    }
+    func workLeadTarget(_ id: UUID, accessToken: String) async throws -> [MobileWorkLead] { try await workLeads(accessToken: accessToken).filter { $0.notificationId == id } }
+    func workOrderTarget(_ id: UUID, accessToken: String) async throws -> [MobileWorkOrder] { try await workOrders(accessToken: accessToken).filter { $0.notificationId == id } }
+    func workOrdersPage(skip: Int, accessToken: String) async throws -> [MobileWorkOrder] {
+        guard skip == 0 else { throw MobileAPIError.invalidServerResponse }; return try await workOrders(accessToken: accessToken)
+    }
+    func workLeadsPage(skip: Int, accessToken: String) async throws -> [MobileWorkLead] {
+        guard skip == 0 else { throw MobileAPIError.invalidServerResponse }; return try await workLeads(accessToken: accessToken)
+    }
+    func workLeads(accessToken: String) async throws -> [MobileWorkLead] { throw MobileAPIError.invalidServerResponse }
+    func updateStage(_ lead: MobileWorkLead, stage: String, note: String?, accessToken: String) async throws { throw MobileAPIError.invalidServerResponse }
+
     func engineeringSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot { throw MobileAPIError.invalidServerResponse }
     func dismissEngineering(id: UUID, accessToken: String) async throws { throw MobileAPIError.invalidServerResponse }
     func workSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot { throw MobileAPIError.invalidServerResponse }
@@ -171,6 +226,35 @@ struct MobileUnavailableNotificationAPI: MobileNotificationAPI {
 }
 
 struct URLSessionMobileNotificationAPI: MobileNotificationAPI {
+    func workLeadRecord(_ lead: MobileWorkLead, accessToken: String) async throws -> MobileWorkLead {
+        var query = URLComponents(); query.queryItems = [URLQueryItem(name: "recordId", value: lead.recordId)]
+        let rows = try await client.get("/api/v1/mobile/work/leads?" + (query.percentEncodedQuery ?? ""), accessToken: accessToken, headers: participantHeader, response: [MobileWorkLead].self)
+        guard let row = rows.first(where: { $0.id == lead.id }) else { throw MobileAPIError.invalidServerResponse }; return row
+    }
+    func workOrderRecord(_ order: MobileWorkOrder, accessToken: String) async throws -> MobileWorkOrder {
+        let rows = try await client.get("/api/v1/mobile/work/orders?includeHistory=true&recordId=\(order.id.uuidString)", accessToken: accessToken, headers: participantHeader, response: [MobileWorkOrder].self)
+        guard let row = rows.first(where: { $0.id == order.id }) else { throw MobileAPIError.invalidServerResponse }; return row
+    }
+    func workLeadTarget(_ id: UUID, accessToken: String) async throws -> [MobileWorkLead] {
+        try await client.get("/api/v1/mobile/work/leads?notificationId=\(id.uuidString)", accessToken: accessToken, headers: participantHeader, response: [MobileWorkLead].self)
+    }
+    func workOrderTarget(_ id: UUID, accessToken: String) async throws -> [MobileWorkOrder] {
+        try await client.get("/api/v1/mobile/work/orders?includeHistory=true&notificationId=\(id.uuidString)", accessToken: accessToken, headers: participantHeader, response: [MobileWorkOrder].self)
+    }
+    func workOrdersPage(skip: Int, accessToken: String) async throws -> [MobileWorkOrder] {
+        try await client.get("/api/v1/mobile/work/orders?includeHistory=true&skip=\(skip)", accessToken: accessToken, headers: participantHeader, response: [MobileWorkOrder].self)
+    }
+    func workLeadsPage(skip: Int, accessToken: String) async throws -> [MobileWorkLead] {
+        try await client.get("/api/v1/mobile/work/leads?skip=\(skip)", accessToken: accessToken, headers: participantHeader, response: [MobileWorkLead].self)
+    }
+    func workLeads(accessToken: String) async throws -> [MobileWorkLead] {
+        try await client.get("/api/v1/mobile/work/leads", accessToken: accessToken, headers: participantHeader, response: [MobileWorkLead].self)
+    }
+    func updateStage(_ lead: MobileWorkLead, stage: String, note: String?, accessToken: String) async throws {
+        try await client.put("/api/v1/mobile/work/leads/stage", body: MobileWorkStageInput(kind: lead.kind, recordId: lead.recordId,
+            businessId: lead.businessId, profileId: lead.profileId, stage: stage, expectedStage: lead.stage, note: note, expectedUpdatedUtc: lead.updatedUtc, revision: lead.revision), accessToken: accessToken, headers: participantHeader)
+    }
+
     let client: MobileHTTPClient
     let participantType: ParticipantType
 
@@ -179,7 +263,7 @@ struct URLSessionMobileNotificationAPI: MobileNotificationAPI {
     }
 
     func workOrders(accessToken: String) async throws -> [MobileWorkOrder] {
-        try await client.get("/api/v1/mobile/work/orders", accessToken: accessToken,
+        try await client.get("/api/v1/mobile/work/orders?includeHistory=true", accessToken: accessToken,
             headers: participantHeader, response: [MobileWorkOrder].self)
     }
 
@@ -270,6 +354,44 @@ final class MobileNotificationStore: ObservableObject {
     @Published private(set) var workSnapshot: MobileNotificationSnapshot?
     @Published private(set) var isLoadingWorkNotifications = false
     @Published private(set) var workNotificationsFailed = false
+    @Published private(set) var workLeads: [MobileWorkLead] = []
+    @Published private(set) var leadFailure: String?
+    @Published private(set) var isLoadingLeads = false
+    @Published private(set) var savingLead = false
+    private var leadGeneration = 0
+    private var orderGeneration = 0
+    private var leadOffset = 0
+    private var orderOffset = 0
+    func resolveWorkNotification(_ item: MobileNotificationItem) async throws -> (MobileWorkLead?, MobileWorkOrder?) {
+        let token = try await accessTokenProvider()
+        if item.kind == "StoreOrder" || item.kind == "OrderFulfillment" {
+            return (nil, try await api.workOrderTarget(item.id, accessToken: token).first)
+        }
+        return (try await api.workLeadTarget(item.id, accessToken: token).first, nil)
+    }
+    func loadWorkLeads(more: Bool = false) async {
+        guard !isLoadingLeads, !savingLead else { return }; isLoadingLeads = true
+        let epoch = leadGeneration
+        defer { isLoadingLeads = false }
+        do {
+            let offset = more ? leadOffset + 100 : 0
+            let rows = try await api.workLeadsPage(skip: offset, accessToken: try await accessTokenProvider())
+            guard epoch == leadGeneration else { return }
+            workLeads = more ? workLeads + rows.filter { row in !workLeads.contains(where: { $0.id == row.id }) } : rows
+            leadOffset = offset; leadFailure = nil
+        }
+        catch { if epoch == leadGeneration { leadFailure = "Leads could not be refreshed. Please retry." } }
+    }
+    func updateStage(_ lead: MobileWorkLead, stage: String, note: String?) async -> Bool {
+        guard !savingLead else { return false }; savingLead = true; leadFailure = nil; leadGeneration += 1
+        defer { savingLead = false }
+        do {
+            try await api.updateStage(lead, stage: stage, note: note, accessToken: try await accessTokenProvider())
+            let fresh = try await api.workLeadRecord(lead, accessToken: try await accessTokenProvider())
+            workLeads.removeAll { $0.id == fresh.id }; workLeads.append(fresh)
+            return true
+        } catch { leadFailure = "The stage was not confirmed. Refresh the record before retrying."; return false }
+    }
     @Published private(set) var workOrders: [MobileWorkOrder] = []
     @Published private(set) var workFailure: String?
     @Published private(set) var isLoadingWork = false
@@ -352,30 +474,37 @@ final class MobileNotificationStore: ObservableObject {
         } catch { workNotificationsFailed = true }
     }
 
-    func loadWorkOrders() async {
-        guard !isLoadingWork else { return }
+    func loadWorkOrders(more: Bool = false) async {
+        guard !isLoadingWork, savingOrderID == nil else { return }
+        let epoch = orderGeneration
         isLoadingWork = true
         defer { isLoadingWork = false }
         do {
-            workOrders = try await api.workOrders(accessToken: try await accessTokenProvider())
+            let offset = more ? orderOffset + 100 : 0
+            let rows = try await api.workOrdersPage(skip: offset, accessToken: try await accessTokenProvider())
+            guard epoch == orderGeneration else { return }
+            workOrders = more ? workOrders + rows.filter { row in !workOrders.contains(where: { $0.id == row.id }) } : rows
+            orderOffset = offset
             workFailure = nil
-        } catch { workFailure = LegendLocalized("Orders could not be loaded. Please retry.") }
+        } catch { if epoch == orderGeneration { workFailure = LegendLocalized("Orders could not be loaded. Please retry.") } }
     }
 
     func fulfill(_ order: MobileWorkOrder, status: String, carrier: String?, tracking: String?) async -> Bool {
         guard savingOrderID == nil else { return false }
-        savingOrderID = order.id
+        savingOrderID = order.id; orderGeneration += 1
         defer { savingOrderID = nil }
         do {
             try await api.fulfill(order, status: status, carrier: carrier, tracking: tracking,
                 accessToken: try await accessTokenProvider())
-            await loadWorkOrders()
+            let fresh = try await api.workOrderRecord(order, accessToken: try await accessTokenProvider())
+            workOrders.removeAll { $0.id == fresh.id }; workOrders.append(fresh)
+            workFailure = nil
             return true
         } catch {
             if let apiError = error as? MobileAPIError, case .apiServer(_, "mobile_order_validation", let message, _) = apiError {
                 workFailure = message.map { LegendLocalized($0) }
             } else {
-                workFailure = LegendLocalized("Order was not saved. Refresh and review its current state before retrying.")
+                workFailure = LegendLocalized("Order update could not be confirmed. Refresh and review its current state before retrying.")
             }
             return false
         }

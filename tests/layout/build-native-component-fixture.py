@@ -567,7 +567,7 @@ window.fetch=async(input,options={})=>{
  if(!['/mobile/agent/booking/availability','/calendar/day-availability'].includes(u.pathname))deny('Unexpected fixture GET:'+u.pathname);
  if([...u.searchParams.keys()].some(k=>!['date','v','excludeEventId'].includes(k)))deny('Unexpected fixture query');
  const date=u.searchParams.get('date');if(!/^\d{4}-\d{2}-\d{2}$/.test(date||''))deny('Fixture date required');
- return new Response(JSON.stringify({services:[{durationMinutes:30,name:'Synthetic thirty-minute appointment with localized-length label'}],slotIntervalMinutes:30,freeSlots:[{startIso:date+'T09:00:00',endIso:date+'T18:00:00'}]}),{status:200});
+ return new Response(JSON.stringify({services:[{serviceId:'synthetic-service',durationMinutes:30,name:'Synthetic thirty-minute appointment with localized-length label'}],slotIntervalMinutes:30,freeSlots:[{startIso:date+'T09:00:00',endIso:date+'T18:00:00'}]}),{status:200});
 };
 document.addEventListener('submit',e=>{e.preventDefault();e.stopImmediatePropagation();window.__fixtureErrors.push('Unexpected submit')},true);
 document.addEventListener('click',e=>{if(e.target.closest('#btnBookAppointment,[data-fixture-forbid-mutation]')){e.preventDefault();e.stopImmediatePropagation();window.__fixtureErrors.push('Unexpected mutation click')}},true);
@@ -630,6 +630,8 @@ document.addEventListener('click',e=>{if(e.target.closest('#btnBookAppointment,[
         mobile = exactly(mobile, old, new)
     mobile = exactly(mobile, '@await Html.PartialAsync("_QuickViewBookingModal")', partial)
     mobile = exactly(mobile, '<link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />', bootstrap)
+    mobile = exactly(mobile, '<link rel="stylesheet" href="~/design/legend-web-foundation.css" asp-append-version="true" />', foundation)
+    mobile = exactly(mobile, '<link rel="stylesheet" href="~/design/legend-app-shell.css" asp-append-version="true" />', shell)
     mobile = exactly(mobile, '<link rel="stylesheet" href="~/css/qv-booking.css" asp-append-version="true" />', qv)
     for path, embedded in [('~/lib/bootstrap/dist/js/bootstrap.bundle.min.js', bootjs), ('~/js/scheduling/qv-booking.js', qvjs), ('~/js/scheduling/mobile-client-booking.js', script('AgentPortal/wwwroot/js/scheduling/mobile-client-booking.js'))]:
         pattern = re.compile(r'<script src="' + re.escape(path) + r'"(?: asp-append-version="true")?></script>')

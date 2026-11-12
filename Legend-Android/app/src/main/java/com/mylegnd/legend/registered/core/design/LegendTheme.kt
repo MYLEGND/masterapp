@@ -3,6 +3,7 @@ package com.mylegnd.legend.registered.core.design
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 
@@ -18,8 +19,20 @@ private fun legendMaterialTypography() = Typography(
     labelSmall = LegendTypography.Eyebrow,
 )
 
-@Composable fun LegendTheme(content: @Composable () -> Unit) = MaterialTheme(
-    colorScheme = lightColorScheme(
+@Composable fun LegendTheme(brandedSheet: Boolean = false, content: @Composable () -> Unit) = MaterialTheme(
+    colorScheme = if (brandedSheet) darkColorScheme(
+        primary = LegendColors.GoldBright, onPrimary = LegendColors.Midnight,
+        secondary = LegendColors.Gold, onSecondary = LegendColors.Midnight,
+        background = LegendColors.Midnight, onBackground = LegendColors.OnNavy,
+        surface = LegendColors.Midnight, onSurface = LegendColors.OnNavy,
+        surfaceVariant = LegendColors.NavyElevated, onSurfaceVariant = LegendColors.OnNavy.copy(alpha = 0.78f),
+        primaryContainer = LegendColors.NavyElevated, onPrimaryContainer = LegendColors.OnNavy,
+        secondaryContainer = LegendColors.GoldBright, onSecondaryContainer = LegendColors.Midnight,
+        surfaceContainer = LegendColors.Navy, surfaceContainerHigh = LegendColors.NavyElevated,
+        surfaceContainerHighest = LegendColors.NavyElevated,
+        outline = LegendColors.Gold.copy(alpha = 0.45f), outlineVariant = LegendColors.Gold.copy(alpha = 0.22f),
+        error = LegendColors.Error, scrim = LegendColors.Midnight,
+    ) else lightColorScheme(
         primary = LegendColors.Navy,
         secondary = LegendColors.Gold,
         background = LegendColors.Canvas,

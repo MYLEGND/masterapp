@@ -565,6 +565,9 @@
 
 /* Remove modal scroll */
 .qv-booking-modal-shell .modal-content{
+    background:linear-gradient(180deg,var(--qv-bg-1),var(--qv-bg-3));
+    color:var(--qv-text);
+    border:1px solid var(--qv-line);
     overflow:hidden;
     container-name:qv-booking;
     container-type:inline-size;
@@ -1218,6 +1221,11 @@ button.qv-booking-launch:focus-visible,
         border-radius:var(--legend-mobile-radius);
     }
 
+    .qv-booking-panel-calendar{
+        /* Reserve seven touch targets even when the body has a classic scrollbar. */
+        padding-inline:clamp(0px, calc((100% - 334px) / 2), var(--app-mobile-card-pad));
+    }
+
     .qv-booking-panel-head,
     .qv-booking-slot-head{
         margin-bottom:var(--legend-mobile-gap);
@@ -1229,7 +1237,7 @@ button.qv-booking-launch:focus-visible,
 
     .qv-booking-field select{
         width:100%;
-        min-height:38px;
+        min-height:44px;
         font-size:16px;
     }
 
@@ -1277,7 +1285,7 @@ button.qv-booking-launch:focus-visible,
 
     .qv-booking-slot-focus{
         justify-self:start;
-        min-height:var(--legend-mobile-control-height);
+        min-height:max(44px,var(--legend-mobile-control-height));
         padding:0 8px;
     }
 
@@ -1293,7 +1301,7 @@ button.qv-booking-launch:focus-visible,
     .qv-slot-btn.btn-ghost,
     .qv-slot-btn{
         height:auto ;
-        min-height:var(--legend-mobile-control-height) ;
+        min-height:max(44px,var(--legend-mobile-control-height)) ;
         padding:6px 7px ;
         white-space:normal;
     }
@@ -1305,13 +1313,13 @@ button.qv-booking-launch:focus-visible,
     }
 
     .qv-booking-status{
-        min-height:var(--legend-mobile-control-height);
+        min-height:max(44px,var(--legend-mobile-control-height));
         padding:var(--legend-mobile-gap) 8px;
     }
 
     .qv-booking-submit.btn,
     .qv-booking-submit.btn-gold{
-        min-height:var(--legend-mobile-control-height);
+        min-height:max(44px,var(--legend-mobile-control-height));
         font-size:.78rem;
     }
 }
@@ -1321,7 +1329,9 @@ button.qv-booking-launch:focus-visible,
 .mobile-client-booking{
     min-height:100dvh;
     margin:0;
-    background:var(--qv-bg-3, #03123f);
+    background:var(--legend-app-surface);
+    color:var(--legend-app-on-dark);
+    font-family:var(--web-font);
 }
 
 .mobile-client-booking .qv-booking-close{

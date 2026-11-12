@@ -18,7 +18,7 @@ namespace AgentPortal.Mobile;
 public sealed class MobileAgentCrmController(IMobileActorResolver actors, MobileAgentCrmService crm)
     : MobileApiControllerBase(actors)
 {
-    public sealed record OutcomeInput(string OutcomeCode, string? Note);
+    public sealed record OutcomeInput(string OutcomeCode, string? Note, DateTime? ExpectedUpdatedUtc = null);
 
     [HttpPost("clients/{id:guid}/restore")]
     [IgnoreAntiforgeryToken]
@@ -55,7 +55,7 @@ public sealed class MobileAgentCrmController(IMobileActorResolver actors, Mobile
             var controller = HttpContext.RequestServices.GetRequiredService<ClientsController>();
             controller.ControllerContext = ControllerContext;
             result = await controller.ApplyOutcome(new ClientsController.OutcomeRequest {
-                ClientUserId = record.UserId, OutcomeCode = input.OutcomeCode, CustomNote = input.Note,
+                ClientUserId = record.UserId, OutcomeCode = input.OutcomeCode, CustomNote = input.Note, ExpectedUpdatedUtc = input.ExpectedUpdatedUtc,
                 UsePersonalZoomLink = meta?.UsePersonalZoomLink ?? false, MeetingDurationMinutes = 0
             });
         }
@@ -63,7 +63,7 @@ public sealed class MobileAgentCrmController(IMobileActorResolver actors, Mobile
         {
             var controller = HttpContext.RequestServices.GetRequiredService<LeadsController>();
             controller.ControllerContext = ControllerContext;
-            result = await controller.ApplyOutcome(new LeadsController.LeadOutcomeRequest(record.UserId, input.OutcomeCode, input.Note));
+            result = await controller.ApplyOutcome(new LeadsController.LeadOutcomeRequest(record.UserId, input.OutcomeCode, input.Note, input.ExpectedUpdatedUtc));
         }
         if (result is ObjectResult { StatusCode: >= 400 } || result is StatusCodeResult { StatusCode: >= 400 }) return result;
         if (result is not (JsonResult or OkObjectResult)) return result;

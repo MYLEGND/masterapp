@@ -39,6 +39,16 @@ public sealed class MobileFounderAiController : MobileApiControllerBase
         return Ok(new MobileFounderAiAccessResponse(Available: true));
     }
 
+    [HttpPost("surface")]
+    public async Task<IActionResult> Surface(CancellationToken cancellationToken)
+    {
+        var resolved = await ResolveAssistantActorAsync(cancellationToken);
+        if (resolved.Error is not null || resolved.Actor is null) return resolved.Error!;
+        var expiry = MobileAssistantSurface.Expiry(User, DateTimeOffset.UtcNow);
+        if (expiry is null || !Request.IsHttps) return Unauthorized();
+        return Ok(MobileAssistantSurface.Create(HttpContext, resolved.Actor.ProfileId, expiry.Value));
+    }
+
     private LegendFounderAiHttpTransport Transport => new(HttpContext, _conversation, _progress, _logger);
 
     private async Task<MobileActorRequestResolution> ResolveAssistantActorAsync(CancellationToken ct)

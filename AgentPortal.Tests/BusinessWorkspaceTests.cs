@@ -606,6 +606,8 @@ public sealed class BusinessWorkspaceTests
         Assert.Contains("grid-template-columns:repeat(2, minmax(0,1fr))", schedulerCss, StringComparison.Ordinal);
         Assert.Contains(".mobile-client-booking .qv-booking-close", schedulerCss, StringComparison.Ordinal);
         Assert.Contains("~/css/qv-booking.css", mobileBookingView, StringComparison.Ordinal);
+        Assert.Contains("~/design/legend-web-foundation.css", mobileBookingView, StringComparison.Ordinal);
+        Assert.Contains("~/design/legend-app-shell.css", mobileBookingView, StringComparison.Ordinal);
         Assert.DoesNotContain("mobile-client-booking.css", mobileBookingView, StringComparison.Ordinal);
     }
 

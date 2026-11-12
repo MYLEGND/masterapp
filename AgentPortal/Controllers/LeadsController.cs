@@ -1654,7 +1654,7 @@ public class LeadsController : Controller
         return Json(await BuildLeadPayloadAsync(lead, nowUtc, agentWideDialTotals.Today, agentWideDialTotals.Week, dialTimeZone));
     }
 
-    public record LeadOutcomeRequest(string clientUserId, string outcomeCode, string? customNote);
+    public record LeadOutcomeRequest(string clientUserId, string outcomeCode, string? customNote, DateTime? ExpectedUpdatedUtc = null);
     public record LeadAppointmentStatusRequest(string clientUserId, Guid? appointmentId, string? status);
     public record LeadQuickViewRequest(
         string clientUserId,
@@ -2472,6 +2472,8 @@ public class LeadsController : Controller
 
         var lead = await LoadCanonicalLeadAsync(agentId, req.clientUserId, "SaveQuickView");
         if (lead == null) return NotFound();
+        if (req.ExpectedUpdatedUtc.HasValue && lead.UpdatedUtc != req.ExpectedUpdatedUtc.Value)
+            return Conflict(new { message = "This lead changed. Refresh before saving." });
 
         if (!OutcomeStageMap.TryGetValue(req.outcomeCode ?? "", out var stage))
             return BadRequest("Invalid outcomeCode");

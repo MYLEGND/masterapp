@@ -160,7 +160,7 @@ public sealed class WebsiteLeadAppNotificationService(
         return string.IsNullOrWhiteSpace(normalized) ? null : new MessagingActor(normalized, participantType);
     }
 
-    private static Guid NotificationId(Guid leadId)
+    public static Guid NotificationId(Guid leadId)
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes("website-lead|" + leadId.ToString("D")));
         return new Guid(bytes.AsSpan(0, 16));

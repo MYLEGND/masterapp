@@ -6324,3 +6324,300 @@ acceptance is inferred from runtime/assets. The prior incomplete notes above are
 PR774 source-only synchronization remains next; refresh its sourceIntegration marker
 against actual fast-track6077ef21e21f0708e462d66cbd912cae2272ebf0 before merge.
 Preserve this application candidate/packages and do not replay uploads or restarts.
+
+### Native assistant canonical web surface — 2026-11-11 continuation
+Founder authorized continuing the existing dirty mobile consolidation, preserving
+all source, with no archive/submission/signing/credential/billing changes. Actual
+local and fast-track HEAD are 8ce18161bcdaf4a396d4a831c7b55f31612b3da3 (PR774).
+Task remote is 408f7299f67fad5fde9fc396d097e3a03d89e33a, its pre-merge ancestor.
+PR774 source-only workflow43128484745 completion is supplied in the handoff;
+this continuation did not replay prior release effects. Existing Portal cbaf306d8
+and other-app c71cde5e1 live receipts remain the production baseline.
+
+Uncommitted implementation hosts the actual _LegendFounderAiModal.cshtml and
+canonical CSS/JS at /founder/legend-ai/surface. Removed copied Swift/Compose chat
+presentation; retained protocol/store compatibility pending further consumer audit.
+Purpose-protected cookie bootstrap retains bearer Founder/Agent checks, bounded
+expiry, no sliding renewal and per-request tenant/profile/lifecycle validation.
+iOS uses a nonpersistent WKWebView. Android's two WebView factories now share
+exclusive ownership; the client portal clears only the scoped assistant cookie
+before loading and denies assistant routes. Disposal/pending cookie callbacks
+retain ownership until cleanup succeeds; cleanup failure fails closed. No other
+WebView workflows' cookies are cleared. All authenticated assistant fetches now
+share expiry cleanup, including settings/model access; static token fetch is separate.
+
+Independent Astra review found shared Android cookie access and incomplete settings
+expiry handling; both source corrections implemented, plus fail-closed cookie cleanup.
+Final exact-source acceptance remains pending; source review does not prove runtime
+cookie lifecycle, keyboard/audio or authenticated rendering.
+
+Current focused evidence: JS23/23 (/private/tmp/legend-mobile-surface-js-final.log),
+server security10/10 including real cookie-handler expired/invalid-ticket denial
+(/private/tmp/legend-mobile-surface-security-final.log), changed presentation
+contract1/1 (/private/tmp/legend-mobile-surface-contract-final.log), Android
+compileDebugKotlin PASS (/private/tmp/legend-mobile-surface-android-final.log),
+iOS three bootstrap Simulator tests PASS (/private/tmp/legend-mobile-surface-ios-final.log;
+/tmp/legend-assistant-ios-build/Logs/Test/Test-Legend-2026.11.11_20-45-58--0700.xcresult).
+Broader Founder contract run:49PASS/3FAIL. Failures concern an outdated service-method
+list, governed proposal flags, and an Android language argument substring already
+present unchanged at HEAD; no unrelated assertion was weakened. Full suite is not PASS.
+Npm dependencies restored from package-lock with npm ci, no upgrades. NU1900 audit
+network warnings were emitted by dotnet; focused tests passed despite those warnings.
+
+LOCAL AUTHENTICATED PRETEST BLOCKED: existing MasterAppLocalTest identity verified
+ready, no customer data imported. Existing localhost certificate is valid; supported
+local launcher still binds HTTP and strips operator secrets/provider configuration.
+No configured synthetic Founder mobile sign-in is supplied by that launcher; Apple
+review login is client-only and must not become Founder authority. Do not forge a
+production identity or weaken HTTPS/cookies. Simulator control works and the updated
+app opens to secure sign-in. New production surface endpoint is not deployed.
+Actual shared chat render, keyboard/safe areas, authenticated account switch, action
+review, real microphone and paid transcription remain NOT VERIFIED. No paid calls.
+
+Session preflight with merge base8ce rejects remote ancestry; with actual shared
+base408 it reports local-ahead1/remote-only0 and dirty work, preserved as instructed.
+Initial18 dirty source files were independently read-back verified in existing Mac
+recovery/mobile-source-20261111T204417/dirty-source.tar.gz, SHA256
+8cad03471867e97a006853f51647102dc616cdda57a13b115f9fe8ec5ec6c63f.
+That snapshot predates this continuation's review fixes; retain a fresh final snapshot.
+Existing committed bundle covers HEAD only, never dirty work. No commit/push/merge or
+new deployment is claimed. Remaining: authenticated local test setup through canonical
+owners, exact source acceptance, preservation/protected integration, Portal admission
+and selective direct deployment, then actual Simulator acceptance before archiving.
+
+Source-preservation closure: Astra independently verified final20-file manifest
+ba7b37424c17ff6e1e557876825e016532b954b205c02ae96e73361a064a914d and accepted
+source commit/preservation only. Release acceptance remains withheld for the gates
+above. Implementation d4094d8c4707d347f89cc357740b773dd8797385 was committed and
+session finish read back that exact GitHub task-branch HEAD. This supersedes the
+preceding in-progress no-commit statement; fast-track integration is still pending.
+Fresh20-file recovery archive, before commit, is
+/Users/zacowen/.codex/legend-mac/recovery/mobile-reviewed-source-20261111T205914/dirty-source.tar.gz,
+SHA2563d0968aa77c44b0b9c2f202f215e970313cef7ad8da1d4b4c9dd15304893e37a.
+It was read-back verified against all source digests. Dependencies were removed
+from the checkout after tests, with no lockfile changes. No deployment or store
+operation occurred. Draft protected integration is prepared with explicit holds;
+do not merge/deploy until required acceptance and current-head gates are satisfied.
+
+### 2026-11-11 — Mobile Work pipeline continuation
+
+Founder scope now includes branded, actionable mobile Work management for leads and
+store orders in the same pending native release. Continuation base and last verified
+remote task HEAD: 689cac7b75e11fe4a7b3af8f8d0a11e387e6326b, branch
+isolation/ad-measurement-canonical-20261109. Session preflight passed at that base.
+AI implementation d4094d8c4707d347f89cc357740b773dd8797385 remains preserved;
+PR775 is draft. Prior five-app deployment remains complete and must not be replayed.
+
+Implemented: Notifications, Leads, Orders, Completed and Closed views on iOS/Android,
+existing navy/gold branding, orange review / blue progress / green completed / red
+closed status accents with text labels, search and business/stage filters, paged
+history, clickable notifications resolved by existing deterministic record identity,
+lead stage editing and order fulfillment with canonical allowed transitions. Filters
+explicitly cover loaded records. Linked inquiries display the existing CRM contact
+as the one actionable lifecycle record; they cannot reappear as a duplicate pipeline
+on later pages. Historical notifications without an accessible source explain that
+limitation rather than inventing a record. Notification read state is not completion.
+
+Authority: existing BusinessWorkspaceService settings/contact revision/history,
+WebsiteInquiryAuthority, Leads/Clients outcome owners and ParfaitOrderService retain
+mutation ownership. MobileWorkLeadsController is a scoped transport, not a new CRM.
+Business membership/capability and assigned-agent scope are rechecked; configured
+stages, expected revision/timestamp and canonical order validation are enforced.
+No database schema, checkout, refund, payment, identity or new service changes.
+Both native stores await exact scoped record readback after saving and discard
+older pending loads; a failed readback is an unconfirmed outcome, never a claim
+that the write did not happen. Superseded non-actionable Work lists and two-tab
+presentation are replaced in the existing Swift/Compose owners, with no second UI.
+Xcode's concurrent project version35→36 change is preserved; Codex did not change
+signing, build an archive or submit to either store.
+
+Validation:63 focused server tests PASS in /private/tmp/legend-work-final-server.log
+(MobileWorkPipelineTests, MobileWorkOrderTests, MobileCommerceHttpTests and
+WebsiteLeadAppNotificationTests). Includes actual test-host HTTP persistence,
+foreign-business denial, stale revision rejection, configured business stages,
+atomic inquiry status updates, pagination/notification targeting and linked-record
+deduplication. Test-host authentication and SQLite fixtures are synthetic.
+Android compileDebugKotlin plus WorkNotificationsContractTest PASS in
+/private/tmp/legend-work-final-android.log. iOS3 focused Simulator tests PASS in
+/private/tmp/legend-work-final-ios.log, xcresult
+/private/tmp/legend-assistant-ios-build/Logs/Test/Test-Legend-2026.11.11_22-05-54--0700.xcresult.
+These cover canonical save/readback, stale save rejection, notification separation,
+pending pre-save refresh ordering and five SwiftUI rendered pages at390pt.
+Rendered grid screenshots inspected at /private/tmp/legend-work-grid-rendered;
+these are synthetic components, not authenticated end-to-end acceptance. A final
+error-message-only edit clarifies unconfirmed order updates; it does not invalidate
+behavioral evidence. NU1900 audit-network warnings remain, no dependency upgrades.
+
+Astra read-only review drove corrections for allowed order stages, canonical-owner
+concurrency, linked CRM identity, history paging, before-paging deduplication and
+post-save readback races. Exact-source preservation acceptance is recorded externally
+against final file digests; release acceptance remains withheld. No Work backend
+support is deployed. Required affected runtime is Portal plus native hosts; shared
+library consumer impact must be included in existing admission, not inferred away.
+No migration required. Existing AI authenticated HTTPS/Founder test dependency and
+its release holds above remain. Actual authenticated native Work/AI journeys, real
+microphone and paid transcription are NOT VERIFIED. No paid calls occurred.
+
+Remaining release work: protected integration with current-head/required checks,
+fresh candidate-bound admission and selective direct Mac stop/deploy/restart of
+required backend support, exact runtime provenance, then authenticated Simulator
+record/stage, account-switch, keyboard/navigation and AI/audio acceptance. Do not
+archive until these gates are satisfied. No gates are waived by source preservation.
+
+Work source-preservation closure: Astra independently accepted the exact23-file
+manifest SHA25638258a568c91a417fef806e9cedc47cd3aa2a7e667e41d5895a7f5949cd859b0
+for commit/preservation only. Canonical session finish verified GitHub task HEAD
+58abf5eeb258ed623f3bbb06b51704f65fa7a405. Exact reviewed dirty recovery archive:
+/Users/zacowen/.codex/legend-mac/recovery/work-reviewed-source-20261111T220754/dirty-source.tar.gz,
+SHA25653ed4ae3dd9536c15fd63adac039370476373fe513f7ebf7416735baf1b467e4;
+all23 file digests were read back and verified before commit. PR775 now covers AI
+and Work, remains draft/unmerged. Fast-track verified unchanged at
+8ce18161bcdaf4a396d4a831c7b55f31612b3da3. Release holds above remain unchanged;
+no new production runtime identity or archive readiness is claimed.
+
+### 2026-11-11 — Authorized archive and direct backend release continuation
+
+Founder explicitly requested creating the archive for his TestFlight upload, then
+the direct Mac Azure stop/deploy/restart flow. This supersedes the earlier archive
+sequencing restriction. Signed Release archive1.0.1(36) completed successfully at
+/Users/zacowen/Library/Developer/Xcode/Archives/2026-11-11/Legend-1.0.1-build36-f491fb485.xcarchive.
+App and both extensions match1.0.1(36); codesign --verify --deep --strict passed.
+Embedded provenance is clean f491fb4859867842d3879875ed16c461cd93711d. Opened in
+Organizer for Founder upload. No Apple upload, signing/provisioning changes or new
+credentials were performed. Archive evidence is in the existing admission directory
+f491fb485/archive.json; /private/tmp/legend-build36-archive.log reports ARCHIVE SUCCEEDED.
+
+Founder explicitly answered "Defer authenticated local testing; test after deployment"
+for backend candidate f491fb485 (archive1.0.1 build36). This defers authenticated local
+AI/Work testing only; package/security/schema/recovery/independent deployment review
+remain required. No prior cbaf waiver is inherited. Post-deployment authenticated
+native acceptance remains outstanding and is not implied by archive creation.
+
+Fresh CI security43159529601 passed. Architecture43159529587 and commerce43159529716
+failed for two diagnosed reasons: canonical impact lacked BusinessWorkspaceCrm.cs;
+the existing inquiry isolation fixture used EF InMemory, which cannot ExecuteUpdate.
+Correction adds that exact shared CRM path to the existing all-managed-host map and
+regression, and runs the inquiry ownership/revocation test on synthetic SQLite with
+persisted readback. Production authority and application bytes are unchanged.
+Focused relational/inquiry+Work11 tests PASS; focused universal impact tests PASS.
+Fresh required CI must run on the reviewed control correction before deployment.
+
+Canonical impact now selects Portal, Client, Protect and Parfait for shared managed
+lead/CRM changes; static Website is unaffected. This is a new selective four-app
+release, never replay of prior five-target effects. Portal package for f491fb485 is
+prepared using release-package.py build-component, SHA256
+64d3482ab72b5dc45f3d5c8264dd7dce6b19d711b342452fb6afeb9e18df7014,
+/private/tmp/legend-mobile-release-f491fb485/agentportal.zip. Other affected packages
+and fresh admission remain pending. Native phase owner recovered at
+/Users/zacowen/Documents/Codex/2026-11-03/new-chat/work/deploy-reviewed-parfait-native.py,
+SHA256ba5ba2017e00226a853309c642247c69fe5ce5356e11d4c57637fc92292dc590.
+Rebind this existing owner under independent review for new identities/receipts and
+four targets; do not execute its obsolete cbaf exception/resume bindings. Azure Portal
+was observed Running with last active successful deploymentd5c7ffc3ce044aa8af7c2e581e8e0604.
+No Azure mutation has occurred in this continuation. Protected integration remains
+pending and nonpublishing; retain completed production receipts and archive.
+
+### 2026-11-11 — Full Work/booking contrast correction during release preparation
+
+Founder provided TestFlight screenshots and expanded scope to every Work modal and
+the broken mobile booking appearance. Preserve build36; new styled archive uses the
+canonical reserve-ios-build.py reservation37. No signing change. Control-only repair
+b9398df544fb1bdf9eb18744af6b2d7252920755 was independently accepted and exact remote
+preservation verified. Generated scripts/__pycache__ was preserved under /private/tmp
+before session finish, not mistaken for user edits. Fresh b939 security43163649450
+passed; architecture43163649457 and commerce43163649513 were still running at last read.
+The local broad Python suite had210 pass/1 error because Python3.9 lacks file_digest;
+focused18 impact tests pass under installed Python3.13. No gate was weakened.
+
+Root styling defects: Work sheets omitted existing legendNextBrandedSheetAppearance,
+and the order detail retained an unstyled system Form. Standalone MobileBooking loaded
+qv-booking.css without its canonical foundation/app-shell dependencies, leaving color
+and geometry variables undefined; its Bootstrap content lacked the component's dark
+surface. Corrected existing owners: all five Work pages, lead/order details and fields,
+status/empty/failure/loading actions, booking host chrome and shared booking modal.
+iOS reuses existing navy/gold sheet, surface and button tokens; Android extends its
+existing LegendTheme with a scoped branded-sheet palette for controls and error states.
+No alternate theme registry, backend/workflow or booking provider introduced. Order
+keyboard insets retained explicitly on Android. Mobile booking controls now have44px
+minimum touch height. Existing dark text on the Android portal error surface corrected.
+
+Evidence: iOS2 focused tests PASS in /private/tmp/legend-work-styling-final-ios.log;
+xcresult /private/tmp/legend-assistant-ios-build/Logs/Test/Test-Legend-2026.11.11_22-54-35--0700.xcresult.
+Seven rendered tabs/details inspected at /private/tmp/legend-work-final-styled-screens,
+including readable navy/gold fields and order action. Synthetic save/readback ordering
+regression remains passing. Android intermediate compile passed; final correction
+compile is /private/tmp/legend-work-styling-accepted-android.log. Booking canonical-owner
+contract1 passed (/private/tmp/legend-booking-theme-contract.log), placement unit1 passed.
+Supplemental synthetic component served on127.0.0.1:8857:390px has no horizontal overflow,
+18 slots, no fixture errors, slot selection and reachable final action, no mutations;
+1440px desktop also visually inspected. Existing fixture's synthetic service was given
+its required stable serviceId so the actual service selector populates. Evidence:
+/private/tmp/legend-booking-render-proof.log, legend-booking-exact-mobile.png,
+legend-booking-mobile-bottom.png and legend-booking-desktop.png. This does not claim
+real authentication, Outlook availability or appointment creation acceptance.
+
+Azure remains unmodified. Portal f491 package is superseded by booking source changes;
+retain it only as prior preparation evidence. Client package attempt blocked with
+isolated compiler MSB6006; Protect preparation detected changed execution-authority
+inputs after the reviewed control fix and stopped. Reconcile precise diagnostics and
+build final candidate packages; never deploy partial/superseded packages. Reuse prior
+source/test evidence only where inputs remain compatible. New native styled archive,
+final CI/admission and selective four-app deployment/runtime verification remain.
+
+Final styled source review accepted the11-file application/checkpoint scope for
+preservation and archive preparation. Canonical impact also needs exact native-only
+entries for LegendTheme.kt and LegendAgentClientCreationPortalView.swift; added these
+to the existing explicit map and regression (unknown siblings remain denied).
+Focused18 impact tests pass in /private/tmp/legend-work-style-impact-tests.log; final
+Android compilation PASS. Total affected backend selection remains the four managed
+apps, no Website. These control additions do not change accepted rendered app bytes.
+
+### 2026-11-11 — Styled build37 archived; booking scrollbar regression corrected
+
+Styled source543005d67b2b80b1d4302e8963b279b261914128 is independently accepted and
+exactly preserved remotely. Signed archive1.0.1(37) succeeded at
+/Users/zacowen/Library/Developer/Xcode/Archives/2026-11-11/Legend-1.0.1-build37-543005d67.xcarchive.
+App and both extensions report1.0.1(37), codesign deep/strict verification passed
+with Mac trust access, and embedded LegendBuildProvenance.json identifies543005d67
+with hasLocalChanges=false. Organizer opened. No Apple upload/acceptance claimed.
+Archive log: /private/tmp/legend-build37-archive.log; sanitized archive receipt in
+AgentPortal/App_Data/linked-bundle-release-20261110/admission/543005d67/archive.json.
+
+Exact543 security CI43164950648 passed; architecture43164950658 failed native booking
+acceptance at393px; commerce43164950652 was still running. Reproduced the geometry
+failure using the canonical standalone component with a15px classic scrollbar:
+date targets narrowed to42.0625px despite seven columns. Corrected existing mobile
+calendar panel padding to reserve334px for seven44px targets, six4px gaps and borders.
+No assertion removed or weakened. Supplemental browser regression at320/393/1180px
+passes no horizontal overflow, seven columns, native-wheel scrolling and reachable
+final action;393px targets now44px. Evidence:
+/private/tmp/legend-booking-scrollbar-regression.log. The existing CI date-target
+assertion remains the required exact-candidate acceptance. At320px, seven columns
+remain usable without overflow but dates measure34.45px;44px is proven at393px,
+not claimed for every width. Both Portal and Client consume this shared stylesheet
+(ClientApp links the asset); native app/extension bytes and signed build37 remain compatible.
+
+Founder expressly authorized resolving Mac access through the existing approved
+Azure SQL firewall after error40615. Executed existing
+scripts/sync-local-azure-sql-firewall.sh once; verified ZacLocalDev-AutoSync is one
+current publicIPv4 and all unrelated rules unchanged. No automatic job reenabled.
+Private before/after and sanitized reconciliation receipts remain in the same
+admission directory. Strict activity probe then observed ordinary active database
+activity. Existing no-SQL paired schema observation mode passed:241applied,0pending,
+matching database/schema/baseline identities and no migration/schema locks. This
+is not a globally idle database claim. Preserve strict diagnostic and original denial.
+Refresh paired observations before stop. No SQL mutation or app stop/upload occurred.
+
+The existing native phase owner proposal was independently reviewed atSHA256
+37617d8ed533143cfa0ad0f8205138c28ba98964bfcbe986af644e66a1da63e2 before this CSS follow-up.
+It binds both ordered/fresh schema observations, exactCI, packages, settings,
+prior journals, recovery and existing publication mutex. Final deployment admission
+has NOT been granted. Rebind final source/control identities and per-resource package
+compatibility after final checks; never execute obsolete owner identities.
+Package directory /private/tmp/legend-mobile-release-543005d67 currently contains
+successful Portal and Client isolated packages; Protect/Parfait continue sequentially.
+Portal and Client packages must both be replaced for this CSS correction. Preserve
+compatible Protect and Parfait packages. Earlier verified five-app production release remains unchanged. Protected
+source-only integration request must be updated for this continuation before merge;
+PR775 remains draft. Founder deferral covers authenticated local AI/Work testing only;
+package,security,schema,recovery,review and final CI are not waived.

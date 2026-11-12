@@ -7,6 +7,65 @@ import SwiftUI
 
 @MainActor
 final class MobileNativeContractTests: XCTestCase {
+    func testWorkStagePersistsAndMovesIntoCompletedWithoutMarkingNotificationComplete() async throws {
+        let api = WorkPipelineFixtureAPI()
+        let store = MobileNotificationStore(api: api, accessTokenProvider: { "synthetic-test-token" }, diagnostics: LegendDiagnostics())
+        await store.loadWorkLeads(); await store.loadWorkNotifications()
+        let lead = try XCTUnwrap(store.workLeads.first)
+        XCTAssertEqual(lead.bucket, "active")
+        let saved = await store.updateStage(lead, stage: "Won", note: "Synthetic test")
+        XCTAssertTrue(saved)
+        XCTAssertEqual(store.workLeads.first?.bucket, "completed")
+        XCTAssertEqual(store.workLeads.first?.stage, "Won")
+        XCTAssertEqual(store.workSnapshot?.notifications.first?.isRead, false)
+        let stale = await store.updateStage(lead, stage: "Closed", note: nil)
+        XCTAssertFalse(stale)
+        XCTAssertEqual(store.workLeads.first?.stage, "Won")
+    }
+
+    func testWorkSaveReadbackSurvivesAnOlderPendingRefresh() async throws {
+        let api = WorkPipelineFixtureAPI()
+        let store = MobileNotificationStore(api: api, accessTokenProvider: { "synthetic-test-token" }, diagnostics: LegendDiagnostics())
+        await store.loadWorkLeads()
+        let lead = try XCTUnwrap(store.workLeads.first)
+        await api.holdNextRead()
+        let pending = Task { await store.loadWorkLeads() }
+        for _ in 0..<1000 {
+            if await api.hasPendingRead() { break }
+            await Task.yield()
+        }
+        let held = await api.hasPendingRead()
+        XCTAssertTrue(held)
+        let saved = await store.updateStage(lead, stage: "Won", note: nil)
+        XCTAssertTrue(saved)
+        XCTAssertEqual(store.workLeads.first(where: { $0.id == lead.id })?.stage, "Won")
+        await api.releaseRead()
+        await pending.value
+        XCTAssertEqual(store.workLeads.first(where: { $0.id == lead.id })?.stage, "Won")
+        XCTAssertEqual(store.workLeads.first(where: { $0.id == lead.id })?.bucket, "completed")
+    }
+
+    func testWorkViewsRenderCanonicalComponentsAtPhoneWidths() async throws {
+        let api = WorkPipelineFixtureAPI()
+        let store = MobileNotificationStore(api: api, accessTokenProvider: { "synthetic-test-token" }, diagnostics: LegendDiagnostics())
+        await store.loadWorkLeads(); await store.loadWorkOrders(); await store.loadWorkNotifications()
+        var views = ["Notifications", "Leads", "Orders", "Completed", "Closed"].map { page in
+            (page, AnyView(LegendWorkNotificationsSheet(store: store, initialPage: page, openConversation: { _ in })))
+        }
+        views.append(("Lead-detail", AnyView(LegendWorkLeadEditor(lead: try XCTUnwrap(store.workLeads.first), store: store))))
+        views.append(("Order-detail", AnyView(LegendWorkOrderEditor(order: try XCTUnwrap(store.workOrders.first), store: store))))
+        for (page, view) in views {
+            let host = UIHostingController(rootView: view)
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+            window.rootViewController = host; window.makeKeyAndVisible(); host.view.frame = window.bounds
+            host.view.layoutIfNeeded(); try await Task.sleep(for: .milliseconds(200))
+            let image = UIGraphicsImageRenderer(size: window.bounds.size).image { _ in host.view.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+            let attachment = XCTAttachment(image: image); attachment.name = "work-\(page.lowercased())-390"; attachment.lifetime = .keepAlways; add(attachment)
+            XCTAssertEqual(image.size.width, 390); XCTAssertEqual(image.size.height, 844)
+            window.isHidden = true
+        }
+    }
+
     func testChannelUnreadTotalsAreIndependentOfVisibleRows() throws {
         let json = #"{"badge":{"unreadCount":134,"revision":1,"updatedUtc":"2026-11-03T10:00:00Z"},"notifications":[],"workChannelsVersion":1,"engineeringChannelsVersion":1,"channelUnreadCounts":{"work":120,"engineering":12,"personal":2}}"#
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
@@ -1807,6 +1866,59 @@ final class MobileNativeContractTests: XCTestCase {
         XCTAssertTrue(condition(), "Expected the canonical history refresh to finish")
     }
 
+    func testFounderSurfaceUsesAuthenticatedBootstrapAndExactScopedCookie() async throws {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        StubURLProtocol.responseBody = try surfaceBootstrapBody()
+        let (origin, launch) = try await store.surfaceLaunch()
+        XCTAssertEqual(origin.host, "api.example.test")
+        XCTAssertEqual(launch.cookiePath, "/founder/legend-ai")
+        XCTAssertEqual(StubURLProtocol.requests.count, 1)
+        XCTAssertEqual(StubURLProtocol.requests[0].httpMethod, "POST")
+        XCTAssertEqual(StubURLProtocol.requests[0].url?.path, "/api/v1/mobile/founder/legend-ai/surface")
+        XCTAssertNil(StubURLProtocol.requests[0].url?.query)
+        XCTAssertEqual(StubURLProtocol.requests[0].value(forHTTPHeaderField: "X-Legend-Participant-Type"), "Agent")
+    }
+
+    func testFounderSurfaceRejectsBroaderCookieAndExpiredLaunch() async throws {
+        let store = await availableFounderStore()
+        defer { resetFounderStreamStub() }
+        for (path, expiry) in [("/", Date().addingTimeInterval(600)), ("/founder/legend-ai", Date().addingTimeInterval(-1))] {
+            StubURLProtocol.responseBody = try surfaceBootstrapBody(path: path, expiry: expiry)
+            do { _ = try await store.surfaceLaunch(); XCTFail("Invalid bootstrap must not enter WebKit") }
+            catch { }
+        }
+    }
+
+    func testFounderSurfaceRejectsBootstrapAfterSessionGenerationChanges() async throws {
+        resetFounderStreamStub()
+        defer { resetFounderStreamStub() }
+        var delay = false
+        var waiting: CheckedContinuation<String, Never>?
+        let store = LegendFounderAiStore(client: MobileHTTPClient(runtimeDiagnostics: nil,
+            baseURL: URL(string: "https://api.example.test")!, session: stubSession()), participantType: .agent,
+            accessTokenProvider: {
+                if delay { return await withCheckedContinuation { waiting = $0 } }
+                return "test-token"
+            })
+        StubURLProtocol.responseBody = Data("{\"available\":true}".utf8)
+        await store.resolveAvailability()
+        delay = true
+        let pending = Task { try await store.surfaceLaunch() }
+        await waitForFounderHistory { waiting != nil }
+        store.clearConversation()
+        StubURLProtocol.responseBody = try surfaceBootstrapBody()
+        waiting?.resume(returning: "test-token")
+        do { _ = try await pending.value; XCTFail("Stale account generation must not install a cookie") }
+        catch { }
+    }
+
+    private func surfaceBootstrapBody(path: String = "/founder/legend-ai", expiry: Date = Date().addingTimeInterval(600)) throws -> Data {
+        try JSONSerialization.data(withJSONObject: ["launchPath": "/founder/legend-ai/surface",
+            "cookieName": "__Secure-LegendAssistant", "cookieValue": "synthetic-protected-ticket",
+            "cookiePath": path, "expiresUtc": ISO8601DateFormatter().string(from: expiry)])
+    }
+
     private func availableFounderStore() async -> LegendFounderAiStore {
         resetFounderStreamStub()
         StubURLProtocol.responseStatus = 200
@@ -2625,4 +2737,47 @@ extension MobileNativeContractTests {
         XCTAssertEqual(restored.messages.first?.reactions, [MessageReaction(emoji: "❤️", count: 1, reactedByCurrentActor: true)])
         api.finishRead()
     }
+}
+
+private actor WorkPipelineFixtureAPI: MobileNotificationAPI {
+    private var current = "New"
+    private var holdRead = false
+    private var pendingRead: CheckedContinuation<Void, Never>?
+    func holdNextRead() { holdRead = true }
+    func hasPendingRead() -> Bool { pendingRead != nil }
+    func releaseRead() { pendingRead?.resume(); pendingRead = nil }
+    private let notice = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+    private func lead(_ stage: String, id: String = "synthetic-lead") -> MobileWorkLead {
+        MobileWorkLead(id: id, kind: "business", recordId: id, businessId: UUID(), profileId: UUID(),
+            businessName: "Synthetic business", displayName: "Sample inquiry", email: "sample@example.invalid", phone: nil,
+            detail: "Synthetic request for a consultation.", stage: stage, bucket: stage == "Won" ? "completed" : stage == "Closed" ? "closed" : "active",
+            tone: stage == "Won" ? "success" : stage == "Closed" ? "danger" : "warning", allowedStages: ["New", "Contacted", "Won", "Closed"],
+            notificationId: notice, updatedUtc: "2026-11-11T10:00:00Z", revision: stage)
+    }
+    func workLeads(accessToken: String) async throws -> [MobileWorkLead] {
+        let rows = [lead(current), lead("Won", id: "done"), lead("Closed", id: "closed")]
+        if holdRead { holdRead = false; await withCheckedContinuation { pendingRead = $0 } }
+        return rows
+    }
+    func updateStage(_ row: MobileWorkLead, stage: String, note: String?, accessToken: String) async throws {
+        guard row.revision == current else { throw MobileAPIError.invalidServerResponse }; current = stage
+    }
+    func workOrders(accessToken: String) async throws -> [MobileWorkOrder] {
+        [MobileWorkOrder(id: UUID(), businessId: UUID(), profileId: UUID(), businessName: "Synthetic store", orderNumber: "SAMPLE-001",
+            fulfillmentStatus: "Processing", bucket: "active", tone: "info", notificationId: nil, paymentStatus: "Paid", returnStatus: "None",
+            allowedStatuses: ["Processing", "Packed", "Shipped", "Fulfilled"], trackingCarrier: nil, trackingNumber: nil, updatedUtc: nil,
+            firstName: "Sample", lastName: "Customer", addressLine1: "Test address", addressLine2: nil, city: "Test", state: "AZ", postalCode: "00000",
+            items: [.init(productName: "Sample item", size: "Standard", quantity: 1)])]
+    }
+    func snapshot(accessToken: String) async throws -> MobileNotificationSnapshot {
+        MobileNotificationSnapshot(badge: .init(unreadCount: 1, revision: 1, updatedUTC: Date()), notifications: [
+            .init(id: notice, kind: "WebsiteLead", title: "New business inquiry", detail: "Sample inquiry is ready for follow-up.", conversationID: nil,
+                occurredUTC: Date(), isRead: false, isCleared: false, channel: "work")], workChannelsVersion: 1)
+    }
+    func workSnapshot(accessToken: String) async throws -> MobileNotificationSnapshot { try await snapshot(accessToken: accessToken) }
+    func markRead(id: UUID, accessToken: String) async throws -> MobileNotificationUnreadCount { .init(unreadCount: 0, revision: 2, updatedUTC: Date()) }
+    func clearBadges(accessToken: String) async throws -> MobileNotificationUnreadCount { .init(unreadCount: 0, revision: 2, updatedUTC: Date()) }
+    func registerAPNSDevice(token: String, environment: String, accessToken: String) async throws -> MobileNotificationUnreadCount { throw MobileAPIError.invalidServerResponse }
+    func deactivateAPNSDevice(token: String, accessToken: String) async throws {}
+    func pushDiagnostic(accessToken: String) async throws -> MobilePushDiagnostic { throw MobileAPIError.invalidServerResponse }
 }

@@ -529,6 +529,12 @@ builder.Services.PostConfigure<CookieAuthenticationOptions>(CookieAuthentication
 
 builder.Services
     .AddAuthentication()
+    .AddCookie(MobileAssistantSurface.Scheme, MobileAssistantSurface.Configure)
+    .AddPolicyScheme(MobileAssistantSurface.PolicyScheme, null, options =>
+    {
+        options.ForwardDefaultSelector = context => context.Request.Cookies.ContainsKey(MobileAssistantSurface.CookieName)
+            ? MobileAssistantSurface.Scheme : CookieAuthenticationDefaults.AuthenticationScheme;
+    })
     .AddJwtBearer(MobileApiAuthorization.BearerScheme, options =>
         MobileBearerOptions.Configure(options, mobileAuthConfiguration))
     .AddJwtBearer(MobileApiAuthorization.ReviewBearerScheme, options =>

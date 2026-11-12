@@ -1,0 +1,24 @@
+@model Shared.PortalShell.PortalShellIdentity
+@{ Layout = null; }
+<!DOCTYPE html>
+<html lang="en" data-legend-ai-native-surface>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="referrer" content="no-referrer" />
+    <title>LEGEND® AI</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/design/legend-web-foundation.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/design/legend-app-shell.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/legend-founder-ai.css" asp-append-version="true" />
+</head>
+<body>
+    <button id="legendFounderAiTrigger" type="button" hidden>Open LEGEND AI</button>
+    @await Html.PartialAsync("~/Views/Shared/_LegendFounderAiModal.cshtml", Model)
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/_content/Shared/js/legend-modal.js" asp-append-version="true"></script>
+    <script src="~/js/legend-founder-ai.js" asp-append-version="true"></script>
+</body>
+</html>

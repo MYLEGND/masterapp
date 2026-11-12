@@ -21,6 +21,10 @@ import okhttp3.MediaType.Companion.toMediaType
 import kotlinx.serialization.json.JsonObject
 
 @Serializable data class ReactionPreferences(val preferredReactionSkinTone: Int)
+@Serializable class AssistantSurfaceLaunch(val launchPath: String, val cookieName: String,
+    val cookieValue: String, val cookiePath: String, val expiresUtc: String) {
+    override fun toString() = "AssistantSurfaceLaunch(redacted)"
+}
 interface AccessTokenProvider { suspend fun accessToken(): String? }
 class LegendApiException(val status: Int, val problem: MobileApiProblem?, cause: Throwable? = null) : IOException(problem?.message ?: "Legend request failed.", cause)
 
@@ -40,6 +44,7 @@ interface LegendApi {
     @POST("api/v1/mobile/session/select-role") suspend fun selectRole(@Body request: SelectRoleRequest): Response<MobileRoleSelectionResponse>
     @GET("api/v1/mobile/localization/catalog") suspend fun localizationCatalog(@Header("X-Legend-Participant-Type") participantType: String): Response<ApplicationLocalizationCatalog>
     @GET("api/v1/mobile/founder/legend-ai/access") suspend fun founderAiAccess(@Header("X-Legend-Participant-Type") participantType: String): Response<FounderAiAccessResponse>
+    @POST("api/v1/mobile/founder/legend-ai/surface") suspend fun founderAiSurface(@Header("X-Legend-Participant-Type") participantType: String): Response<AssistantSurfaceLaunch>
     @GET("api/v1/mobile/founder/legend-ai/business/workspaces") suspend fun businessAssistantWorkspaces(@Header("X-Legend-Participant-Type") role: String): Response<List<BusinessAssistantWorkspace>>
     @GET("api/v1/mobile/founder/legend-ai/business/configuration") suspend fun businessAssistantConfiguration(@Header("X-Legend-Participant-Type") role: String, @Query("workspace") workspace: String, @Query("provider") provider: String): Response<BusinessAssistantConnection>
     @GET("api/v1/mobile/founder/legend-ai/conversations") suspend fun founderAiConversations(@Header("X-Legend-Participant-Type") role: String, @Query("take") take: Int = 50, @Query("skip") skip: Int = 0, @Query("assistantWorkspaceKey") workspace: String? = null): Response<FounderAiHistoryList>
@@ -144,7 +149,9 @@ interface LegendApi {
     @POST("api/v1/mobile/social/posts/{id}/view") suspend fun recordView(@Header("X-Legend-Participant-Type") participantType: String, @Path("id") id: String, @Body request: SocialViewRequest): Response<SocialPostMetrics>
     @GET("api/v1/mobile/social/profiles/metrics") suspend fun profileMetrics(@Header("X-Legend-Participant-Type") participantType: String, @Query("userId") userId: String? = null, @Query("participantType") profileParticipantType: String? = null, @Query("profileId") profileId: String? = null): Response<SocialProfileMetrics>
     @POST("api/v1/mobile/social/profiles/visit") suspend fun recordProfileVisit(@Header("X-Legend-Participant-Type") participantType: String, @Body request: SocialProfileVisitRequest): Response<SocialStateResult>
-    @GET("api/v1/mobile/work/orders") suspend fun workOrders(@Header("X-Legend-Participant-Type") role: String): Response<List<MobileWorkOrder>>
+    @GET("api/v1/mobile/work/leads") suspend fun workLeads(@Header("X-Legend-Participant-Type") role: String, @Query("skip") skip: Int = 0, @Query("notificationId") notificationId: String? = null, @Query("recordId") recordId: String? = null): Response<List<MobileWorkLead>>
+    @PUT("api/v1/mobile/work/leads/stage") suspend fun updateWorkStage(@Header("X-Legend-Participant-Type") role: String, @Body input: MobileWorkStageInput): Response<Unit>
+    @GET("api/v1/mobile/work/orders?includeHistory=true") suspend fun workOrders(@Header("X-Legend-Participant-Type") role: String, @Query("skip") skip: Int = 0, @Query("notificationId") notificationId: String? = null, @Query("recordId") recordId: String? = null): Response<List<MobileWorkOrder>>
     @PUT("api/v1/mobile/work/orders/{id}/fulfillment") suspend fun fulfillOrder(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String, @Body input: MobileWorkFulfillmentInput): Response<Unit>
     @GET("api/v1/mobile/notifications") suspend fun notifications(@Header("X-Legend-Participant-Type") participantType: String): Response<NotificationSnapshot>
     @DELETE("api/v1/mobile/notifications/engineering/{id}") suspend fun dismissEngineering(@Header("X-Legend-Participant-Type") role: String, @Path("id") id: String): Response<Unit>
@@ -252,6 +259,8 @@ suspend fun <T> Response<T>.legendBody(json: Json = Json { ignoreUnknownKeys = t
 
 @Serializable data class MobileWorkOrder(val id: String, val businessId: String, val profileId: String,
     val businessName: String? = null, val orderNumber: String, val fulfillmentStatus: String,
+    val bucket: String = "active", val tone: String = "warning", val notificationId: String? = null,
+    val paymentStatus: String? = null, val returnStatus: String? = null,
     val allowedStatuses: List<String>, val trackingCarrier: String? = null, val trackingNumber: String? = null,
     val updatedUtc: String? = null, val firstName: String, val lastName: String,
     val addressLine1: String, val addressLine2: String? = null, val city: String, val state: String,
@@ -259,3 +268,11 @@ suspend fun <T> Response<T>.legendBody(json: Json = Json { ignoreUnknownKeys = t
 @Serializable data class MobileWorkOrderLine(val productName: String, val size: String, val quantity: Int)
 @Serializable data class MobileWorkFulfillmentInput(val businessId: String, val profileId: String,
     val status: String, val trackingCarrier: String?, val trackingNumber: String?, val expectedUpdatedUtc: String?)
+
+@Serializable data class MobileWorkLead(val id: String, val kind: String, val recordId: String,
+    val businessId: String? = null, val profileId: String? = null, val businessName: String,
+    val displayName: String, val email: String? = null, val phone: String? = null, val detail: String? = null,
+    val stage: String, val bucket: String, val tone: String, val allowedStages: List<String>,
+    val notificationId: String? = null, val updatedUtc: String? = null, val revision: String? = null)
+@Serializable data class MobileWorkStageInput(val kind: String, val recordId: String, val businessId: String?,
+    val profileId: String?, val stage: String, val expectedStage: String, val note: String?, val expectedUpdatedUtc: String?, val revision: String?)

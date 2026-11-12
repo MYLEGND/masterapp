@@ -610,14 +610,21 @@ public class WebsiteInquiryAuthority : ControllerBase
     {
         var businessId = await AuthorizedBusinessAsync(request.Ticket, cancellationToken);
         if (businessId is null) return Unauthorized();
-        if (request.Status is not ("New" or "Contacted" or "Closed"))
-            return BadRequest(new { error = "invalid_inquiry_status" });
-        var inquiry = await _db.Set<CommerceWebsiteInquiry>()
-            .SingleOrDefaultAsync(x => x.Id == request.InquiryId && x.CommerceBusinessId == businessId, cancellationToken);
-        if (inquiry is null) return NotFound();
-        inquiry.Status = request.Status;
-        await _db.SaveChangesAsync(cancellationToken);
-        return Ok(new { inquiry.Id, inquiry.Status });
+        return await UpdateStatusAsync(_db, businessId.Value, request.InquiryId, request.Status, null, cancellationToken);
+    }
+
+    public static readonly IReadOnlyList<string> InquiryStatuses = Array.AsReadOnly(new[] { "New", "Contacted", "Closed" });
+
+    [NonAction]
+    public static async Task<IActionResult> UpdateStatusAsync(MasterAppDbContext db, Guid businessId, Guid inquiryId, string status, string? expectedStatus, CancellationToken cancellationToken)
+    {
+        if (!InquiryStatuses.Contains(status)) return new BadRequestObjectResult(new { error = "invalid_inquiry_status" });
+        var query = db.Set<CommerceWebsiteInquiry>().Where(x => x.Id == inquiryId && x.CommerceBusinessId == businessId);
+        if (!await query.AnyAsync(cancellationToken)) return new NotFoundResult();
+        if (expectedStatus != null) query = query.Where(x => x.Status == expectedStatus);
+        var changed = await query.ExecuteUpdateAsync(set => set.SetProperty(x => x.Status, status), cancellationToken);
+        return changed == 1 ? new OkObjectResult(new { Id = inquiryId, Status = status })
+            : new ConflictObjectResult(new { error = "inquiry_changed", message = "This inquiry changed. Refresh before saving." });
     }
 
     private async Task<Guid?> AuthorizedBusinessAsync(string ticket, CancellationToken cancellationToken)

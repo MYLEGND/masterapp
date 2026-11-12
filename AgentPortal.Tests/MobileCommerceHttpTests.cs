@@ -50,7 +50,9 @@ public sealed class MobileCommerceHttpTests
         var revision = DateTime.Parse("2026-11-03T10:20:30.1234567Z", null, System.Globalization.DateTimeStyles.RoundtripKind);
         var order = new CommerceOrder { CommerceBusinessId = business.Id, OrderNumber = "HTTP-FIXTURE", PaymentStatus = "Paid", TotalCents = 1000,
             Email = "fixture@example.invalid", UpdatedUtc = revision, PaymentReference = "retained-provider-reference" };
-        db.AddRange(profile, business, order, new CommerceBusinessMember { CommerceBusinessId = business.Id, ClientProfileId = profile.Id });
+        db.AddRange(profile, business, order, new CommerceBusinessMember { CommerceBusinessId = business.Id, ClientProfileId = profile.Id, CanManageCrm = true },
+            new CommerceBusinessStorefrontSettings { CommerceBusinessId = business.Id },
+            new WorkstationLeadProfile { LeadId = "http-work-lead", CommerceBusinessId = business.Id, AgentUserId = "", FirstName = "Synthetic", CrmStage = "New", UpdatedUtc = revision });
         db.Add(new SubscriptionPayment { CommerceOrderId = order.Id, AmountCents = order.TotalCents, ProviderPaymentId = "legacy-reference" });
         await db.SaveChangesAsync();
         var actor = new MobileResolvedActor(new MessagingActor(profile.ClientUserId, MessagingParticipantTypes.Client), profile.Id, "Fixture");
@@ -60,6 +62,9 @@ public sealed class MobileCommerceHttpTests
         using var host = await new HostBuilder().ConfigureWebHost(web => web.UseTestServer().ConfigureServices(services =>
         {
             services.AddSingleton(db); services.AddSingleton(actors.Object);
+            services.AddSingleton(Mock.Of<Infrastructure.Analytics.IAnalyticsQueryService>());
+            services.AddScoped<Infrastructure.Businesses.BusinessWorkspaceService>();
+            services.AddScoped<AgentPortal.Services.MobileAgentCrmService>();
             // Exercise the exact registration used by Portal Program, including exclusion of referenced MVC parts.
             services.AddControllers().AddApplicationPart(typeof(MobileWorkOrdersController).Assembly)
                 .AddApplicationPart(typeof(ParfaitApp.Services.ParfaitOrderService).Assembly).AddMobileCommerceAuthority();
@@ -78,6 +83,15 @@ public sealed class MobileCommerceHttpTests
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/mobile/work/orders")).StatusCode);
         client.DefaultRequestHeaders.Add("X-Fixture-Actor", "owner");
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/mobile/work/orders")).StatusCode);
+        var workLead = Assert.Single((await client.GetFromJsonAsync<MobileWorkLeadsController.WorkLead[]>("/api/v1/mobile/work/leads"))!);
+        var stage = new MobileWorkLeadsController.StageInput(workLead.Kind, workLead.RecordId, workLead.BusinessId, workLead.ProfileId,
+            "Won", workLead.Stage, "Synthetic HTTP update", workLead.UpdatedUtc, workLead.Revision);
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PutAsJsonAsync("/api/v1/mobile/work/leads/stage", stage with { BusinessId = Guid.NewGuid() })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync("/api/v1/mobile/work/leads/stage", stage)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync("/api/v1/mobile/work/leads/stage", stage with { Stage = "Closed" })).StatusCode);
+        var updatedLead = Assert.Single((await client.GetFromJsonAsync<MobileWorkLeadsController.WorkLead[]>("/api/v1/mobile/work/leads"))!);
+        Assert.Equal("Won", updatedLead.Stage); Assert.Equal("completed", updatedLead.Bucket);
+
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/commerce/manage/payments")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/store/checkout")).StatusCode);
         var path = $"/api/v1/mobile/work/orders/{order.Id}/fulfillment";

@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 import UIKit
 import PhotosUI
 import Combine
@@ -10448,6 +10449,22 @@ final class LegendFounderAiStore: ObservableObject {
         self.accessTokenProvider = accessTokenProvider
     }
 
+    func surfaceLaunch() async throws -> (URL, LegendAssistantSurfaceLaunch) {
+        let epoch = generation
+        guard let client, participantType == .agent, client.baseURL.scheme == "https" else { throw URLError(.userAuthenticationRequired) }
+        let token = try await accessTokenProvider()
+        let result = try await client.post("/api/v1/mobile/founder/legend-ai/surface", body: MobileEmptyRequest(),
+            accessToken: token, headers: participantHeaders, response: LegendAssistantSurfaceLaunch.self)
+        try Task.checkCancellation()
+        guard epoch == generation, isAvailable,
+              result.launchPath == "/founder/legend-ai/surface", result.cookieName == "__Secure-LegendAssistant",
+              result.cookiePath == "/founder/legend-ai", !result.cookieValue.isEmpty,
+              result.expiresUtc > Date(), result.expiresUtc.timeIntervalSinceNow <= 1205 else { throw URLError(.badServerResponse) }
+        return (client.baseURL, result)
+    }
+
+    func retireSurface() { generation += 1 }
+
     func resolveAvailability() async {
         guard !availabilityResolved, let client else { return }
         do {
@@ -10458,7 +10475,6 @@ final class LegendFounderAiStore: ObservableObject {
             try Task.checkCancellation()
             isAvailable = response.available
             availabilityResolved = true
-            refreshHistory()
         } catch { if !Task.isCancelled { isAvailable = false } }
     }
 
@@ -10716,24 +10732,6 @@ final class LegendFounderAiStore: ObservableObject {
 }
 
 
-// Presentation aliases only: every value is supplied by the same versioned
-// LegendSharedDesign token resource consumed by the web chat shell.
-private enum LegendFounderAiPresentationTokens {
-    static let ink = LegendNextColor.midnight
-    static let header = LegendNextColor.navy
-    static let headerElevated = LegendNextColor.navyElevated
-    static let action = LegendNextColor.goldBright
-    static let response = LegendNextColor.aiResponseRoyal
-    static let onHeader = LegendSharedDesign.color("onNavy")
-    static let onAction = LegendSharedDesign.color("onGold")
-    static let paper = LegendNextColor.canvas
-    static let inset = LegendNextColor.surfaceInset
-    static let softGold = LegendNextColor.goldSoft
-    static let text = LegendNextColor.textPrimary
-    static let muted = LegendNextColor.textSecondary
-    static let status = LegendNextColor.textTertiary
-}
-
 /// The single profile-mark presentation for every Legend® Ai touchpoint.
 /// `scaledToFill` deliberately adapts to the canonical image's real aspect
 /// ratio, so a future governed brand asset is never letterboxed inside a
@@ -10761,8 +10759,7 @@ struct LegendFounderAiLauncherButton: View {
             .overlay {
                 Circle()
                     .strokeBorder(
-                        LegendFounderAiPresentationTokens
-                            .header
+                        LegendNextColor.navy
                             .opacity(0.62),
                         lineWidth: 1)
             }
@@ -10780,1043 +10777,123 @@ struct LegendFounderAiLauncherButton: View {
     }
 }
 
+struct LegendAssistantSurfaceLaunch: Decodable {
+    let launchPath: String
+    let cookieName: String
+    let cookieValue: String
+    let cookiePath: String
+    let expiresUtc: Date
+}
+
 struct LegendFounderAiConversationView: View {
     @ObservedObject var store: LegendFounderAiStore
-
+    @EnvironmentObject private var session: MobileSessionCoordinator
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
-
-    @State private var draft = ""
-    @State private var mode = "legend"
-    @State private var nativeOnly = false
-    @State private var externalAnsweringBlocked = false
-    @State private var chatsOpen = false
-    @State private var requestTask: Task<Void, Never>?
-    @FocusState private var composerFocused: Bool
+    @State private var launch: (URL, LegendAssistantSurfaceLaunch)?
+    @State private var failure: String?
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                LegendFounderAiPresentationTokens.paper
-                    .ignoresSafeArea()
-
-                VStack(spacing: 0) {
-                    header
-                        .frame(height: 84)
-
-                    conversationArea
-
-                    statusArea
-
-                    composer
-                }
-                .frame(
-                    width: geometry.size.width,
-                    height: geometry.size.height)
-
-                if chatsOpen {
-                    chatsScrim
-
-                    chatsDrawer(
-                        width:
-                            min(
-                                geometry.size.width * 0.78,
-                                306))
-                }
-            }
-        }
-        .background(
-            LegendFounderAiPresentationTokens.paper
-                .ignoresSafeArea())
-        .onAppear { store.setVisible(scenePhase == .active) }
-        .onChange(of: scenePhase) { _, phase in store.setVisible(phase == .active) }
-        .onChange(of: store.isAvailable) { _, available in if !available { draft = ""; cancelCurrentRequest() } }
-        .onDisappear {
-            store.setVisible(false)
-            cancelCurrentRequest()
-        }
-    }
-
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            LegendFounderAiProfileMark(size: 54)
-            .overlay {
-                Circle()
-                    .strokeBorder(
-                        LegendNextGradient.premiumStroke,
-                        lineWidth: 1)
-            }
-            .shadow(
-                color: Color.black.opacity(0.24),
-                radius: 10,
-                y: 5)
-
-            Text(LegendLocalized("Legend® Ai"))
-                .font(
-                    .system(
-                        size: 17,
-                        weight: .bold))
-                .foregroundStyle(
-                    LegendFounderAiPresentationTokens.onHeader)
-                .lineLimit(1)
-
-            Spacer(minLength: 4)
-
-            headerAction(
-                symbol: "line.3.horizontal",
-                label: "Open conversations and Legend Ai controls") {
-                    chatsOpen = true
-                }
-
-            headerAction(
-                symbol: "xmark",
-                label: "Close Legend® Ai") {
-                    dismiss()
-                }
-        }
-        .padding(
-            .horizontal,
-            18)
-        .background(
-            ZStack {
-                LegendNextGradient.hero
-                LegendNextGradient.heroGlow
-            })
-    }
-
-    private func headerAction(
-        symbol: String,
-        label: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(
-                    .system(
-                        size: 14,
-                        weight: .bold))
-                .foregroundStyle(
-                    LegendFounderAiPresentationTokens.action)
-                .frame(
-                    width: 36,
-                    height: 36)
-                .background(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.16),
-                            Color.white.opacity(0.06)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing),
-                    in: Circle())
-                .overlay {
-                    Circle()
-                        .strokeBorder(
-                            LegendFounderAiPresentationTokens.action
-                                .opacity(0.44),
-                            lineWidth: 1)
-                }
-                .shadow(
-                    color: LegendFounderAiPresentationTokens.ink
-                        .opacity(0.22),
-                    radius: 7,
-                    y: 3)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-    }
-
-
-    private func modeButton(
-        title: String,
-        value: String
-    ) -> some View {
-        let active = store.assistantWorkspace == nil && mode == value
-
-        return Button {
-            guard !store.isSending, !store.canRetry,
-                  mode != value || store.assistantWorkspace != nil
-            else {
-                return
-            }
-
-            Task {
-                await store.selectBusinessWorkspace(nil)
-                mode = value
-                nativeOnly = false
-                externalAnsweringBlocked = false
-            }
-            // A responder switch must start a clean thread; mixing a prior
-            // model's reply into the next request would misrepresent source.
-        } label: {
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(
-                        active
-                            ? LegendFounderAiPresentationTokens.action
-                            : LegendFounderAiPresentationTokens.muted
-                                .opacity(0.45))
-                    .frame(
-                        width: 7,
-                        height: 7)
-
-                Text(title)
-                    .font(
-                        .system(
-                            size: 12,
-                            weight:
-                                active
-                                    ? .heavy
-                                    : .bold))
-                    .foregroundStyle(
-                        active
-                            ? LegendFounderAiPresentationTokens.onHeader
-                            : LegendFounderAiPresentationTokens.text)
-                    .lineLimit(1)
-            }
-            .frame(
-                maxWidth: .infinity,
-                minHeight: LegendNextSize.compactControlHeight)
-            .background(
-                active
-                    ? LegendFounderAiPresentationTokens.header
-                    : LegendFounderAiPresentationTokens.inset,
-                in: RoundedRectangle(
-                    cornerRadius: 15,
-                    style: .continuous))
-            .overlay {
-                RoundedRectangle(
-                    cornerRadius: 15,
-                    style: .continuous)
-                    .strokeBorder(
-                        active
-                            ? LegendFounderAiPresentationTokens
-                                .action
-                                .opacity(0.72)
-                            : LegendFounderAiPresentationTokens.header
-                                .opacity(0.12),
-                        lineWidth: 1)
-            }
-            .shadow(
-                color: active
-                    ? LegendFounderAiPresentationTokens.ink.opacity(0.12)
-                    : .clear,
-                radius: 8,
-                y: 4)
-        }
-        .buttonStyle(.plain)
-        .disabled(store.isSending)
-    }
-
-
-    private var conversationArea: some View {
         Group {
-            if store.messages.isEmpty {
-                welcome
-            } else {
-                transcript
-            }
+            if let launch {
+                LegendAssistantWebSurface(origin: launch.0, launch: launch.1,
+                    onClose: { dismiss() }, onFailure: { failure = $0; self.launch = nil })
+            } else if let failure {
+                VStack(spacing: 16) {
+                    Text("LEGEND AI unavailable").font(.headline)
+                    Text(failure)
+                    Button("Retry") { Task { await open() } }
+                    Button("Close") { dismiss() }
+                }.padding()
+            } else { ProgressView("Opening LEGEND AI") }
         }
+        .task { await open() }
+        .onChange(of: store.isAvailable) { if !store.isAvailable { dismiss() } }
+        .onChange(of: session.state) { dismiss() }
+        .onDisappear { store.retireSurface() }
     }
 
-    private var welcome: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                Color.clear
-                    .frame(height: 36)
-
-                VStack(spacing: 18) {
-                    ZStack {
-                        Circle()
-                            .fill(LegendFounderAiPresentationTokens.softGold)
-                            .frame(width: 112, height: 112)
-
-                        LegendFounderAiProfileMark(size: 96)
-                            .shadow(
-                                color: LegendFounderAiPresentationTokens.ink
-                                    .opacity(0.12),
-                                radius: 20,
-                                y: 9)
-                    }
-                    .overlay {
-                        Circle()
-                            .strokeBorder(
-                                LegendNextGradient.premiumStroke,
-                                lineWidth: 1)
-                            .frame(width: 112, height: 112)
-                    }
-
-                    Text(LegendLocalized("FOUNDER INTELLIGENCE"))
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.8)
-                        .foregroundStyle(
-                            LegendFounderAiPresentationTokens.header)
-
-                    Text(LegendLocalized("Ask Legend® Ai"))
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(
-                            LegendFounderAiPresentationTokens.ink)
-
-                    Text(
-                        LegendLocalized("A governed conversation for inspecting knowledge, ") +
-                        "evidence, readiness, and the next legitimate learning step.")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(
-                            LegendFounderAiPresentationTokens.muted)
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(4)
-                        .frame(maxWidth: 320)
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 30)
-                .frame(maxWidth: 370)
-                .background(
-                    LegendFounderAiPresentationTokens.onHeader,
-                    in: RoundedRectangle(
-                        cornerRadius: 30,
-                        style: .continuous))
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: 30,
-                        style: .continuous)
-                        .strokeBorder(
-                            LegendFounderAiPresentationTokens.header
-                                .opacity(0.10),
-                            lineWidth: 1)
-                }
-                .shadow(
-                    color: LegendFounderAiPresentationTokens.ink
-                        .opacity(0.10),
-                    radius: 30,
-                    y: 14)
-
-                Spacer(minLength: 72)
-            }
-            .padding(
-                .horizontal,
-                20)
-        }
-        .background(
-            LinearGradient(
-                colors: [
-                    LegendNextColor.canvas,
-                    LegendNextColor.canvasSecondary
-                ],
-                startPoint: .top,
-                endPoint: .bottom))
-        .scrollDismissesKeyboard(.immediately)
-
+    private func open() async {
+        failure = nil
+        do { launch = try await store.surfaceLaunch() }
+        catch { failure = "Your secure assistant could not be opened. Please retry or sign in again." }
     }
+}
 
-    private var transcript: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(
-                    alignment: .leading,
-                    spacing: 17
-                ) {
-                    Rectangle()
-                        .fill(
-                            LegendNextColor.separator
-                                .opacity(0.12))
-                        .frame(height: 1)
+private struct LegendAssistantWebSurface: UIViewRepresentable {
+    let origin: URL
+    let launch: LegendAssistantSurfaceLaunch
+    let onClose: () -> Void
+    let onFailure: (String) -> Void
 
-                    if store.hasNewerMessages {
-                        Button(LegendLocalized("Load newer messages")) { store.refreshHistory(newer: true) }
-                    }
-                    if store.hasOlderMessages {
-                        Button(LegendLocalized("Load earlier messages")) { store.refreshHistory(older: true) }
-                    }
-                    ForEach(
-                        store.messages
-                    ) { message in
-                        messageBubble(message)
-                            .id(message.id)
-                    }
-
-                    if store.isSending && !store.provisionalAnswer.isEmpty {
-                        Text(verbatim: store.provisionalAnswer)
-                            .accessibilityLabel("Response in progress; not yet saved: " + store.provisionalAnswer)
-                    }
-                    if store.isSending {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(
-                                    LegendFounderAiPresentationTokens
-                                        .header)
-
-                            if let progress =
-                                store.progressMessage
-                            {
-                                Text(progress)
-                                    .font(
-                                        .system(
-                                            size: 11,
-                                            weight: .heavy))
-                                    .foregroundStyle(
-                                        LegendFounderAiPresentationTokens
-                                            .status)
-                                    .fixedSize(
-                                        horizontal: false,
-                                        vertical: true)
-                            }
-                        }
-                    }
-                }
-                .padding(
-                    .horizontal,
-                    12)
-                .padding(
-                    .vertical,
-                    14)
-            }
-            .scrollDismissesKeyboard(.immediately)
-            .onChange(
-                of: store.messages.count
-            ) {
-                guard let last =
-                    store.messages.last
-                else {
-                    return
-                }
-
-                withAnimation {
-                    proxy.scrollTo(
-                        last.id,
-                        anchor: .bottom)
-                }
-            }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        let web = WKWebView(frame: .zero, configuration: configuration)
+        web.navigationDelegate = context.coordinator
+        web.uiDelegate = context.coordinator
+        web.allowsBackForwardNavigationGestures = false
+        web.isOpaque = false
+        web.scrollView.contentInsetAdjustmentBehavior = .never
+        context.coordinator.web = web
+        guard let cookie = HTTPCookie(properties: [
+            .domain: origin.host!, .path: "/founder/legend-ai", .name: "__Secure-LegendAssistant",
+            .value: launch.cookieValue, .secure: "TRUE", .expires: launch.expiresUtc,
+            HTTPCookiePropertyKey("HttpOnly"): "TRUE", HTTPCookiePropertyKey("SameSite"): "Strict"
+        ]), let url = URL(string: launch.launchPath, relativeTo: origin)?.absoluteURL else {
+            onFailure("The assistant session was invalid."); return web
         }
+        web.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) { [weak web, weak coordinator = context.coordinator] in
+            guard let coordinator, !coordinator.closed else { return }
+            web?.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
+        }
+        return web
     }
-
-    @ViewBuilder
-    private func messageBubble(
-        _ message: LegendFounderAiChatMessage
-    ) -> some View {
-        if message.role == "service" {
-            Text(LegendLocalized(message.content))
-                .font(.callout)
-                .foregroundStyle(LegendFounderAiPresentationTokens.status)
-                .textSelection(.enabled)
-        } else if message.role == "user" {
-            HStack {
-                Spacer(minLength: 40)
-
-                Text(message.content)
-                    .font(.system(size: 15))
-                    .foregroundStyle(
-                        LegendFounderAiPresentationTokens.onAction)
-                    .textSelection(.enabled)
-                    .padding(
-                        .horizontal,
-                        12)
-                    .padding(
-                        .vertical,
-                        10)
-                    .background(
-                        LegendNextGradient.gold,
-                        in:
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: 15,
-                                bottomLeadingRadius: 15,
-                                bottomTrailingRadius: 4,
-                                topTrailingRadius: 15))
-                    .overlay {
-                        UnevenRoundedRectangle(
-                            topLeadingRadius: 15,
-                            bottomLeadingRadius: 15,
-                            bottomTrailingRadius: 4,
-                            topTrailingRadius: 15)
-                            .strokeBorder(
-                                LegendFounderAiPresentationTokens.ink
-                                    .opacity(0.24),
-                                lineWidth: 1)
-                    }
-                    .shadow(
-                        color: LegendFounderAiPresentationTokens.action
-                            .opacity(0.32),
-                        radius: 12,
-                        y: 5)
-            }
-        } else {
-            HStack(
-                alignment: .top,
-                spacing: 8
-            ) {
-                LegendFounderAiProfileMark(size: 28)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(message.content)
-                        .font(.system(size: 15))
-                        .foregroundStyle(
-                            LegendFounderAiPresentationTokens.onHeader)
-                        .lineSpacing(4)
-                        .textSelection(.enabled)
-
-                    if let status = capabilityStatusLabel(message) {
-                        Text(status)
-                            .font(.system(size: 11))
-                            .foregroundStyle(LegendFounderAiPresentationTokens.onHeader)
-                    }
-
-                    if let authority = responseAuthorityLabel(message) {
-                        Text(authority)
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(
-                                LegendFounderAiPresentationTokens.onHeader)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                LegendFounderAiPresentationTokens.onHeader
-                                    .opacity(0.14),
-                                in: Capsule())
-                            .overlay {
-                                Capsule()
-                                    .strokeBorder(
-                                        LegendFounderAiPresentationTokens
-                                            .onHeader
-                                            .opacity(0.26),
-                                        lineWidth: 1)
-                            }
-                    }
-                }
-                .padding(
-                    .horizontal,
-                    12)
-                .padding(
-                    .vertical,
-                    10)
-                .background(
-                    LegendFounderAiPresentationTokens.response,
-                    in:
-                        UnevenRoundedRectangle(
-                            topLeadingRadius: 15,
-                            bottomLeadingRadius: 4,
-                            bottomTrailingRadius: 15,
-                            topTrailingRadius: 15))
-                .overlay {
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 15,
-                        bottomLeadingRadius: 4,
-                        bottomTrailingRadius: 15,
-                        topTrailingRadius: 15)
-                        .strokeBorder(
-                            LegendFounderAiPresentationTokens.onHeader
-                                .opacity(0.24),
-                            lineWidth: 1)
-                }
-                .shadow(
-                    color: LegendFounderAiPresentationTokens.response
-                        .opacity(0.28),
-                    radius: 12,
-                    y: 5)
-
-                Spacer(minLength: 0)
-            }
-        }
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    static func dismantleUIView(_ web: WKWebView, coordinator: Coordinator) {
+        coordinator.closed = true
+        web.stopLoading(); web.navigationDelegate = nil; web.uiDelegate = nil
+        web.configuration.websiteDataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) {}
     }
-
-
-    @ViewBuilder
-    private var statusArea: some View {
-        if store.canRetry && !store.isSending {
-            Button(LegendLocalized("Check or retry the same request")) {
-                requestTask = Task { await store.retry(); requestTask = nil }
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+        let parent: LegendAssistantWebSurface
+        weak var web: WKWebView?
+        var closed = false
+        init(_ parent: LegendAssistantWebSurface) { self.parent = parent }
+        func sameOrigin(_ url: URL?) -> Bool {
+            guard let url else { return false }
+            return url.scheme == "https" && url.host == parent.origin.host &&
+                (url.port ?? 443) == (parent.origin.port ?? 443) && url.user == nil && url.password == nil
+        }
+        func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                     decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            guard sameOrigin(action.request.url), let url = action.request.url,
+                  url.path.hasPrefix("/founder/legend-ai/") else { decisionHandler(.cancel); return }
+            if url.path == "/founder/legend-ai/native-close" {
+                decisionHandler(.cancel); parent.onClose(); return
             }
-        }
-
-        if let failure =
-            store.failureMessage
-        {
-            Text(LegendLocalized(failure))
-                .font(
-                    .system(
-                        size: 10,
-                        weight: .heavy))
-                .foregroundStyle(
-                    LegendFounderAiPresentationTokens.status)
-                .textSelection(.enabled)
-                .frame(
-                    maxWidth: .infinity,
-                    alignment: .leading)
-                .padding(
-                    .horizontal,
-                    12)
-                .padding(
-                    .vertical,
-                    7)
-                .background(
-                    LegendFounderAiPresentationTokens.paper)
-        }
-    }
-
-
-    private var composer: some View {
-        HStack(
-            alignment: .bottom,
-            spacing: 8
-        ) {
-            TextField(
-                mode == "teacher"
-                    ? "Message the OpenAI Teacher…"
-                    : "Message Legend® Ai…",
-                text: $draft,
-                axis: .vertical)
-                .lineLimit(1...6)
-                .font(.system(size: 16))
-                .textFieldStyle(.plain)
-                .focused($composerFocused)
-                .padding(
-                    .horizontal,
-                    16)
-                .padding(
-                    .vertical,
-                    12)
-                .background(
-                    LegendFounderAiPresentationTokens.inset,
-                    in:
-                        RoundedRectangle(
-                            cornerRadius: 20,
-                            style: .continuous))
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: 20,
-                        style: .continuous)
-                        .strokeBorder(
-                            LegendFounderAiPresentationTokens
-                                .header
-                                .opacity(0.13),
-                            lineWidth: 1)
-                }
-
-            Button {
-                if store.isSending {
-                    cancelCurrentRequest()
-                } else {
-                    submit()
-                }
-            } label: {
-                Image(
-                    systemName:
-                        store.isSending
-                            ? "stop.fill"
-                            : "arrow.up")
-                    .font(
-                        .system(
-                            size: 19,
-                            weight: .black))
-                    .foregroundStyle(
-                        LegendFounderAiPresentationTokens.onAction)
-                    .frame(
-                        width: 44,
-                        height: 44)
-                    .background(
-                        LegendNextGradient.gold,
-                        in: Circle())
-                    .overlay {
-                        Circle()
-                            .strokeBorder(
-                                LegendFounderAiPresentationTokens.onHeader
-                                    .opacity(0.45),
-                                lineWidth: 1)
-                    }
-                    .shadow(
-                        color: LegendFounderAiPresentationTokens.action
-                            .opacity(0.28),
-                        radius: 12,
-                        y: 5)
+            if url.path == "/founder/legend-ai/native-expired" {
+                decisionHandler(.cancel); parent.onFailure("Your assistant session expired. Reopen it to continue; no action was retried."); return
             }
-            .buttonStyle(.plain)
-            .disabled(
-                !store.isSending &&
-                draft
-                    .trimmingCharacters(
-                        in:
-                            .whitespacesAndNewlines)
-                    .isEmpty)
-            .accessibilityLabel(
-                store.isSending
-                    ? "Stop generating"
-                    : "Send message")
+            decisionHandler(action.targetFrame?.isMainFrame == true ? .allow : .cancel)
         }
-        .padding(
-            .horizontal,
-            16)
-        .padding(
-            .vertical,
-            12)
-        .background(
-            LegendFounderAiPresentationTokens.paper
-                .shadow(
-                    color: LegendFounderAiPresentationTokens.ink
-                        .opacity(0.08),
-                    radius: 20,
-                    y: -8))
-    }
-
-
-    private var chatsScrim: some View {
-        Button {
-            chatsOpen = false
-        } label: {
-            LegendFounderAiPresentationTokens.ink.opacity(0.24)
-                .ignoresSafeArea()
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(
-            LegendLocalized("Close conversations", context: "accessibility copy"))
-    }
-
-    private func chatsDrawer(
-        width: CGFloat
-    ) -> some View {
-        VStack(
-            alignment: .leading,
-            spacing: 12
-        ) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(LegendLocalized("FOUNDER SPACE"))
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.5)
-                        .foregroundStyle(
-                            LegendFounderAiPresentationTokens.action)
-
-                    Text(LegendLocalized("Conversations"))
-                        .font(.system(size: 19, weight: .bold))
-                }
-
-                Spacer()
-
-                Button {
-                    chatsOpen = false
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(
-                            .system(
-                                size: 14,
-                                weight: .bold))
-                        .foregroundStyle(
-                            LegendFounderAiPresentationTokens.action)
-                        .frame(
-                            width: 36,
-                            height: 36)
-                        .background(
-                            LegendFounderAiPresentationTokens.inset,
-                            in: Circle())
-                        .overlay {
-                            Circle()
-                                .strokeBorder(
-                                    LegendFounderAiPresentationTokens.header
-                                        .opacity(0.14),
-                                    lineWidth: 1)
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(
-                    LegendLocalized("Close conversations", context: "accessibility copy"))
+        func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
+                     decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+            if let http = response.response as? HTTPURLResponse, http.statusCode >= 400 {
+                decisionHandler(.cancel); parent.onFailure("The assistant could not load. Reopen it or sign in again."); return
             }
-
-            Button {
-                startNewConversation()
-                chatsOpen = false
-            } label: {
-                Label(
-                    LegendLocalized("New conversation"),
-                    systemImage: "plus")
-                    .font(
-                        .system(
-                            size: 15,
-                            weight: .bold))
-                    .foregroundStyle(
-                        LegendFounderAiPresentationTokens.onAction)
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: 40)
-                    .background(
-                        LegendNextGradient.gold,
-                        in:
-                            RoundedRectangle(
-                                cornerRadius: 14,
-                                style: .continuous))
-                    .overlay {
-                        RoundedRectangle(
-                            cornerRadius: 14,
-                            style: .continuous)
-                            .strokeBorder(
-                                Color.white.opacity(0.35),
-                                lineWidth: 1)
-                    }
-                    .shadow(
-                        color: LegendFounderAiPresentationTokens.action
-                            .opacity(0.28),
-                        radius: 10,
-                        y: 4)
-            }
-            .buttonStyle(.plain)
-            .disabled(store.isSending)
-
-            Menu {
-                Button("Founder workspace") { Task { await store.selectBusinessWorkspace(nil) } }
-                ForEach(store.businessWorkspaces) { workspace in
-                    Button(workspace.label) {
-                        nativeOnly = false; externalAnsweringBlocked = false
-                        Task { await store.selectBusinessWorkspace(workspace.workspace) }
-                    }
-                }
-                Button("Refresh available workspaces") { Task { await store.loadBusinessWorkspaces() } }
-            } label: {
-                Label(store.businessWorkspaces.first(where: { $0.workspace == store.assistantWorkspace })?.label ?? "Founder workspace", systemImage: "building.2")
-            }
-            .disabled(store.isSending || store.canRetry)
-            .task { await store.loadBusinessWorkspaces() }
-            if store.assistantWorkspace != nil {
-                Menu("Provider: \(store.assistantProvider)") {
-                    ForEach(["openai", "cloudflare", "legend-native"], id: \.self) { provider in
-                        Button(provider) { Task { await store.selectBusinessWorkspace(store.assistantWorkspace, provider: provider) } }
-                    }
-                }
-                .disabled(store.isSending || store.canRetry)
-                Text("Provider: \(store.assistantProvider) · \(store.assistantConnection?.readiness.replacingOccurrences(of: "_", with: " ") ?? "Loading connection")")
-                    .font(.caption)
-                Text("\(store.assistantConnection?.configuration?.model ?? "") · \(store.assistantConnection?.configuration?.projectId ?? "")")
-                    .font(.caption)
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text(LegendLocalized("RESPONDER"))
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(1.3)
-                    .foregroundStyle(LegendFounderAiPresentationTokens.muted)
-
-                HStack(spacing: 8) {
-                modeButton(
-                    title: LegendLocalized("Legend® Ai"),
-                    value: "legend")
-
-                modeButton(
-                    title: LegendLocalized("OpenAI"),
-                    value: "teacher")
-                }
-            }
-
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            nativeOnly
-                                ? LegendNextColor.success.opacity(0.18)
-                                : LegendFounderAiPresentationTokens.inset)
-                        .frame(width: 34, height: 34)
-
-                    Image(systemName: nativeOnly ? "lock.fill" : "lock.open")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(
-                            nativeOnly
-                                ? LegendNextColor.success
-                                : LegendFounderAiPresentationTokens.action)
-                }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(LegendLocalized("Block all external providers"))
-                        .font(.system(size: 13, weight: .semibold))
-                    Text(
-                        mode == "legend"
-                            ? LegendLocalized("Disable external answering, research, and Azure translation.")
-                            : LegendLocalized("Available in Legend® Ai mode."))
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(LegendFounderAiPresentationTokens.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
-
-                Toggle(LegendLocalized("Block all external providers"), isOn: Binding(get: { nativeOnly }, set: { nativeOnly = $0; store.clearConversation() }))
-                    .labelsHidden()
-                    .toggleStyle(
-                        SwitchToggleStyle(
-                            tint: LegendNextColor.success))
-                    .disabled(store.isSending || mode != "legend")
-            }
-            .opacity(mode == "legend" ? 1 : 0.60)
-            .padding(8)
-            .background(
-                nativeOnly
-                    ? LegendNextColor.success.opacity(0.13)
-                    : LegendFounderAiPresentationTokens.inset,
-                in: RoundedRectangle(
-                    cornerRadius: 16,
-                    style: .continuous))
-            .overlay {
-                RoundedRectangle(
-                    cornerRadius: 16,
-                    style: .continuous)
-                    .strokeBorder(
-                        nativeOnly
-                            ? LegendNextColor.success.opacity(0.40)
-                            : LegendFounderAiPresentationTokens.header
-                                .opacity(0.10),
-                        lineWidth: 1)
-            }
-
-            Toggle(isOn: Binding(get: { externalAnsweringBlocked }, set: { externalAnsweringBlocked = $0; store.clearConversation() })) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(LegendLocalized("Block external answering"))
-                    Text(LegendLocalized("Allow authorized research and translation."))
-                        .font(.caption)
-                }
-            }
-            .disabled(store.isSending || mode != "legend" || nativeOnly)
-
-            Rectangle()
-                .fill(
-                    LegendFounderAiPresentationTokens.header
-                        .opacity(0.10))
-                .frame(height: 1)
-
-            Text(LegendLocalized("RECENT"))
-                .font(.system(size: 10, weight: .bold))
-                .tracking(1.3)
-                .foregroundStyle(LegendFounderAiPresentationTokens.muted)
-
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(store.conversations) { conversation in
-                        Button {
-                            mode = "legend"; nativeOnly = false; externalAnsweringBlocked = store.assistantWorkspace == nil
-                            store.openConversation(conversation.id)
-                            chatsOpen = false
-                        } label: {
-                            Text(conversation.subject ?? LegendLocalized("New conversation"))
-                                .font(.callout).lineLimit(2)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(8)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(store.isSending)
-                    }
-                    if store.hasMoreConversations {
-                        Button(LegendLocalized("Load more conversations")) { store.refreshHistory(more: true) }
-                    }
-                }
-            }
+            decisionHandler(.allow)
         }
-        .foregroundStyle(
-            LegendFounderAiPresentationTokens.text)
-        .padding(.horizontal, 14)
-        .padding(.top, 16)
-        .padding(.bottom, 14)
-
-        .frame(width: width)
-        .frame(
-            maxHeight: .infinity,
-            alignment: .top)
-
-        .background(
-            LegendFounderAiPresentationTokens.paper,
-            in: RoundedRectangle(
-                cornerRadius: 28,
-                style: .continuous))
-        .padding(.vertical, 22)
-        .shadow(
-            color: LegendFounderAiPresentationTokens.ink.opacity(0.18),
-            radius: 22,
-            x: 10)
-    }
-
-
-    private func startNewConversation() {
-        guard !store.isSending else {
-            return
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            if (error as NSError).code != NSURLErrorCancelled { parent.onFailure("The assistant connection failed. Please retry.") }
         }
-
-        store.clearConversation()
-        draft = ""
-    }
-
-    private func submit() {
-        guard !store.isSending else {
-            cancelCurrentRequest()
-            return
-        }
-
-        let text =
-            draft.trimmingCharacters(
-                in:
-                    .whitespacesAndNewlines)
-
-        guard !text.isEmpty, !store.canRetry, !store.hasNewerMessages else {
-            return
-        }
-
-        draft = ""
-
-        requestTask = Task {
-            await store.send(
-                text,
-                mode: mode,
-                nativeOnly: nativeOnly,
-                externalAnsweringBlocked: externalAnsweringBlocked)
-            requestTask = nil
-        }
-    }
-
-    private func cancelCurrentRequest() {
-        requestTask?.cancel()
-        requestTask = nil
-    }
-
-    private func capabilityStatusLabel(_ message: LegendFounderAiChatMessage) -> String? {
-        var labels: [String] = []
-        if message.reason == "provider_output_incomplete" {
-            labels.append(LegendLocalized("Partial answer: output limit reached"))
-        } else if message.stage == "response_partial" {
-            labels.append(LegendLocalized("Partial answer"))
-        }
-        switch message.escalationDisposition {
-        case "Restricted": labels.append(LegendLocalized("Teacher material restricted from training"))
-        case "InsufficientEvidence": labels.append(LegendLocalized("Teacher material lacks sufficient evidence"))
-        default: break
-        }
-        switch message.researchState {
-        case "Conclusion": labels.append(LegendLocalized("Research completed"))
-        case "InsufficientEvidence": labels.append(LegendLocalized("Research found insufficient evidence"))
-        case "UnresolvedConflict": labels.append(LegendLocalized("Research found conflicting evidence"))
-        case "Failure": labels.append(LegendLocalized("Research could not be completed"))
-        default: break
-        }
-        if message.escalationUsed == true { labels.append(LegendLocalized("Escalation used")) }
-        switch message.learningState {
-        case "Submitted", "AwaitingCritic": labels.append(LegendLocalized("Teaching submitted for review"))
-        case "InsufficientEvidence": labels.append(LegendLocalized("Teaching needs more evidence"))
-        default: break
-        }
-        if message.modelAssistanceState == "Applied", let run = message.modelTrainingRunId, !run.isEmpty {
-            labels.append(LegendLocalized("Promoted model applied"))
-        }
-        return labels.isEmpty ? nil : labels.joined(separator: " · ")
-    }
-
-    private func responseAuthorityLabel(
-        _ message: LegendFounderAiChatMessage
-    ) -> String? {
-        switch message.responseAuthority {
-        case "LegendAi":
-            return LegendLocalized("Legend® Ai")
-        case "LocalFoundation":
-            return LegendLocalized("LEGEND-controlled model")
-        case "HostedFoundation":
-            return LegendLocalized("LEGEND · hosted foundation")
-        case "GovernedResearch":
-            return LegendLocalized("LEGEND governed research")
-        case "OpenAITeacher":
-            return LegendLocalized("OpenAI")
-        case "SystemDiagnostic":
-            return LegendLocalized("System diagnostic")
-        default:
-            return nil
+        func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                     initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
+                     decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+            let valid = origin.protocol == "https" && origin.host == parent.origin.host &&
+                (origin.port == 0 ? 443 : origin.port) == (parent.origin.port ?? 443)
+            decisionHandler(valid && frame.isMainFrame && type == .microphone ? .prompt : .deny)
         }
     }
 }
@@ -12222,96 +11299,232 @@ private struct LegendCrmSearchField: View {
 
 /// Work is a channel of the same server ledger; opening a row acknowledges that
 /// exact recipient-scoped notification, never the unrelated personal channel.
-private struct LegendWorkNotificationsSheet: View {
-    @ObservedObject var store: MobileNotificationStore
-    let openConversation: (UUID) -> Void
-    @State private var showsOrders = false
-    @State private var selectedOrder: MobileWorkOrder?
-    @Environment(\.dismiss) private var dismiss
-
-    private var items: [MobileNotificationItem] {
-        store.workSnapshot?.notifications.filter { $0.channel == "work" } ?? []
-    }
-
-    var body: some View {
-        NavigationStack {
-            LegendScrollView(tracksNavigationChrome: false) {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                    LegendNextSheetHeader(eyebrow: LegendLocalized("Your business"), title: LegendLocalized("Work"), detail: LegendLocalized("Notifications and orders to fulfill."), dismiss: { dismiss() })
-                Picker(LegendLocalized("Work"), selection: $showsOrders) {
-                    Text(LegendLocalized("Notifications")).tag(false)
-                    Text(LegendLocalized("Orders")).tag(true)
-                }.pickerStyle(.segmented)
-                if showsOrders {
-                    if let failure = store.workFailure {
-                        Text(failure).foregroundStyle(LegendNextColor.danger)
-                        Button(LegendLocalized("Retry")) { Task { await store.loadWorkOrders() } }
-                    }
-                    if store.isLoadingWork { ProgressView() }
-                    else if store.workOrders.isEmpty && store.workFailure == nil {
-                        Text(LegendLocalized("No orders awaiting fulfillment."))
-                    }
-                    ForEach(store.workOrders) { order in
-                        Button { selectedOrder = order } label: {
-                            VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                                Text(order.orderNumber).font(LegendNextTypography.cardTitle)
-                                Text(order.businessName ?? "").font(.caption)
-                                Text("\(order.items.reduce(0) { $0 + $1.quantity }) items · \(order.fulfillmentStatus)")
-                                    .font(LegendNextTypography.supporting)
-                            }
-                        }.buttonStyle(.plain)
-                    }
-                } else {
-                if store.workSnapshot != nil && store.workSnapshot?.workChannelsVersion != 1 {
-                    Text(LegendLocalized("Work notifications are temporarily unavailable. Please retry later."))
-                }
-                if store.workNotificationsFailed {
-                    Text(LegendLocalized("Notifications could not be refreshed."))
-                    Button(LegendLocalized("Retry")) { Task { await store.loadWorkNotifications() } }
-                }
-                if store.isLoadingWorkNotifications && store.workSnapshot == nil {
-                    ProgressView()
-                } else if items.isEmpty && !store.workNotificationsFailed && store.workSnapshot?.workChannelsVersion == 1 {
-                    Text(LegendLocalized("No work notifications yet."))
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                }
-                ForEach(items) { item in
-                    Button {
-                        Task {
-                            await store.markRead(item.id)
-                            if let id = item.conversationID { openConversation(id) }
-                        }
-                    } label: {
-                        HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
-                            Image(systemName: item.isRead ? "briefcase" : "circle.fill")
-                                .foregroundStyle(LegendNextColor.goldBright)
-                            VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                                Text(item.title).font(LegendNextTypography.cardTitle)
-                                Text(item.detail).font(LegendNextTypography.supporting)
-                                    .foregroundStyle(LegendNextColor.textSecondary)
-                                Text(item.occurredUTC, style: .relative).font(.caption)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-                }
-            }
-                .padding(LegendNextSpacing.md)
-            }
-            .scrollContentBackground(.hidden)
-            .background(LegendNextCanvas())
-            .font(LegendNextTypography.supporting)
-            .tint(LegendNextColor.gold)
-            .toolbar(.hidden, for: .navigationBar)
-            .refreshable { await store.loadWorkNotifications(); await store.loadWorkOrders() }
-            .task { await store.loadWorkNotifications(); await store.loadWorkOrders() }
-            .sheet(item: $selectedOrder) { order in LegendWorkOrderEditor(order: order, store: store) }
-        }
+private struct LegendWorkFieldStyle: TextFieldStyle {
+    func _body(configuration: TextField<Self._Label>) -> some View {
+        configuration.padding(LegendNextSpacing.sm)
+            .foregroundStyle(LegendNextColor.contactTitle)
+            .background(LegendNextColor.navy, in: RoundedRectangle(cornerRadius: LegendNextRadius.control))
+            .overlay(RoundedRectangle(cornerRadius: LegendNextRadius.control).stroke(LegendNextColor.contactBorder, lineWidth: 1))
     }
 }
 
-private struct LegendWorkOrderEditor: View {
+private func legendWorkColor(_ tone: String) -> Color {
+    switch tone {
+    case "success": return LegendNextColor.success
+    case "danger": return LegendNextColor.danger
+    case "info": return LegendNextColor.information
+    default: return LegendNextColor.warning
+    }
+}
+
+private struct LegendWorkStatus: View {
+    let label: String
+    let tone: String
+    var body: some View {
+        Text(legendCrmLabel(label)).font(LegendNextTypography.caption.weight(.semibold))
+            .foregroundStyle(legendWorkColor(tone))
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(legendWorkColor(tone).opacity(0.12), in: Capsule())
+    }
+}
+
+struct LegendWorkNotificationsSheet: View {
+    @ObservedObject var store: MobileNotificationStore
+    let openConversation: (UUID) -> Void
+    @State private var page = "Notifications"
+    @State private var business = "All businesses"
+    @State private var search = ""
+    @State private var stage = "All stages"
+    @State private var selectedOrder: MobileWorkOrder?
+    @State private var selectedLead: MobileWorkLead?
+    @State private var navigationFailure: String?
+    @Environment(\.dismiss) private var dismiss
+    private let pages = ["Notifications", "Leads", "Orders", "Completed", "Closed"]
+    init(store: MobileNotificationStore, initialPage: String = "Notifications", openConversation: @escaping (UUID) -> Void) {
+        self.store = store; self.openConversation = openConversation; _page = State(initialValue: initialPage)
+    }
+    private var items: [MobileNotificationItem] { store.workSnapshot?.notifications.filter { $0.channel == "work" } ?? [] }
+    private var businesses: [String] { Array(Set(store.workLeads.map(\.businessName) + store.workOrders.compactMap(\.businessName))).sorted() }
+    private func matches(_ name: String, _ text: String, _ state: String) -> Bool {
+        (business == "All businesses" || business == name) && (search.isEmpty || text.localizedCaseInsensitiveContains(search)) &&
+            (stage == "All stages" || stage == state)
+    }
+    private var leads: [MobileWorkLead] {
+        store.workLeads.filter { row in
+            (page == "Leads" ? row.bucket == "active" : page == "Completed" ? row.bucket == "completed" : page == "Closed" && row.bucket == "closed") &&
+                matches(row.businessName, row.displayName + " " + row.businessName + " " + (row.email ?? ""), row.stage)
+        }
+    }
+    private var orders: [MobileWorkOrder] {
+        store.workOrders.filter { row in
+            (page == "Orders" ? (row.bucket ?? "active") == "active" : page == "Completed" ? row.bucket == "completed" : page == "Closed" && row.bucket == "closed") &&
+                matches(row.businessName ?? "", row.orderNumber + " " + (row.businessName ?? ""), row.fulfillmentStatus)
+        }
+    }
+    private var stages: [String] { Array(Set(store.workLeads.map(\.stage) + store.workOrders.map(\.fulfillmentStatus))).sorted() }
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(eyebrow: LegendLocalized("Your business"), title: LegendLocalized("Work"),
+                        detail: LegendLocalized("Review, follow up and fulfill. Every update stays with its business record."), dismiss: { dismiss() })
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: LegendNextSpacing.xs)], spacing: LegendNextSpacing.xs) {
+                        ForEach(pages, id: \.self) { title in
+                            Button { page = title; stage = "All stages"; navigationFailure = nil } label: {
+                                Text(LegendLocalized(title)).font(LegendNextTypography.label)
+                                    .frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, 12)
+                                    .foregroundStyle(page == title ? LegendNextColor.midnight : LegendNextColor.contactTitle)
+                                    .background(page == title ? LegendNextColor.goldBright : LegendNextColor.navyElevated, in: Capsule())
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                    if page != "Notifications" {
+                        TextField(LegendLocalized("Search work"), text: $search, prompt: Text(LegendLocalized("Search work")).foregroundStyle(LegendNextColor.contactSupporting)).textFieldStyle(LegendWorkFieldStyle())
+                        HStack {
+                            Picker(LegendLocalized("Business"), selection: $business) {
+                                Text(LegendLocalized("All businesses")).tag("All businesses")
+                                ForEach(businesses, id: \.self) { Text($0).tag($0) }
+                            }.tint(LegendNextColor.goldBright)
+            .legendNextBrandedSheetAppearance(background: LegendNextGradient.financialSheet)
+                            Spacer()
+                            Picker(LegendLocalized("Stage"), selection: $stage) {
+                                Text(LegendLocalized("All stages")).tag("All stages")
+                                ForEach(stages, id: \.self) { Text(legendCrmLabel($0)).tag($0) }
+                            }.tint(LegendNextColor.goldBright)
+            .legendNextBrandedSheetAppearance(background: LegendNextGradient.financialSheet)
+                        }
+                        HStack(spacing: 8) {
+                            LegendWorkStatus(label: "Review", tone: "warning")
+                            LegendWorkStatus(label: "In progress", tone: "info")
+                            LegendWorkStatus(label: "Done", tone: "success")
+                        }
+                        Text(LegendLocalized("Closed includes cancelled, declined and returned records. Reading a notification never completes work."))
+                            .font(LegendNextTypography.caption).foregroundStyle(LegendNextColor.textSecondary)
+                    }
+                    if let navigationFailure { Text(navigationFailure).foregroundStyle(LegendNextColor.danger) }
+                    if page == "Notifications" { notifications }
+                    else {
+                        if store.isLoadingWork || store.isLoadingLeads { ProgressView() }
+                        if let failure = store.workFailure { retry(failure) }
+                        if let failure = store.leadFailure { retry(failure) }
+                        ForEach(leads) { lead in
+                            Button { selectedLead = lead } label: {
+                                workCard(title: lead.displayName, detail: lead.businessName, status: lead.stage, tone: lead.tone, icon: "person.crop.rectangle")
+                            }.buttonStyle(.plain)
+                        }
+                        ForEach(orders) { order in
+                            Button { selectedOrder = order } label: {
+                                workCard(title: order.orderNumber, detail: "\(order.businessName ?? "Business") · \(order.items.reduce(0) { $0 + $1.quantity }) items",
+                                    status: order.fulfillmentStatus, tone: order.tone ?? "warning", icon: "shippingbox")
+                            }.buttonStyle(.plain)
+                        }
+                        if leads.isEmpty && orders.isEmpty && !store.isLoadingWork && !store.isLoadingLeads && store.workFailure == nil && store.leadFailure == nil {
+                            Text(LegendLocalized("No work matches these filters.")).foregroundStyle(LegendNextColor.textSecondary)
+                        }
+                        Button(LegendLocalized("Load more work")) { Task { await store.loadWorkLeads(more: true); await store.loadWorkOrders(more: true) } }
+                            .buttonStyle(LegendNextButtonStyle(kind: .secondary)).disabled(store.isLoadingWork || store.isLoadingLeads)
+                        Text(LegendLocalized("Filters apply to loaded records. Load more to include older work; refresh after changes made elsewhere."))
+                            .font(LegendNextTypography.caption).foregroundStyle(LegendNextColor.textSecondary)
+                    }
+                }.padding(LegendNextSpacing.md).foregroundStyle(LegendNextColor.textPrimary)
+            }
+            .background(LegendNextGradient.financialSheet.ignoresSafeArea()).toolbar(.hidden, for: .navigationBar)
+            .refreshable { await refresh() }.task { await refresh() }
+            .sheet(item: $selectedOrder, onDismiss: { Task { await refresh() } }) { LegendWorkOrderEditor(order: $0, store: store) }
+            .sheet(item: $selectedLead, onDismiss: { Task { await refresh() } }) { LegendWorkLeadEditor(lead: $0, store: store) }
+        }.tint(LegendNextColor.goldBright)
+            .legendNextBrandedSheetAppearance(background: LegendNextGradient.financialSheet)
+    }
+    private var notifications: some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+            if store.isLoadingWorkNotifications { ProgressView() }
+            if store.workNotificationsFailed { retry("Notifications could not be refreshed.") }
+            if store.workSnapshot != nil && store.workSnapshot?.workChannelsVersion != 1 { retry("Work notifications are temporarily unavailable.") }
+            if items.isEmpty && store.workSnapshot?.workChannelsVersion == 1 { Text(LegendLocalized("No work notifications yet.")) }
+            ForEach(items) { item in
+                Button {
+                    navigationFailure = nil
+                    Task {
+                        await store.markRead(item.id)
+                        if let id = item.conversationID { openConversation(id) }
+                        else if let order = store.workOrders.first(where: { $0.notificationId == item.id }) { selectedOrder = order }
+                        else if let lead = store.workLeads.first(where: { $0.notificationId == item.id }) { selectedLead = lead }
+                        else {
+                            do {
+                                let target = try await store.resolveWorkNotification(item)
+                                selectedLead = target.0; selectedOrder = target.1
+                                if target.0 == nil && target.1 == nil { navigationFailure = "No accessible management record is linked to this notification. It may be historical test activity or a record that is no longer assigned to you." }
+                            } catch { navigationFailure = "The record could not be opened. Refresh and retry." }
+                        }
+                    }
+                } label: {
+                    workCard(title: item.title, detail: item.detail, status: item.isRead ? "Read" : "New",
+                        tone: item.isRead ? "info" : "warning", icon: item.kind == "StoreOrder" ? "shippingbox" : "bell.badge")
+                }.buttonStyle(.plain)
+            }
+        }
+    }
+    private func retry(_ message: String) -> some View {
+        VStack(alignment: .leading) {
+            Text(LegendLocalized(message)).foregroundStyle(LegendNextColor.danger)
+            Button(LegendLocalized("Refresh work")) { Task { await refresh() } }.buttonStyle(LegendNextButtonStyle(kind: .secondary))
+        }
+    }
+    private func workCard(title: String, detail: String, status: String, tone: String, icon: String) -> some View {
+        HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+            Image(systemName: icon).foregroundStyle(legendWorkColor(tone)).frame(width: 24).padding(.top, 3)
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                Text(title).font(LegendNextTypography.cardTitle).multilineTextAlignment(.leading)
+                Text(detail).font(LegendNextTypography.supporting).foregroundStyle(LegendNextColor.textSecondary).multilineTextAlignment(.leading)
+                LegendWorkStatus(label: status, tone: tone)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(LegendNextColor.textSecondary)
+        }.padding(LegendNextSpacing.md).background(LegendNextColor.surfaceElevated, in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(legendWorkColor(tone).opacity(0.22), lineWidth: 1))
+    }
+    private func refresh() async { await store.loadWorkNotifications(); await store.loadWorkLeads(); await store.loadWorkOrders() }
+}
+
+struct LegendWorkLeadEditor: View {
+    let lead: MobileWorkLead
+    @ObservedObject var store: MobileNotificationStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var stage = ""
+    @State private var note = ""
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(eyebrow: lead.businessName, title: lead.displayName, detail: LegendLocalized("Lead journey"), dismiss: { dismiss() })
+                    LegendWorkStatus(label: lead.stage, tone: lead.tone)
+                    if let email = lead.email { Text(email).textSelection(.enabled) }
+                    if let phone = lead.phone { Text(phone).textSelection(.enabled) }
+                    if let detail = lead.detail { Text(detail).font(LegendNextTypography.supporting) }
+                    if lead.allowedStages.isEmpty { Text(LegendLocalized("This record is read only.")) }
+                    else {
+                        Text(LegendLocalized("Next stage")).font(LegendNextTypography.cardTitle)
+                        Picker(LegendLocalized("Stage"), selection: $stage) {
+                            Text(LegendLocalized("Choose stage")).tag("")
+                            ForEach(lead.allowedStages, id: \.self) { Text(legendCrmLabel($0)).tag($0) }
+                        }.pickerStyle(.menu)
+                        if lead.kind != "inquiry" {
+                            TextField(LegendLocalized("Follow-up note (optional)"), text: $note, prompt: Text(LegendLocalized("Follow-up note (optional)")).foregroundStyle(LegendNextColor.contactSupporting), axis: .vertical).lineLimit(3...6).textFieldStyle(LegendWorkFieldStyle())
+                        }
+                        if let failure = store.leadFailure { Text(failure).foregroundStyle(LegendNextColor.danger) }
+                        Button(LegendLocalized(store.savingLead ? "Saving…" : "Save stage")) {
+                            Task { if await store.updateStage(lead, stage: stage, note: note) { dismiss() } }
+                        }.buttonStyle(LegendNextButtonStyle(kind: .gold)).disabled(store.savingLead || stage.isEmpty || stage == lead.stage || note.count > 4000)
+                        Text(LegendLocalized("Changes update the existing record. Closed work stays available in Work → Closed."))
+                            .font(LegendNextTypography.caption).foregroundStyle(LegendNextColor.textSecondary)
+                    }
+                }.padding(LegendNextSpacing.md).foregroundStyle(LegendNextColor.textPrimary)
+            }.background(LegendNextGradient.financialSheet.ignoresSafeArea()).toolbar(.hidden, for: .navigationBar)
+        }.tint(LegendNextColor.goldBright)
+            .legendNextBrandedSheetAppearance(background: LegendNextGradient.financialSheet)
+    }
+}
+
+struct LegendWorkOrderEditor: View {
     let order: MobileWorkOrder
     @ObservedObject var store: MobileNotificationStore
     @Environment(\.dismiss) private var dismiss
@@ -12329,32 +11542,52 @@ private struct LegendWorkOrderEditor: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section(order.businessName ?? "") {
-                    Text(order.orderNumber).font(.headline)
-                    ForEach(Array(order.items.enumerated()), id: \.offset) { _, line in
-                        Text("\(line.quantity) × \(line.productName) · \(line.size)")
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(eyebrow: order.businessName ?? LegendLocalized("Your business"), title: LegendLocalized("Order"), detail: order.orderNumber, dismiss: { dismiss() })
+                    LegendWorkStatus(label: order.fulfillmentStatus, tone: order.tone ?? "warning")
+                    LegendNextSurface(style: .navy) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            Label(LegendLocalized("Order items"), systemImage: "shippingbox").font(LegendNextTypography.cardTitle).foregroundStyle(LegendNextColor.goldBright)
+                            ForEach(Array(order.items.enumerated()), id: \.offset) { _, line in
+                                Text("\(line.quantity) × \(line.productName) · \(line.size)").font(LegendNextTypography.supporting)
+                            }
+                        }
                     }
-                }
-                Section(LegendLocalized("Ship to")) {
-                    Text("\(order.firstName) \(order.lastName)")
-                    Text([order.addressLine1, order.addressLine2, "\(order.city), \(order.state) \(order.postalCode)"].compactMap { $0 }.joined(separator: "\n"))
-                }
-                Section(LegendLocalized("Fulfillment")) {
-                    Picker(LegendLocalized("Status"), selection: $status) {
-                        ForEach(order.allowedStatuses, id: \.self) { Text(LegendLocalized($0)).tag($0) }
+                    LegendNextSurface(style: .navy) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            Label(LegendLocalized("Ship to"), systemImage: "mappin.and.ellipse").font(LegendNextTypography.cardTitle).foregroundStyle(LegendNextColor.goldBright)
+                            Text("\(order.firstName) \(order.lastName)").font(LegendNextTypography.label)
+                            Text([order.addressLine1, order.addressLine2, "\(order.city), \(order.state) \(order.postalCode)"].compactMap { $0 }.joined(separator: "\n"))
+                                .font(LegendNextTypography.supporting).foregroundStyle(LegendNextColor.contactSupporting).textSelection(.enabled)
+                        }
                     }
-                    TextField(LegendLocalized("Carrier"), text: $carrier)
-                    TextField(LegendLocalized("Tracking number"), text: $tracking).textInputAutocapitalization(.never)
-                    if let failure = store.workFailure { Text(failure).foregroundStyle(LegendNextColor.danger) }
-                    Button(LegendLocalized("Save fulfillment")) {
-                        Task { if await store.fulfill(order, status: status, carrier: carrier, tracking: tracking) { dismiss() } }
-                    }.disabled(store.savingOrderID != nil)
-                }
+                    LegendNextSurface(style: .navy) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                            Label(LegendLocalized("Fulfillment"), systemImage: "checklist").font(LegendNextTypography.cardTitle).foregroundStyle(LegendNextColor.goldBright)
+                            Picker(LegendLocalized("Status"), selection: $status) {
+                                ForEach(order.allowedStatuses, id: \.self) { Text(legendCrmLabel($0)).tag($0) }
+                            }.pickerStyle(.menu).frame(maxWidth: .infinity, alignment: .leading)
+                            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                                Text(LegendLocalized("Carrier")).font(LegendNextTypography.label)
+                                TextField(LegendLocalized("Carrier"), text: $carrier, prompt: Text(LegendLocalized("Carrier")).foregroundStyle(LegendNextColor.contactSupporting)).textFieldStyle(LegendWorkFieldStyle())
+                            }
+                            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                                Text(LegendLocalized("Tracking number")).font(LegendNextTypography.label)
+                                TextField(LegendLocalized("Tracking number"), text: $tracking, prompt: Text(LegendLocalized("Tracking number")).foregroundStyle(LegendNextColor.contactSupporting)).textInputAutocapitalization(.never).textFieldStyle(LegendWorkFieldStyle())
+                            }
+                            if let failure = store.workFailure { Text(failure).foregroundStyle(LegendNextColor.danger) }
+                            if order.allowedStatuses.isEmpty { Text(LegendLocalized("Payment or return review is required before fulfillment can change.")).foregroundStyle(LegendNextColor.contactSupporting) }
+                            Button(LegendLocalized(store.savingOrderID != nil ? "Saving…" : "Save fulfillment")) {
+                                Task { if await store.fulfill(order, status: status, carrier: carrier, tracking: tracking) { dismiss() } }
+                            }.buttonStyle(LegendNextButtonStyle(kind: .gold)).disabled(store.savingOrderID != nil || !order.allowedStatuses.contains(status))
+                        }
+                    }
+                }.padding(LegendNextSpacing.md).foregroundStyle(LegendNextColor.contactTitle)
             }
-            .navigationTitle(LegendLocalized("Order"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(LegendLocalized("Close")) { dismiss() } } }
-        }
+            .background(LegendNextGradient.financialSheet.ignoresSafeArea()).toolbar(.hidden, for: .navigationBar)
+        }.tint(LegendNextColor.goldBright)
+            .legendNextBrandedSheetAppearance(background: LegendNextGradient.financialSheet)
+
     }
 }
