@@ -6384,3 +6384,17 @@ Existing committed bundle covers HEAD only, never dirty work. No commit/push/mer
 new deployment is claimed. Remaining: authenticated local test setup through canonical
 owners, exact source acceptance, preservation/protected integration, Portal admission
 and selective direct deployment, then actual Simulator acceptance before archiving.
+
+Source-preservation closure: Astra independently verified final20-file manifest
+ba7b37424c17ff6e1e557876825e016532b954b205c02ae96e73361a064a914d and accepted
+source commit/preservation only. Release acceptance remains withheld for the gates
+above. Implementation d4094d8c4707d347f89cc357740b773dd8797385 was committed and
+session finish read back that exact GitHub task-branch HEAD. This supersedes the
+preceding in-progress no-commit statement; fast-track integration is still pending.
+Fresh20-file recovery archive, before commit, is
+/Users/zacowen/.codex/legend-mac/recovery/mobile-reviewed-source-20261111T205914/dirty-source.tar.gz,
+SHA2563d0968aa77c44b0b9c2f202f215e970313cef7ad8da1d4b4c9dd15304893e37a.
+It was read-back verified against all source digests. Dependencies were removed
+from the checkout after tests, with no lockfile changes. No deployment or store
+operation occurred. Draft protected integration is prepared with explicit holds;
+do not merge/deploy until required acceptance and current-head gates are satisfied.
