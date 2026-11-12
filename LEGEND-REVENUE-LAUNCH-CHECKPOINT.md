@@ -6516,3 +6516,58 @@ four targets; do not execute its obsolete cbaf exception/resume bindings. Azure 
 was observed Running with last active successful deploymentd5c7ffc3ce044aa8af7c2e581e8e0604.
 No Azure mutation has occurred in this continuation. Protected integration remains
 pending and nonpublishing; retain completed production receipts and archive.
+
+### 2026-11-11 — Full Work/booking contrast correction during release preparation
+
+Founder provided TestFlight screenshots and expanded scope to every Work modal and
+the broken mobile booking appearance. Preserve build36; new styled archive uses the
+canonical reserve-ios-build.py reservation37. No signing change. Control-only repair
+b9398df544fb1bdf9eb18744af6b2d7252920755 was independently accepted and exact remote
+preservation verified. Generated scripts/__pycache__ was preserved under /private/tmp
+before session finish, not mistaken for user edits. Fresh b939 security43163649450
+passed; architecture43163649457 and commerce43163649513 were still running at last read.
+The local broad Python suite had210 pass/1 error because Python3.9 lacks file_digest;
+focused18 impact tests pass under installed Python3.13. No gate was weakened.
+
+Root styling defects: Work sheets omitted existing legendNextBrandedSheetAppearance,
+and the order detail retained an unstyled system Form. Standalone MobileBooking loaded
+qv-booking.css without its canonical foundation/app-shell dependencies, leaving color
+and geometry variables undefined; its Bootstrap content lacked the component's dark
+surface. Corrected existing owners: all five Work pages, lead/order details and fields,
+status/empty/failure/loading actions, booking host chrome and shared booking modal.
+iOS reuses existing navy/gold sheet, surface and button tokens; Android extends its
+existing LegendTheme with a scoped branded-sheet palette for controls and error states.
+No alternate theme registry, backend/workflow or booking provider introduced. Order
+keyboard insets retained explicitly on Android. Mobile booking controls now have44px
+minimum touch height. Existing dark text on the Android portal error surface corrected.
+
+Evidence: iOS2 focused tests PASS in /private/tmp/legend-work-styling-final-ios.log;
+xcresult /private/tmp/legend-assistant-ios-build/Logs/Test/Test-Legend-2026.11.11_22-54-35--0700.xcresult.
+Seven rendered tabs/details inspected at /private/tmp/legend-work-final-styled-screens,
+including readable navy/gold fields and order action. Synthetic save/readback ordering
+regression remains passing. Android intermediate compile passed; final correction
+compile is /private/tmp/legend-work-styling-accepted-android.log. Booking canonical-owner
+contract1 passed (/private/tmp/legend-booking-theme-contract.log), placement unit1 passed.
+Supplemental synthetic component served on127.0.0.1:8857:390px has no horizontal overflow,
+18 slots, no fixture errors, slot selection and reachable final action, no mutations;
+1440px desktop also visually inspected. Existing fixture's synthetic service was given
+its required stable serviceId so the actual service selector populates. Evidence:
+/private/tmp/legend-booking-render-proof.log, legend-booking-exact-mobile.png,
+legend-booking-mobile-bottom.png and legend-booking-desktop.png. This does not claim
+real authentication, Outlook availability or appointment creation acceptance.
+
+Azure remains unmodified. Portal f491 package is superseded by booking source changes;
+retain it only as prior preparation evidence. Client package attempt blocked with
+isolated compiler MSB6006; Protect preparation detected changed execution-authority
+inputs after the reviewed control fix and stopped. Reconcile precise diagnostics and
+build final candidate packages; never deploy partial/superseded packages. Reuse prior
+source/test evidence only where inputs remain compatible. New native styled archive,
+final CI/admission and selective four-app deployment/runtime verification remain.
+
+Final styled source review accepted the11-file application/checkpoint scope for
+preservation and archive preparation. Canonical impact also needs exact native-only
+entries for LegendTheme.kt and LegendAgentClientCreationPortalView.swift; added these
+to the existing explicit map and regression (unknown siblings remain denied).
+Focused18 impact tests pass in /private/tmp/legend-work-style-impact-tests.log; final
+Android compilation PASS. Total affected backend selection remains the four managed
+apps, no Website. These control additions do not change accepted rendered app bytes.

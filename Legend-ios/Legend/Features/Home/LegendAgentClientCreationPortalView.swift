@@ -461,7 +461,8 @@ private struct LegendClientBookingPortalView: View {
             }
         }
         .foregroundStyle(LegendNextColor.textPrimary)
-        .background(LegendNextCanvas())
+        .background(LegendNextGradient.financialSheet.ignoresSafeArea())
+        .legendNextBrandedSheetAppearance(background: LegendNextGradient.financialSheet)
         .tint(LegendNextColor.goldBright)
         .task { await launch() }
     }

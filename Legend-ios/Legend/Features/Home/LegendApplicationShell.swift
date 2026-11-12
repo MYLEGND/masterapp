@@ -11299,6 +11299,15 @@ private struct LegendCrmSearchField: View {
 
 /// Work is a channel of the same server ledger; opening a row acknowledges that
 /// exact recipient-scoped notification, never the unrelated personal channel.
+private struct LegendWorkFieldStyle: TextFieldStyle {
+    func _body(configuration: TextField<Self._Label>) -> some View {
+        configuration.padding(LegendNextSpacing.sm)
+            .foregroundStyle(LegendNextColor.contactTitle)
+            .background(LegendNextColor.navy, in: RoundedRectangle(cornerRadius: LegendNextRadius.control))
+            .overlay(RoundedRectangle(cornerRadius: LegendNextRadius.control).stroke(LegendNextColor.contactBorder, lineWidth: 1))
+    }
+}
+
 private func legendWorkColor(_ tone: String) -> Color {
     switch tone {
     case "success": return LegendNextColor.success
@@ -11364,23 +11373,25 @@ struct LegendWorkNotificationsSheet: View {
                             Button { page = title; stage = "All stages"; navigationFailure = nil } label: {
                                 Text(LegendLocalized(title)).font(LegendNextTypography.label)
                                     .frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, 12)
-                                    .foregroundStyle(page == title ? LegendNextColor.contactTitle : LegendNextColor.textPrimary)
-                                    .background(page == title ? LegendNextColor.navy : LegendNextColor.surfaceInset, in: Capsule())
+                                    .foregroundStyle(page == title ? LegendNextColor.midnight : LegendNextColor.contactTitle)
+                                    .background(page == title ? LegendNextColor.goldBright : LegendNextColor.navyElevated, in: Capsule())
                             }.buttonStyle(.plain)
                         }
                     }
                     if page != "Notifications" {
-                        TextField(LegendLocalized("Search work"), text: $search).textFieldStyle(.roundedBorder)
+                        TextField(LegendLocalized("Search work"), text: $search, prompt: Text(LegendLocalized("Search work")).foregroundStyle(LegendNextColor.contactSupporting)).textFieldStyle(LegendWorkFieldStyle())
                         HStack {
                             Picker(LegendLocalized("Business"), selection: $business) {
                                 Text(LegendLocalized("All businesses")).tag("All businesses")
                                 ForEach(businesses, id: \.self) { Text($0).tag($0) }
-                            }.tint(LegendNextColor.navy)
+                            }.tint(LegendNextColor.goldBright)
+            .legendNextBrandedSheetAppearance(background: LegendNextGradient.financialSheet)
                             Spacer()
                             Picker(LegendLocalized("Stage"), selection: $stage) {
                                 Text(LegendLocalized("All stages")).tag("All stages")
                                 ForEach(stages, id: \.self) { Text(legendCrmLabel($0)).tag($0) }
-                            }.tint(LegendNextColor.navy)
+                            }.tint(LegendNextColor.goldBright)
+            .legendNextBrandedSheetAppearance(background: LegendNextGradient.financialSheet)
                         }
                         HStack(spacing: 8) {
                             LegendWorkStatus(label: "Review", tone: "warning")
@@ -11417,11 +11428,12 @@ struct LegendWorkNotificationsSheet: View {
                     }
                 }.padding(LegendNextSpacing.md).foregroundStyle(LegendNextColor.textPrimary)
             }
-            .background(LegendNextCanvas()).toolbar(.hidden, for: .navigationBar)
+            .background(LegendNextGradient.financialSheet.ignoresSafeArea()).toolbar(.hidden, for: .navigationBar)
             .refreshable { await refresh() }.task { await refresh() }
             .sheet(item: $selectedOrder, onDismiss: { Task { await refresh() } }) { LegendWorkOrderEditor(order: $0, store: store) }
             .sheet(item: $selectedLead, onDismiss: { Task { await refresh() } }) { LegendWorkLeadEditor(lead: $0, store: store) }
-        }.tint(LegendNextColor.navy)
+        }.tint(LegendNextColor.goldBright)
+            .legendNextBrandedSheetAppearance(background: LegendNextGradient.financialSheet)
     }
     private var notifications: some View {
         VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
@@ -11473,7 +11485,7 @@ struct LegendWorkNotificationsSheet: View {
     private func refresh() async { await store.loadWorkNotifications(); await store.loadWorkLeads(); await store.loadWorkOrders() }
 }
 
-private struct LegendWorkLeadEditor: View {
+struct LegendWorkLeadEditor: View {
     let lead: MobileWorkLead
     @ObservedObject var store: MobileNotificationStore
     @Environment(\.dismiss) private var dismiss
@@ -11496,22 +11508,23 @@ private struct LegendWorkLeadEditor: View {
                             ForEach(lead.allowedStages, id: \.self) { Text(legendCrmLabel($0)).tag($0) }
                         }.pickerStyle(.menu)
                         if lead.kind != "inquiry" {
-                            TextField(LegendLocalized("Follow-up note (optional)"), text: $note, axis: .vertical).lineLimit(3...6).textFieldStyle(.roundedBorder)
+                            TextField(LegendLocalized("Follow-up note (optional)"), text: $note, prompt: Text(LegendLocalized("Follow-up note (optional)")).foregroundStyle(LegendNextColor.contactSupporting), axis: .vertical).lineLimit(3...6).textFieldStyle(LegendWorkFieldStyle())
                         }
                         if let failure = store.leadFailure { Text(failure).foregroundStyle(LegendNextColor.danger) }
                         Button(LegendLocalized(store.savingLead ? "Saving…" : "Save stage")) {
                             Task { if await store.updateStage(lead, stage: stage, note: note) { dismiss() } }
-                        }.buttonStyle(LegendNextButtonStyle(kind: .primary)).disabled(store.savingLead || stage.isEmpty || stage == lead.stage || note.count > 4000)
+                        }.buttonStyle(LegendNextButtonStyle(kind: .gold)).disabled(store.savingLead || stage.isEmpty || stage == lead.stage || note.count > 4000)
                         Text(LegendLocalized("Changes update the existing record. Closed work stays available in Work → Closed."))
                             .font(LegendNextTypography.caption).foregroundStyle(LegendNextColor.textSecondary)
                     }
                 }.padding(LegendNextSpacing.md).foregroundStyle(LegendNextColor.textPrimary)
-            }.background(LegendNextCanvas()).toolbar(.hidden, for: .navigationBar)
-        }.tint(LegendNextColor.navy)
+            }.background(LegendNextGradient.financialSheet.ignoresSafeArea()).toolbar(.hidden, for: .navigationBar)
+        }.tint(LegendNextColor.goldBright)
+            .legendNextBrandedSheetAppearance(background: LegendNextGradient.financialSheet)
     }
 }
 
-private struct LegendWorkOrderEditor: View {
+struct LegendWorkOrderEditor: View {
     let order: MobileWorkOrder
     @ObservedObject var store: MobileNotificationStore
     @Environment(\.dismiss) private var dismiss
@@ -11529,34 +11542,52 @@ private struct LegendWorkOrderEditor: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section(order.businessName ?? "") {
-                    Text(order.orderNumber).font(.headline)
-                    ForEach(Array(order.items.enumerated()), id: \.offset) { _, line in
-                        Text("\(line.quantity) × \(line.productName) · \(line.size)")
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(eyebrow: order.businessName ?? LegendLocalized("Your business"), title: LegendLocalized("Order"), detail: order.orderNumber, dismiss: { dismiss() })
+                    LegendWorkStatus(label: order.fulfillmentStatus, tone: order.tone ?? "warning")
+                    LegendNextSurface(style: .navy) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            Label(LegendLocalized("Order items"), systemImage: "shippingbox").font(LegendNextTypography.cardTitle).foregroundStyle(LegendNextColor.goldBright)
+                            ForEach(Array(order.items.enumerated()), id: \.offset) { _, line in
+                                Text("\(line.quantity) × \(line.productName) · \(line.size)").font(LegendNextTypography.supporting)
+                            }
+                        }
                     }
-                }
-                Section(LegendLocalized("Ship to")) {
-                    Text("\(order.firstName) \(order.lastName)")
-                    Text([order.addressLine1, order.addressLine2, "\(order.city), \(order.state) \(order.postalCode)"].compactMap { $0 }.joined(separator: "\n"))
-                }
-                Section(LegendLocalized("Fulfillment")) {
-                    Picker(LegendLocalized("Status"), selection: $status) {
-                        ForEach(order.allowedStatuses, id: \.self) { Text(LegendLocalized($0)).tag($0) }
+                    LegendNextSurface(style: .navy) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+                            Label(LegendLocalized("Ship to"), systemImage: "mappin.and.ellipse").font(LegendNextTypography.cardTitle).foregroundStyle(LegendNextColor.goldBright)
+                            Text("\(order.firstName) \(order.lastName)").font(LegendNextTypography.label)
+                            Text([order.addressLine1, order.addressLine2, "\(order.city), \(order.state) \(order.postalCode)"].compactMap { $0 }.joined(separator: "\n"))
+                                .font(LegendNextTypography.supporting).foregroundStyle(LegendNextColor.contactSupporting).textSelection(.enabled)
+                        }
                     }
-                    TextField(LegendLocalized("Carrier"), text: $carrier)
-                    TextField(LegendLocalized("Tracking number"), text: $tracking).textInputAutocapitalization(.never)
-                    if let failure = store.workFailure { Text(failure).foregroundStyle(LegendNextColor.danger) }
-                    if order.allowedStatuses.isEmpty { Text(LegendLocalized("Payment or return review is required before fulfillment can change.")) }
-                    Button(LegendLocalized("Save fulfillment")) {
-                        Task { if await store.fulfill(order, status: status, carrier: carrier, tracking: tracking) { dismiss() } }
-                    }.buttonStyle(LegendNextButtonStyle(kind: .primary)).disabled(store.savingOrderID != nil || !order.allowedStatuses.contains(status))
-                }
+                    LegendNextSurface(style: .navy) {
+                        VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                            Label(LegendLocalized("Fulfillment"), systemImage: "checklist").font(LegendNextTypography.cardTitle).foregroundStyle(LegendNextColor.goldBright)
+                            Picker(LegendLocalized("Status"), selection: $status) {
+                                ForEach(order.allowedStatuses, id: \.self) { Text(legendCrmLabel($0)).tag($0) }
+                            }.pickerStyle(.menu).frame(maxWidth: .infinity, alignment: .leading)
+                            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                                Text(LegendLocalized("Carrier")).font(LegendNextTypography.label)
+                                TextField(LegendLocalized("Carrier"), text: $carrier, prompt: Text(LegendLocalized("Carrier")).foregroundStyle(LegendNextColor.contactSupporting)).textFieldStyle(LegendWorkFieldStyle())
+                            }
+                            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                                Text(LegendLocalized("Tracking number")).font(LegendNextTypography.label)
+                                TextField(LegendLocalized("Tracking number"), text: $tracking, prompt: Text(LegendLocalized("Tracking number")).foregroundStyle(LegendNextColor.contactSupporting)).textInputAutocapitalization(.never).textFieldStyle(LegendWorkFieldStyle())
+                            }
+                            if let failure = store.workFailure { Text(failure).foregroundStyle(LegendNextColor.danger) }
+                            if order.allowedStatuses.isEmpty { Text(LegendLocalized("Payment or return review is required before fulfillment can change.")).foregroundStyle(LegendNextColor.contactSupporting) }
+                            Button(LegendLocalized(store.savingOrderID != nil ? "Saving…" : "Save fulfillment")) {
+                                Task { if await store.fulfill(order, status: status, carrier: carrier, tracking: tracking) { dismiss() } }
+                            }.buttonStyle(LegendNextButtonStyle(kind: .gold)).disabled(store.savingOrderID != nil || !order.allowedStatuses.contains(status))
+                        }
+                    }
+                }.padding(LegendNextSpacing.md).foregroundStyle(LegendNextColor.contactTitle)
             }
-            .scrollContentBackground(.hidden).background(LegendNextCanvas()).foregroundStyle(LegendNextColor.textPrimary).tint(LegendNextColor.navy)
-            .navigationTitle(LegendLocalized("Order"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(LegendLocalized("Close")) { dismiss() } } }
-        }
+            .background(LegendNextGradient.financialSheet.ignoresSafeArea()).toolbar(.hidden, for: .navigationBar)
+        }.tint(LegendNextColor.goldBright)
+            .legendNextBrandedSheetAppearance(background: LegendNextGradient.financialSheet)
+
     }
 }

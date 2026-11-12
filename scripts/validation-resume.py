@@ -5053,6 +5053,8 @@ def fast_track_scope(paths):
     # Reviewed native application sources are not inputs to server packages.
     # Keep this exact: new native files still require ownership review.
     native_only = {
+        'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/core/design/LegendTheme.kt',
+        'Legend-ios/Legend/Features/Home/LegendAgentClientCreationPortalView.swift',
         'Legend-Android/app/src/main/java/com/mylegnd/legend/registered/ui/LegendFounderAiConversation.kt',
         'Legend-Android/app/src/test/java/com/mylegnd/legend/registered/FounderAiMobileContractTest.kt',
         'Legend-ios/Legend.xcodeproj/project.pbxproj',

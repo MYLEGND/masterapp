@@ -49,9 +49,12 @@ final class MobileNativeContractTests: XCTestCase {
         let api = WorkPipelineFixtureAPI()
         let store = MobileNotificationStore(api: api, accessTokenProvider: { "synthetic-test-token" }, diagnostics: LegendDiagnostics())
         await store.loadWorkLeads(); await store.loadWorkOrders(); await store.loadWorkNotifications()
-        for page in ["Notifications", "Leads", "Orders", "Completed", "Closed"] {
-            let view = LegendWorkNotificationsSheet(store: store, initialPage: page, openConversation: { _ in })
-                .environment(\.colorScheme, .light)
+        var views = ["Notifications", "Leads", "Orders", "Completed", "Closed"].map { page in
+            (page, AnyView(LegendWorkNotificationsSheet(store: store, initialPage: page, openConversation: { _ in })))
+        }
+        views.append(("Lead-detail", AnyView(LegendWorkLeadEditor(lead: try XCTUnwrap(store.workLeads.first), store: store))))
+        views.append(("Order-detail", AnyView(LegendWorkOrderEditor(order: try XCTUnwrap(store.workOrders.first), store: store))))
+        for (page, view) in views {
             let host = UIHostingController(rootView: view)
             let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
             window.rootViewController = host; window.makeKeyAndVisible(); host.view.frame = window.bounds
