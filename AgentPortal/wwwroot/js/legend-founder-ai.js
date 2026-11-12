@@ -43,8 +43,6 @@
     const mobileSheet = modalElement.querySelector('[data-legend-mobile-sheet]');
     const statusDetail = status?.querySelector('.legend-founder-ai-thinking-detail');
     const settingsPanel = document.getElementById('legendFounderAiSettingsPanel');
-    const settingsBody = document.getElementById('legendFounderAiSettingsBody');
-    const settingsTitle = document.getElementById('legendFounderAiSettingsTitle');
     const settingsClose = document.getElementById('legendFounderAiSettingsClose');
     const settingButtons = Array.from(modalElement.querySelectorAll('[data-legend-ai-setting]'));
 
@@ -1668,7 +1666,7 @@
             (conversation.mode === 'business' && (businessConfiguration.workspaceKey !== conversation.assistantWorkspaceKey ||
                 businessConfiguration.revision !== conversation.assistantConfigurationRevision || conversation.assistantProvider !== 'openai'))) {
             voiceStatus.textContent = 'Choose your authorized workspace and enable dictation in its OpenAI settings. Dictation needs its own approved funding; your chat model selection is unchanged.';
-            setSidebarOpen(true);
+            openSettingsPanel();
             if (businessSettings) { businessSettings.open = true; businessSettings.scrollIntoView({ block: 'nearest' }); }
             return;
         }
@@ -1753,85 +1751,14 @@
         if (settingsPanel) settingsPanel.hidden = true;
     }
 
-    function settingsAction(label, detail, action) {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'legend-founder-ai-settings-action';
-        const copy = document.createElement('span');
-        const strong = document.createElement('strong');
-        const small = document.createElement('small');
-        strong.textContent = label;
-        small.textContent = detail;
-        copy.append(strong, small);
-        button.appendChild(copy);
-        button.addEventListener('click', action);
-        return button;
-    }
-
-    function openSettingsPanel(kind) {
-        if (!settingsPanel || !settingsBody || !settingsTitle) return;
-        settingsBody.replaceChildren();
-        const current = activeConversation();
-
-        if (kind === 'model') {
-            settingsTitle.textContent = 'Model';
-            settingsBody.append(
-                settingsAction('Choose model', 'Choose Auto or a configured model in this conversation.', () => { closeSettingsPanel(); modelSelection?.focus(); })
-            );
-        } else if (kind === 'tools') {
-            settingsTitle.textContent = 'Tools & data';
-            settingsBody.append(
-                settingsAction(
-                    current.nativeOnly ? 'Allow governed providers' : 'Block all external providers',
-                    current.nativeOnly ? 'Start a clean LEGEND conversation with governed provider access restored.' : 'Start a clean native-only conversation with external answering, research, and translation disabled.',
-                    () => {
-                        closeSettingsPanel();
-                        if (!nativeOnly || current.mode === 'business') return;
-                        nativeOnly.checked = !current.nativeOnly;
-                        nativeOnly.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                ),
-                settingsAction(
-                    current.externalAnsweringBlocked ? 'Allow external answering' : 'Block external answering',
-                    'Keep authorized research and translation available while controlling external answer generation.',
-                    () => {
-                        closeSettingsPanel();
-                        if (!externalAnsweringBlocked || current.mode === 'business' || current.nativeOnly) return;
-                        externalAnsweringBlocked.checked = !current.externalAnsweringBlocked;
-                        externalAnsweringBlocked.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                )
-            );
-        } else if (kind === 'behavior') {
-            settingsTitle.textContent = 'Behavior';
-            settingsBody.append(
-                settingsAction(
-                    founderCommandConfirmed?.checked ? 'Disable governed action permission' : 'Allow governed action',
-                    'Authorize only this request’s bounded governed action. Release approval remains separate.',
-                    () => {
-                        if (!founderCommandConfirmed) return;
-                        founderCommandConfirmed.checked = !founderCommandConfirmed.checked;
-                        closeSettingsPanel();
-                    }
-                )
-            );
-        } else {
-            settingsTitle.textContent = 'History';
-            settingsBody.append(
-                settingsAction('New conversation', 'Start a clean conversation while preserving prior account history.', () => {
-                    closeSettingsPanel();
-                    startNewConversation();
-                })
-            );
-        }
-
+    function openSettingsPanel() {
+        if (!settingsPanel || !settingsPanel.hidden) return;
+        // Reuse the shared modal owner for stacking, Escape, Tab and focus return.
+        // Keep the conversation drawer underneath so its gear remains the opener.
         settingsPanel.hidden = false;
-        settingsClose?.focus({ preventScroll: true });
     }
 
-    settingButtons.forEach(button => {
-        button.addEventListener('click', () => openSettingsPanel(button.dataset.legendAiSetting || 'history'));
-    });
+    settingButtons.forEach(button => button.addEventListener('click', openSettingsPanel));
     settingsClose?.addEventListener('click', closeSettingsPanel);
 
     modelSelection?.addEventListener('change', () => {
@@ -2003,7 +1930,9 @@
         // Read only displayed page text, never form values, hidden application
         // state, credentials, or this assistant's own transcript. This is user
         // supplied evidence, not permission to execute instructions on a page.
-        const root = Array.from(document.querySelectorAll('main, [role="main"]')).find(el => !modalElement.contains(el)) || document.body;
+        const root = document.querySelector('[data-legend-page-content]') ||
+            Array.from(document.querySelectorAll('main, [role="main"]')).find(el =>
+                !el.closest('.modal, dialog, [data-legend-modal-surface]') && !modalElement.contains(el)) || document.body;
         const parts = [];
         let length = 0;
         let visited = 0;

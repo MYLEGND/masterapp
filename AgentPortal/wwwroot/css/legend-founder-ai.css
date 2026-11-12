@@ -303,6 +303,7 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
+    color: var(--legend-ai-text);
     padding: 10px;
     background:
         radial-gradient(circle at 18% -8%, color-mix(in srgb, var(--legend-ai-blue) 10%, transparent), transparent 30%),
@@ -408,10 +409,10 @@
     gap: 8px;
     margin: 0 0 6px;
     padding: 9px 10px;
-    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-300) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--legend-ai-text) 16%, transparent);
     border-radius: 12px;
-    background: linear-gradient(135deg, var(--legend-ai-gold-300), var(--legend-ai-gold-700));
-    color: #14213a;
+    background: var(--legend-ai-navy-950);
+    color: var(--legend-ai-text);
     text-align: left;
     cursor: pointer;
     transition: border-color .14s ease, background .14s ease, transform .14s ease;
@@ -477,10 +478,10 @@
     gap: 8px;
     margin: 0 0 6px;
     padding: 6px 8px;
-    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-300) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--legend-ai-text) 16%, transparent);
     border-radius: 11px;
-    background: linear-gradient(135deg, var(--legend-ai-gold-300), var(--legend-ai-gold-700));
-    color: #14213a;
+    background: var(--legend-ai-navy-950);
+    color: var(--legend-ai-text);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.32);
     text-align: left;
     cursor: pointer;
@@ -615,10 +616,10 @@
     align-items: center;
     gap: 8px;
     padding: 6px 10px;
-    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-300) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--legend-ai-text) 16%, transparent);
     border-radius: 12px;
-    background: linear-gradient(135deg, var(--legend-ai-gold-300), var(--legend-ai-gold-700));
-    color: #14213a;
+    background: var(--legend-ai-navy-950);
+    color: var(--legend-ai-text);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.34), 0 7px 18px rgba(0,0,0,.12);
     cursor: pointer;
 }
@@ -1007,6 +1008,60 @@
 /* One selector moves through the existing control-placement owner on mobile. */
 .legend-founder-ai-mobile-model-slot { display: none; }
 .legend-founder-ai-model-control { min-width: 0; }
+.legend-founder-ai-model-control select {
+    width: auto;
+    max-width: 100%;
+    min-height: 44px;
+    padding: 8px 28px 8px 12px;
+    border: 1px solid color-mix(in srgb, var(--legend-ai-text) 18%, transparent);
+    border-radius: 14px;
+    color: var(--legend-ai-text);
+    background-color: var(--legend-ai-navy-950);
+    color-scheme: dark;
+    appearance: auto;
+    background-image: none;
+    font-size: .85rem;
+}
+.legend-founder-ai-model-control select:disabled { opacity: .65; }
+.legend-founder-ai-modal #legendBusinessAssistantSettings {
+    color: var(--legend-ai-text);
+    font-size: .82rem;
+    line-height: 1.45;
+}
+.legend-founder-ai-modal #legendBusinessAssistantSettings summary {
+    padding: 10px 0;
+    font-weight: 600;
+    cursor: pointer;
+}
+.legend-founder-ai-modal #legendBusinessAssistantSettings label { display: block; margin: 10px 0 5px; }
+.legend-founder-ai-modal #legendBusinessAssistantSettings :is(p, small) { color: var(--legend-ai-muted); margin: 8px 0 12px; }
+.legend-founder-ai-modal #legendBusinessAssistantSettings :is(select, input:not([type="checkbox"])) {
+    width: 100%;
+    min-height: 44px;
+    padding: 9px 12px;
+    border: 1px solid color-mix(in srgb, var(--legend-ai-text) 22%, transparent);
+    border-radius: 12px;
+    color: var(--legend-ai-text);
+    background-color: var(--legend-ai-navy-950);
+    color-scheme: dark;
+    appearance: auto;
+    background-image: none;
+    font-size: .85rem;
+}
+.legend-founder-ai-modal #legendBusinessAssistantSettings .btn {
+    min-height: 44px;
+    margin: 5px 0;
+    padding: 9px 12px;
+    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-500) 50%, transparent);
+    border-radius: 12px;
+    color: var(--legend-ai-gold-300);
+    background: transparent;
+    font-size: .82rem;
+}
+.legend-founder-ai-modal #legendBusinessAssistantSettings :is(select, input, button, summary):focus-visible {
+    outline: 2px solid var(--legend-ai-gold-500);
+    outline-offset: 2px;
+}
 #legendFounderAiVoiceStatus { color: var(--legend-ai-text); margin: 6px 4px 0; font-size: .8rem; }
 #legendFounderAiVoiceStatus:empty { display: none; }
 #legendFounderAiVoiceCancel { color: var(--legend-ai-text); background: transparent; border: 1px solid currentColor; border-radius: 12px; padding: 8px; }
@@ -1162,10 +1217,12 @@
     display: none;
 }
 
-.legend-founder-ai-settings-panel {
-    position: absolute;
-    z-index: 30;
-    inset: 14px;
+#legendFounderAiSettingsPanel > .legend-founder-ai-settings-panel {
+    position: relative;
+    width: 100%;
+    max-width: 560px;
+    height: min(680px, calc(100dvh - 32px));
+    margin-inline: auto;
     display: grid;
     grid-template-rows: auto minmax(0,1fr);
     overflow: hidden;
@@ -1176,7 +1233,7 @@
     box-shadow: 0 30px 78px rgba(2,10,28,.42);
 }
 
-.legend-founder-ai-settings-panel[hidden] {
+#legendFounderAiSettingsPanel[hidden] {
     display: none;
 }
 
@@ -1230,46 +1287,6 @@
     gap: 9px;
     padding: 14px;
 }
-
-.legend-founder-ai-settings-action {
-    width: 100%;
-    min-height: 52px;
-    display: flex;
-    align-items: center;
-    padding: 9px 11px;
-    border: 1px solid color-mix(in srgb, var(--legend-ai-gold-300) 72%, transparent);
-    border-radius: 12px;
-    background: linear-gradient(135deg, var(--legend-ai-gold-300), var(--legend-ai-gold-700));
-    color: #14213a;
-    text-align: left;
-    cursor: pointer;
-}
-
-.legend-founder-ai-settings-action:hover,
-.legend-founder-ai-settings-action:focus-visible {
-    border-color: var(--legend-ai-blue-bright);
-    background: linear-gradient(135deg, var(--legend-ai-blue), var(--legend-ai-blue-bright));
-    color: #ffffff;
-    outline: none;
-}
-
-.legend-founder-ai-settings-action > span {
-    display: grid;
-    gap: 2px;
-}
-
-.legend-founder-ai-settings-action strong {
-    font-size: .75rem;
-    font-weight: 900;
-}
-
-.legend-founder-ai-settings-action small {
-    color: inherit;
-    opacity: .76;
-    font-size: .63rem;
-    line-height: 1.35;
-}
-
 
 /* ==========================================================
    COMPACT DESKTOP / TABLET LANDSCAPE
@@ -1400,7 +1417,7 @@
         top: 0;
         bottom: 0;
         left: 0;
-        width: min(86vw, 338px);
+        width: min(82vw, 320px);
         padding: 10px 10px max(10px, env(safe-area-inset-bottom));
         transform: translateX(-102%);
         transition: transform .20s ease;
@@ -1627,7 +1644,7 @@
 
     .legend-founder-ai-mobile-model-slot { display: block; grid-column: 1; grid-row: 2; min-width: 0; }
     .legend-founder-ai-model-control { display: block; }
-    .legend-founder-ai-model-control select { width: 100%; min-width: 0; max-width: 100%; min-height: 44px; color: var(--legend-ai-text); background-color: transparent; border: 0; }
+    .legend-founder-ai-model-control select { width: auto; min-width: 0; max-width: min(100%, 180px); }
     .legend-founder-ai-voice-focus { grid-column: 2; grid-row: 2; }
     .legend-founder-ai-send { grid-column: 3; grid-row: 2; }
     #legendFounderAiVoiceCancel { grid-column: 1 / -1; grid-row: 3; }
@@ -1649,7 +1666,6 @@
     }
 
     .legend-founder-ai-settings-panel {
-        inset: 8px;
         border-radius: 14px;
     }
 

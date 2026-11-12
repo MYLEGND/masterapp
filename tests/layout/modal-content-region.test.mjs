@@ -409,10 +409,10 @@ test('conversational surfaces use the same canonical roadster palette and do not
   assert.match(aiView,/id="legendFounderAiComposerMenu"/);
   assert.match(aiView,/id="legendFounderAiVoiceFocus"/);
   assert.ok(aiView.indexOf('id="legendFounderAiModebar"') > aiView.indexOf('id="legendFounderAiMobileControls"'));
-  assert.ok(aiView.indexOf('id="legendFounderAiModebar"') < aiView.indexOf('legend-founder-ai-conversations-section'));
+  assert.ok(aiView.indexOf('id="legendFounderAiModebar"') > aiView.indexOf('id="legendFounderAiSettingsBody"'));
   assert.ok(aiView.indexOf('id="legendFounderAiRetry"') < aiView.indexOf('legend-founder-ai-conversations-section'));
   assert.doesNotMatch(aiView,/id="legendFounderAiModebarHome"/);
-  assert.ok(aiView.indexOf('id="legendFounderAiFounderCommandConfirmed"') < aiView.indexOf('legend-founder-ai-conversations-section'));
+  assert.ok(aiView.indexOf('id="legendFounderAiFounderCommandConfirmed"') > aiView.indexOf('id="legendFounderAiSettingsBody"'));
   assert.doesNotMatch(aiView,/legend-founder-ai-composer-meta[\s\S]{0,800}id="legendFounderAiFounderCommandConfirmed"/);
   assert.match(aiJs,/modebar\.parentElement !== mobileControls[\s\S]*mobileControls\.appendChild\(modebar\)/);
   assert.match(aiJs,/data-legend-ai-suggestion/);
@@ -454,22 +454,19 @@ test('Legend AI uses canonical profile identity, backdrop dismissal, and one dra
   assert.match(script,/composerMenu\?\.addEventListener[\s\S]*setSidebarOpen\(true\)/);
 });
 
-test('Legend AI panel controls are gold by default and blue when selected without light fallback surfaces',()=>{
+test('Legend AI secondary controls use dark surfaces while primary actions retain branded states',()=>{
   const css=readFileSync(new URL('../../AgentPortal/wwwroot/css/legend-founder-ai.css',import.meta.url),'utf8');
 
   assert.match(css,/\.legend-founder-ai-mode \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-gold-300\), var\(--legend-ai-gold-700\)\)/);
   assert.match(css,/\.legend-founder-ai-mode\.is-active \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-blue\), var\(--legend-ai-blue-bright\)\)/);
-  assert.match(css,/\.legend-founder-ai-native-only \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-gold-300\), var\(--legend-ai-gold-700\)\)/);
+  assert.match(css,/\n\.legend-founder-ai-native-only \{[^}]*background: var\(--legend-ai-navy-950\)/);
   assert.match(css,/\.legend-founder-ai-native-only\.is-active \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-blue\), var\(--legend-ai-blue-bright\)\)/);
   assert.match(css,/\.legend-founder-ai-mutation-confirmation \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-gold-300\), var\(--legend-ai-gold-700\)\)/);
   assert.match(css,/\.legend-founder-ai-mutation-confirmation:has\(input:checked\) \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-blue\), var\(--legend-ai-blue-bright\)\)/);
-  assert.match(css,/\.legend-founder-ai-settings-action \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-gold-300\), var\(--legend-ai-gold-700\)\)/);
-  assert.match(css,/\.legend-founder-ai-settings-action:hover,[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-blue\), var\(--legend-ai-blue-bright\)\)/);
-  assert.match(css,/\.legend-founder-ai-history-item \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-gold-300\), var\(--legend-ai-gold-700\)\)/);
+  assert.match(css,/\n\.legend-founder-ai-history-item \{[^}]*background: var\(--legend-ai-navy-950\)/);
   assert.match(css,/\.legend-founder-ai-history-item\.is-active \{[\s\S]*background: color-mix\(in srgb, var\(--legend-ai-blue\) 24%, var\(--legend-ai-navy-925\)\)/);
   assert.match(css,/\.legend-founder-ai-sidebar-retry \{[\s\S]*background: linear-gradient\(135deg, var\(--legend-ai-gold-300\), var\(--legend-ai-gold-700\)\)/);
   assert.doesNotMatch(css,/\.legend-founder-ai-settings-panel \{[^}]*background:\s*#ffffff/);
-  assert.doesNotMatch(css,/\.legend-founder-ai-settings-action \{[^}]*background:\s*#ffffff/);
   assert.doesNotMatch(css,/\.legend-founder-ai-mutation-confirmation \{[^}]*background:\s*#ffffff/);
   assert.doesNotMatch(css,/\.legend-founder-ai-mobile-controls[\s\S]{0,1200}background:\s*#ffffff/);
 });

@@ -80,6 +80,66 @@
                         </button>
                     </div>
 
+                    <button type="button"
+                            id="legendFounderAiRetry"
+                            class="legend-founder-ai-sidebar-retry"
+                            hidden>
+                        Check or retry the same request
+                    </button>
+
+                    <section class="legend-founder-ai-sidebar-section legend-founder-ai-conversations-section">
+                        <div class="legend-founder-ai-sidebar-heading">
+                            <span class="legend-founder-ai-sidebar-label">
+                                Conversations
+                            </span>
+                            <span class="legend-founder-ai-count"
+                                  id="legendFounderAiConversationCount">0</span>
+                        </div>
+
+                        <div class="legend-founder-ai-history"
+                             id="legendFounderAiHistory">
+                        </div>
+
+                        <div class="legend-founder-ai-history-empty"
+                             id="legendFounderAiHistoryEmpty">
+                            No previous conversations yet.
+                        </div>
+                    </section>
+
+                    <section class="legend-founder-ai-sidebar-section legend-founder-ai-settings">
+                        <button type="button" class="legend-founder-ai-setting" data-legend-ai-setting="settings"
+                                aria-haspopup="dialog" aria-controls="legendFounderAiSettingsPanel">
+                            <span class="legend-founder-ai-setting-icon" aria-hidden="true">⚙</span>
+                            <span class="legend-founder-ai-setting-summary"><strong>Settings</strong><small>Workspace, privacy &amp; permissions</small></span>
+                            <span class="legend-founder-ai-setting-chevron" aria-hidden="true">›</span>
+                        </button>
+                    </section>
+
+                    <div class="legend-founder-ai-sidebar-spacer"></div>
+
+                </aside>
+
+                <button type="button"
+                        id="legendFounderAiSidebarScrim"
+                        class="legend-founder-ai-sidebar-scrim"
+                        aria-label="Close conversations">
+                </button>
+
+                <section id="legendFounderAiSettingsPanel"
+                         data-legend-modal-surface
+                         aria-modal="true"
+                         role="dialog"
+                         aria-labelledby="legendFounderAiSettingsTitle"
+                         hidden>
+                    <div class="legend-founder-ai-settings-panel" data-legend-modal-panel>
+                    <header>
+                        <div>
+                            <span class="legend-founder-ai-settings-kicker">@Shared.Branding.LegendBrand.RegisteredTitle Ai settings</span>
+                            <h3 id="legendFounderAiSettingsTitle">Settings</h3>
+                        </div>
+                        <button type="button" id="legendFounderAiSettingsClose" data-legend-modal-close aria-label="Close @Shared.Branding.LegendBrand.RegisteredTitle Ai settings">×</button>
+                    </header>
+                    <div id="legendFounderAiSettingsBody" class="legend-founder-ai-settings-body">
                     <div id="legendFounderAiMobileControls"
                          class="legend-founder-ai-mobile-controls"
                          aria-label="@Shared.Branding.LegendBrand.RegisteredTitle Ai conversation controls">
@@ -108,10 +168,13 @@
                                     <p id="legendBusinessAssistantSaveStatus" role="status"></p>
                                 </details>
                                 <button type="button" id="legendBusinessAssistantStart" class="btn btn-outline-primary">Start scoped conversation</button>
+                                <details class="legend-founder-ai-media-options">
+                                    <summary>Image tools</summary>
                                 <label class="d-block"><input id="legendBusinessAssistantGenerateImage" type="checkbox" /> Generate or edit an image from my next message</label>
                                 <label for="legendBusinessAssistantImageReferences">Reference images from this workspace (up to four)</label>
                                 <select id="legendBusinessAssistantImageReferences" class="form-select" multiple></select>
                                 <p>Image requests send the selected references to your configured provider and save the result privately in the existing media library. Select the saved image in Studio to use it in a draft. Publication requires its existing review.</p>
+                                </details>
                                 <p>Provider connections and funding must be configured and reviewed for this workspace. ChatGPT sign-in does not connect an API account. Recommendations require review; this mode cannot execute changes.</p>
                             </details>
 
@@ -134,13 +197,6 @@
                         </div>
                     </div>
 
-                    <button type="button"
-                            id="legendFounderAiRetry"
-                            class="legend-founder-ai-sidebar-retry"
-                            hidden>
-                        Check or retry the same request
-                    </button>
-
                     <section class="legend-founder-ai-sidebar-section legend-founder-ai-governed-action-section">
                         <div class="legend-founder-ai-sidebar-heading">
                             <span class="legend-founder-ai-sidebar-label">Governed action</span>
@@ -152,76 +208,8 @@
                         </label>
                     </section>
 
-                    <section class="legend-founder-ai-sidebar-section legend-founder-ai-conversations-section">
-                        <div class="legend-founder-ai-sidebar-heading">
-                            <span class="legend-founder-ai-sidebar-label">
-                                Conversations
-                            </span>
-                            <span class="legend-founder-ai-count"
-                                  id="legendFounderAiConversationCount">0</span>
-                        </div>
-
-                        <div class="legend-founder-ai-history"
-                             id="legendFounderAiHistory">
-                        </div>
-
-                        <div class="legend-founder-ai-history-empty"
-                             id="legendFounderAiHistoryEmpty">
-                            No previous conversations yet.
-                        </div>
-                    </section>
-
-                    <section class="legend-founder-ai-sidebar-section legend-founder-ai-settings">
-                        <div class="legend-founder-ai-sidebar-heading">
-                            <span class="legend-founder-ai-sidebar-label">Settings</span>
-                        </div>
-
-                        <button type="button" class="legend-founder-ai-setting" data-legend-ai-setting="model">
-                            <span class="legend-founder-ai-setting-icon" aria-hidden="true">◉</span>
-                            <span class="legend-founder-ai-setting-summary"><strong>Model</strong><small>Choose model in chat</small></span>
-                            <span class="legend-founder-ai-setting-chevron" aria-hidden="true">›</span>
-                        </button>
-                        <button type="button" class="legend-founder-ai-setting" data-legend-ai-setting="tools">
-                            <span class="legend-founder-ai-setting-icon" aria-hidden="true">◇</span>
-                            <span class="legend-founder-ai-setting-summary"><strong>Tools &amp; data</strong><small>Governed access</small></span>
-                            <span class="legend-founder-ai-setting-chevron" aria-hidden="true">›</span>
-                        </button>
-                        <button type="button" class="legend-founder-ai-setting" data-legend-ai-setting="behavior">
-                            <span class="legend-founder-ai-setting-icon" aria-hidden="true">✦</span>
-                            <span class="legend-founder-ai-setting-summary"><strong>Behavior</strong><small>Action permissions</small></span>
-                            <span class="legend-founder-ai-setting-chevron" aria-hidden="true">›</span>
-                        </button>
-                        <button type="button" class="legend-founder-ai-setting" data-legend-ai-setting="history">
-                            <span class="legend-founder-ai-setting-icon" aria-hidden="true">⌁</span>
-                            <span class="legend-founder-ai-setting-summary"><strong>History</strong><small>Conversation controls</small></span>
-                            <span class="legend-founder-ai-setting-chevron" aria-hidden="true">›</span>
-                        </button>
-                    </section>
-
-                    <div class="legend-founder-ai-sidebar-spacer"></div>
-
-                </aside>
-
-                <button type="button"
-                        id="legendFounderAiSidebarScrim"
-                        class="legend-founder-ai-sidebar-scrim"
-                        aria-label="Close conversations">
-                </button>
-
-                <section id="legendFounderAiSettingsPanel"
-                         class="legend-founder-ai-settings-panel"
-                         aria-modal="true"
-                         role="dialog"
-                         aria-labelledby="legendFounderAiSettingsTitle"
-                         hidden>
-                    <header>
-                        <div>
-                            <span class="legend-founder-ai-settings-kicker">@Shared.Branding.LegendBrand.RegisteredTitle Ai settings</span>
-                            <h3 id="legendFounderAiSettingsTitle">Settings</h3>
-                        </div>
-                        <button type="button" id="legendFounderAiSettingsClose" aria-label="Close @Shared.Branding.LegendBrand.RegisteredTitle Ai settings">×</button>
-                    </header>
-                    <div id="legendFounderAiSettingsBody" class="legend-founder-ai-settings-body"></div>
+                    </div>
+                    </div>
                 </section>
 
                 <section class="legend-founder-ai-main">
