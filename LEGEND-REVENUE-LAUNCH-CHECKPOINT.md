@@ -6463,3 +6463,14 @@ fresh candidate-bound admission and selective direct Mac stop/deploy/restart of
 required backend support, exact runtime provenance, then authenticated Simulator
 record/stage, account-switch, keyboard/navigation and AI/audio acceptance. Do not
 archive until these gates are satisfied. No gates are waived by source preservation.
+
+Work source-preservation closure: Astra independently accepted the exact23-file
+manifest SHA25638258a568c91a417fef806e9cedc47cd3aa2a7e667e41d5895a7f5949cd859b0
+for commit/preservation only. Canonical session finish verified GitHub task HEAD
+58abf5eeb258ed623f3bbb06b51704f65fa7a405. Exact reviewed dirty recovery archive:
+/Users/zacowen/.codex/legend-mac/recovery/work-reviewed-source-20261111T220754/dirty-source.tar.gz,
+SHA25653ed4ae3dd9536c15fd63adac039370476373fe513f7ebf7416735baf1b467e4;
+all23 file digests were read back and verified before commit. PR775 now covers AI
+and Work, remains draft/unmerged. Fast-track verified unchanged at
+8ce18161bcdaf4a396d4a831c7b55f31612b3da3. Release holds above remain unchanged;
+no new production runtime identity or archive readiness is claimed.
