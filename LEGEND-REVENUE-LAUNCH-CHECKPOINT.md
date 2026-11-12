@@ -6276,3 +6276,51 @@ admission/c71cde5e1/remaining-gate.json and packages; do not deploy superseded P
 bytes. Current live Portal remains e7b78aa16, other runtime baselines unchanged.
 PR774 continues this same repair; package/validation compatibility must be reconciled
 for the new candidate before admission, with no replay of successful prior effects.
+
+
+### Settings/page/theme direct Mac release — 2026-11-11 continuation
+Implemented candidate cbaf306d8bbddcf86d35dceafcb51e3076969cb0 is preserved on the
+existing task branch. Portal uses that exact package. Client, Protect, Parfait and
+Website reuse unchanged c71cde5e1fa7488846b55cf54a4486912ef3ea00 packages; canonical
+impact excludes those four from the settings-only continuation. Combined manifest
+/private/tmp/legend-settings-cbaf306d8/release-packages.json has SHA256
+5710baa569aa28091797a4c3b24c7889b7a9cb97f210fe6b81ca50b9db232971.
+
+Exact cbaf security43122452306, architecture43122452254 and commerce43122452397
+completed SUCCESS. Focused layout53, JS10, retained backend6 and assistant geometry
+at nine widths passed. Full geometry harness still reports its pre-existing unrelated
+Messages palette failure; physical iPhone microphone and authenticated analytics
+journey remain unverified. Founder deferred remaining rendered acceptance. The page
+root selection repair does not resolve or claim acceptance of a separate canonical
+analytics query timeout. No new attachment flow, automation capability, provider
+change, billing change or schema application was performed.
+
+Independent Astra accepted settings diff and exact native admission/continuations.
+Read-only schema observations found241 applied/0pending migrations. Existing single-IP
+ZacLocalDev-AutoSync firewall rule was refreshed under prior authorization; no broader
+rule or customer-data change. Hold43122701404 coordinated this release.
+
+All five uploads completed once after stop. Portal/client/protect/parfait/website IDs:
+d5c7ffc3ce044aa8af7c2e581e8e0604 / 497c7019776c4d438db6b76f092cc73d /
+aa6a1c42d1b54d24aaaea1f3f7e51f99 / 1dedd0c50c6842599131ba927afd9bc7 /
+590ce7897a3541d5ac868661e57a2d28. Portal read failure was reconciled without replay.
+Protect CLI1 occurred reading SCM after upload; terminal Azure operation and installed
+ProtectWebsite.dll, Infrastructure.dll and shared CSS hashes proved exact completion.
+Original CLI failure/intent archives remain preserved. Reviewed bounded continuations
+skipped completed targets. Receipt directory:
+AgentPortal/App_Data/linked-bundle-release-20261110/native-deployment-receipts/cbaf306d8.
+Final native owner SHA256 ba5ba2017e00226a853309c642247c69fe5ce5356e11d4c57637fc92292dc590;
+final admission SHA25632ba4dbc8344d229a07772b3b3bd0bc4b0d094cebf0607c528d76419aab9876a.
+
+All five restarted and runtime identities verified: Portal cbaf306d8bbddcf86d35dceafcb51e3076969cb0;
+Client/Protect/Parfait/Website c71cde5e1fa7488846b55cf54a4486912ef3ea00.
+Portal public CSS and JS SHA256 match exact source. See live-verification.json and
+live-portal-assets.json in that receipt directory. Restart read failure before Website
+was reconciled with independently accepted helper92552bd8255d4941286bf17cc4eda664f3ec0287283852aec01b231ef535ec63;
+only Website was started, preserving four successful starts and original receipt.
+All apps Running; native hold43122701404 completed CANCELLED after verification.
+No physical microphone, authenticated current-page summary, or customer journey
+acceptance is inferred from runtime/assets. The prior incomplete notes above are history.
+PR774 source-only synchronization remains next; refresh its sourceIntegration marker
+against actual fast-track6077ef21e21f0708e462d66cbd912cae2272ebf0 before merge.
+Preserve this application candidate/packages and do not replay uploads or restarts.
