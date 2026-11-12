@@ -1221,6 +1221,11 @@ button.qv-booking-launch:focus-visible,
         border-radius:var(--legend-mobile-radius);
     }
 
+    .qv-booking-panel-calendar{
+        /* Reserve seven touch targets even when the body has a classic scrollbar. */
+        padding-inline:clamp(0px, calc((100% - 334px) / 2), var(--app-mobile-card-pad));
+    }
+
     .qv-booking-panel-head,
     .qv-booking-slot-head{
         margin-bottom:var(--legend-mobile-gap);

@@ -6571,3 +6571,53 @@ to the existing explicit map and regression (unknown siblings remain denied).
 Focused18 impact tests pass in /private/tmp/legend-work-style-impact-tests.log; final
 Android compilation PASS. Total affected backend selection remains the four managed
 apps, no Website. These control additions do not change accepted rendered app bytes.
+
+### 2026-11-11 — Styled build37 archived; booking scrollbar regression corrected
+
+Styled source543005d67b2b80b1d4302e8963b279b261914128 is independently accepted and
+exactly preserved remotely. Signed archive1.0.1(37) succeeded at
+/Users/zacowen/Library/Developer/Xcode/Archives/2026-11-11/Legend-1.0.1-build37-543005d67.xcarchive.
+App and both extensions report1.0.1(37), codesign deep/strict verification passed
+with Mac trust access, and embedded LegendBuildProvenance.json identifies543005d67
+with hasLocalChanges=false. Organizer opened. No Apple upload/acceptance claimed.
+Archive log: /private/tmp/legend-build37-archive.log; sanitized archive receipt in
+AgentPortal/App_Data/linked-bundle-release-20261110/admission/543005d67/archive.json.
+
+Exact543 security CI43164950648 passed; architecture43164950658 failed native booking
+acceptance at393px; commerce43164950652 was still running. Reproduced the geometry
+failure using the canonical standalone component with a15px classic scrollbar:
+date targets narrowed to42.0625px despite seven columns. Corrected existing mobile
+calendar panel padding to reserve334px for seven44px targets, six4px gaps and borders.
+No assertion removed or weakened. Supplemental browser regression at320/393/1180px
+passes no horizontal overflow, seven columns, native-wheel scrolling and reachable
+final action;393px targets now44px. Evidence:
+/private/tmp/legend-booking-scrollbar-regression.log. The existing CI date-target
+assertion remains the required exact-candidate acceptance. At320px, seven columns
+remain usable without overflow but dates measure34.45px;44px is proven at393px,
+not claimed for every width. Both Portal and Client consume this shared stylesheet
+(ClientApp links the asset); native app/extension bytes and signed build37 remain compatible.
+
+Founder expressly authorized resolving Mac access through the existing approved
+Azure SQL firewall after error40615. Executed existing
+scripts/sync-local-azure-sql-firewall.sh once; verified ZacLocalDev-AutoSync is one
+current publicIPv4 and all unrelated rules unchanged. No automatic job reenabled.
+Private before/after and sanitized reconciliation receipts remain in the same
+admission directory. Strict activity probe then observed ordinary active database
+activity. Existing no-SQL paired schema observation mode passed:241applied,0pending,
+matching database/schema/baseline identities and no migration/schema locks. This
+is not a globally idle database claim. Preserve strict diagnostic and original denial.
+Refresh paired observations before stop. No SQL mutation or app stop/upload occurred.
+
+The existing native phase owner proposal was independently reviewed atSHA256
+37617d8ed533143cfa0ad0f8205138c28ba98964bfcbe986af644e66a1da63e2 before this CSS follow-up.
+It binds both ordered/fresh schema observations, exactCI, packages, settings,
+prior journals, recovery and existing publication mutex. Final deployment admission
+has NOT been granted. Rebind final source/control identities and per-resource package
+compatibility after final checks; never execute obsolete owner identities.
+Package directory /private/tmp/legend-mobile-release-543005d67 currently contains
+successful Portal and Client isolated packages; Protect/Parfait continue sequentially.
+Portal and Client packages must both be replaced for this CSS correction. Preserve
+compatible Protect and Parfait packages. Earlier verified five-app production release remains unchanged. Protected
+source-only integration request must be updated for this continuation before merge;
+PR775 remains draft. Founder deferral covers authenticated local AI/Work testing only;
+package,security,schema,recovery,review and final CI are not waived.
