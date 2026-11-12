@@ -22,6 +22,18 @@ public sealed partial class BusinessWorkspaceService
             throw new DbUpdateConcurrencyException("This contact changed. Reload before saving.");
     }
 
+    public async Task<(IReadOnlyList<BusinessCrmContact> Contacts, IReadOnlyList<string> Stages)> WorkContactsAsync(Guid businessId, int skip, CancellationToken ct, string? contactId = null)
+    {
+        var preferences = (await SettingsAsync(businessId, ct)).Preferences;
+        var rows = await Contacts(businessId).AsNoTracking().Where(x => contactId == null || x.LeadId == contactId).OrderBy(x => x.CrmStatus == "Client")
+            .ThenByDescending(x => x.UpdatedUtc).ThenBy(x => x.LeadId).Skip(skip).Take(100).ToListAsync(ct);
+        return (rows.Select(x => {
+            var contact = Project(x, preferences);
+            contact.Revision = ContactRevision(x); // Same token consumed by BulkUpdateAsync.
+            return contact;
+        }).ToArray(), preferences.Stages);
+    }
+
     public async Task<object?> QuickViewAsync(Guid businessId, string contactId, string? kind, CancellationToken ct)
     {
         var row = await Contacts(businessId).AsNoTracking().SingleOrDefaultAsync(x => x.LeadId == contactId &&

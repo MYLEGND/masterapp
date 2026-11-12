@@ -121,6 +121,7 @@ import com.mylegnd.legend.registered.core.network.JourneyDashboard
 import com.mylegnd.legend.registered.core.network.JourneyConnection
 import com.mylegnd.legend.registered.core.network.JourneyProfileInput
 import com.mylegnd.legend.registered.core.network.MobileWorkOrder
+import com.mylegnd.legend.registered.core.network.MobileWorkLead
 import com.mylegnd.legend.registered.core.network.NotificationItem
 import com.mylegnd.legend.registered.core.network.NotificationSnapshot
 import com.mylegnd.legend.registered.core.realtime.LegendRealtimeEvents
@@ -1768,6 +1769,10 @@ private fun HomeScreen(
     val savingOrder by notificationsViewModel.savingOrder.collectAsStateWithLifecycle()
     val orderFailure by notificationsViewModel.orderFailure.collectAsStateWithLifecycle()
     var selectedWorkOrder by remember { mutableStateOf<MobileWorkOrder?>(null) }
+    var selectedWorkLead by remember { mutableStateOf<MobileWorkLead?>(null) }
+    val leadsState by notificationsViewModel.leads.collectAsStateWithLifecycle()
+    val savingLead by notificationsViewModel.savingLead.collectAsStateWithLifecycle()
+    val leadFailure by notificationsViewModel.leadFailure.collectAsStateWithLifecycle()
     val accountActivity by notificationsViewModel.activity.collectAsStateWithLifecycle()
     val engineeringActivity by notificationsViewModel.engineering.collectAsStateWithLifecycle()
     val engineeringDecisionInFlight by notificationsViewModel.engineeringDecisionInFlight.collectAsStateWithLifecycle()
@@ -1792,7 +1797,7 @@ private fun HomeScreen(
         when (chromeAction) {
             LegendHomeChromeAction.CREATE -> creating = true
             LegendHomeChromeAction.ENGINEERING -> { if (isFounder) { notificationsViewModel.loadActivity(); notificationsViewModel.load(); notificationsViewModel.loadEngineeringNotices(); engineeringOpen = true } }
-            LegendHomeChromeAction.WORK -> { notificationsViewModel.loadWorkNotifications(); notificationsViewModel.loadOrders(); workNotificationsOpen = true }
+            LegendHomeChromeAction.WORK -> { notificationsViewModel.loadWorkNotifications(); notificationsViewModel.loadOrders(); notificationsViewModel.loadWorkLeads(); workNotificationsOpen = true }
             LegendHomeChromeAction.NOTIFICATIONS -> {
                 notificationsViewModel.loadActivity()
                 notificationsViewModel.acknowledgePersonalActivity()
@@ -1863,7 +1868,7 @@ private fun HomeScreen(
                             activityOpen = true
                         }
                         LegendHomeInboxButton(Icons.Default.Work, "Work notifications", workUnread) {
-                            notificationsViewModel.loadWorkNotifications(); notificationsViewModel.loadOrders(); workNotificationsOpen = true
+                            notificationsViewModel.loadWorkNotifications(); notificationsViewModel.loadOrders(); notificationsViewModel.loadWorkLeads(); workNotificationsOpen = true
                         }
                         if (isFounder) LegendHomeInboxButton(Icons.Default.Build, "Engineering notifications", engineeringNoticeUnread) {
                             notificationsViewModel.loadActivity(); notificationsViewModel.load(); notificationsViewModel.loadEngineeringNotices(); engineeringOpen = true
@@ -1991,6 +1996,10 @@ private fun HomeScreen(
             relatedPosts = snapshot?.stories.orEmpty().filter { it.author.identity == post.author.identity },
             onView = { socialViewModel.recordView(it.id, storyInteractionType = "Opened") }) { selectedStory = null }
     }
+    selectedWorkLead?.let { lead ->
+        WorkLeadSheet(lead, savingLead, leadFailure, dismiss = { selectedWorkLead = null; workNotificationsOpen = true },
+            save = { stage, note -> notificationsViewModel.updateWorkStage(lead, stage, note) { selectedWorkLead = null; workNotificationsOpen = true } })
+    }
     selectedWorkOrder?.let { order ->
         WorkOrderSheet(order, savingOrder != null, orderFailure,
             dismiss = { selectedWorkOrder = null },
@@ -2001,12 +2010,17 @@ private fun HomeScreen(
             state = workLedgerState,
             readFailure = workReadFailure,
             orders = ordersState,
+            leads = leadsState,
+            openLead = { selectedWorkLead = it; workNotificationsOpen = false },
+            loadMore = { notificationsViewModel.loadOrders(true); notificationsViewModel.loadWorkLeads(true) },
             openOrder = { selectedWorkOrder = it; workNotificationsOpen = false },
-            retryOrders = { notificationsViewModel.loadOrders() },
+            retryOrders = { notificationsViewModel.loadOrders(); notificationsViewModel.loadWorkLeads() },
             dismiss = { workNotificationsOpen = false },
             retry = { notificationsViewModel.loadWorkNotifications() },
             open = { item -> notificationsViewModel.markRead(item.id) { opened ->
-                opened.conversationId?.let { workNotificationsOpen = false; openConversation(it) }
+                if (opened.conversationId != null) { workNotificationsOpen = false; openConversation(opened.conversationId) }
+                else notificationsViewModel.resolveWorkNotification(opened,
+                    { selectedWorkLead = it; workNotificationsOpen = false }, { selectedWorkOrder = it; workNotificationsOpen = false })
             } },
         )
     }
@@ -2779,71 +2793,135 @@ private fun DailyScriptureSheet(scripture: MobileDailyScripture, dismiss: () -> 
     }
 }
 
+private fun workTone(tone: String) = when (tone) {
+    "success" -> LegendColors.Success
+    "danger" -> LegendColors.Error
+    "info" -> LegendColors.Info
+    else -> LegendColors.Warning
+}
+
+@Composable
+private fun WorkStatus(stage: String, tone: String) {
+    Surface(color = workTone(tone).copy(alpha = 0.12f), shape = CircleShape) {
+        Text(legendLocalized(stage), color = workTone(tone), style = LegendTypography.Label,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+    }
+}
+
+@Composable
+private fun WorkRecordCard(title: String, detail: String, stage: String, tone: String, open: () -> Unit) {
+    Card(onClick = open, modifier = Modifier.fillMaxWidth(), shape = LegendShapes.Control,
+        colors = CardDefaults.cardColors(containerColor = LegendColors.SurfaceElevated)) {
+        Row(Modifier.fillMaxWidth().padding(LegendSpacing.Md), horizontalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Xs)) {
+                Text(title, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
+                Text(detail, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                WorkStatus(stage, tone)
+            }
+            Text("›", color = workTone(tone), style = LegendTypography.Title)
+        }
+    }
+}
+
 @Composable
 private fun NotificationInboxSheet(
-    state: LoadState<NotificationSnapshot>,
-    readFailure: String?,
-    orders: LoadState<List<MobileWorkOrder>>,
-    openOrder: (MobileWorkOrder) -> Unit,
-    retryOrders: () -> Unit,
-    dismiss: () -> Unit,
-    retry: () -> Unit,
-    open: (NotificationItem) -> Unit,
-) = ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Surface) {
-    if (readFailure != null) Text(legendLocalized(readFailure), color = LegendColors.Error, modifier = Modifier.padding(LegendSpacing.Sm))
-    when (state) {
-        LoadState.Idle,
-        LoadState.Loading -> Box(Modifier.fillMaxWidth().height(LegendSize.AvatarHero), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = LegendColors.Navy) }
-        is LoadState.Error -> Column(Modifier.padding(LegendSpacing.Lg)) { Text(legendLocalized(state.message), color = LegendColors.TextSecondary); LegendPrimaryButton("Retry", onClick = retry) }
-        is LoadState.Data -> {
-            val snapshot = state.value
-            val items = snapshot.notifications.filter { it.channel == "work" }
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(LegendSpacing.Lg),
-                verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm),
-            ) {
-                item { Text(legendLocalized("Orders to fulfill"), style = LegendTypography.CardTitle, color = LegendColors.TextPrimary) }
-                when (orders) {
-                    is LoadState.Data -> {
-                        if (orders.value.isEmpty()) item { Text(legendLocalized("No orders awaiting fulfillment."), color = LegendColors.TextSecondary) }
-                        items(orders.value, key = { "order:${it.id}" }) { order ->
-                            Card(onClick = { openOrder(order) }, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = LegendColors.Navy)) {
-                                Column(Modifier.padding(LegendSpacing.Md)) {
-                                    Text(order.orderNumber, style = LegendTypography.CardTitle, color = LegendColors.OnNavy)
-                                    Text("${order.businessName.orEmpty()} · ${order.fulfillmentStatus}", color = LegendColors.GoldBright)
-                                    Text("${order.items.sumOf { it.quantity }} items", color = LegendColors.OnNavy)
-                                }
+    state: LoadState<NotificationSnapshot>, readFailure: String?, orders: LoadState<List<MobileWorkOrder>>,
+    leads: LoadState<List<MobileWorkLead>>, openLead: (MobileWorkLead) -> Unit, loadMore: () -> Unit,
+    openOrder: (MobileWorkOrder) -> Unit, retryOrders: () -> Unit, dismiss: () -> Unit,
+    retry: () -> Unit, open: (NotificationItem) -> Unit,
+) {
+    var page by remember { mutableStateOf("Notifications") }
+    var business by remember { mutableStateOf("All businesses") }
+    var stage by remember { mutableStateOf("All stages") }
+    var search by remember { mutableStateOf("") }
+    var failure by remember { mutableStateOf<String?>(null) }
+    val orderRows = (orders as? LoadState.Data)?.value.orEmpty()
+    val leadRows = (leads as? LoadState.Data)?.value.orEmpty()
+    val snapshot = (state as? LoadState.Data)?.value
+    val notices = snapshot?.notifications.orEmpty().filter { it.channel == "work" }
+    val businesses = (orderRows.mapNotNull { it.businessName } + leadRows.map { it.businessName }).distinct().sorted()
+    val stages = (orderRows.map { it.fulfillmentStatus } + leadRows.map { it.stage }).distinct().sorted()
+    fun matches(name: String, text: String, status: String) = (business == "All businesses" || business == name) &&
+        (search.isBlank() || text.contains(search, ignoreCase = true)) && (stage == "All stages" || stage == status)
+    val bucket = when (page) { "Completed" -> "completed"; "Closed" -> "closed"; else -> "active" }
+    val shownLeads = leadRows.filter { page != "Orders" && it.bucket == bucket && matches(it.businessName, it.displayName + " " + it.businessName + " " + it.email.orEmpty(), it.stage) }
+    val shownOrders = orderRows.filter { page != "Leads" && it.bucket == bucket && matches(it.businessName.orEmpty(), it.orderNumber + " " + it.businessName.orEmpty(), it.fulfillmentStatus) }
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Surface) {
+        LazyColumn(Modifier.fillMaxWidth().imePadding(), contentPadding = PaddingValues(LegendSpacing.Lg), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+            item {
+                LegendSectionPill("Work", eyebrow = "Your business")
+                Text("Review, follow up and fulfill. Every update stays with its business record.", color = LegendColors.TextSecondary)
+            }
+            item {
+                Column {
+                    listOf("Notifications", "Leads", "Orders", "Completed", "Closed").chunked(3).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { label ->
+                                FilterChip(selected = page == label, onClick = { page = label; stage = "All stages"; failure = null }, label = { Text(legendLocalized(label)) },
+                                    modifier = Modifier.weight(1f), colors = FilterChipDefaults.filterChipColors(selectedContainerColor = LegendColors.Navy, selectedLabelColor = LegendColors.OnNavy))
                             }
-                        }
-                    }
-                    is LoadState.Error -> item { Text(legendLocalized(orders.message)); TextButton(onClick = retryOrders) { Text(legendLocalized("Retry orders")) } }
-                    else -> item { CircularProgressIndicator() }
-                }
-                item {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(legendLocalized("Work"), style = LegendTypography.Title, color = LegendColors.TextPrimary)
-                            if (snapshot.workChannelsVersion == 1) Text(legendLocalized("{count} unread in recent work", mapOf("count" to items.count { !it.isRead })), style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
-                        }
-                    }
-                }
-                if (snapshot.workChannelsVersion != 1) item { Text(legendLocalized("Work notifications are temporarily unavailable. Please retry later."), color = LegendColors.TextSecondary) }
-                if (items.isEmpty() && snapshot.workChannelsVersion == 1) item { Text(legendLocalized("No work notifications yet."), style = LegendTypography.Body, color = LegendColors.TextSecondary) }
-                items(items, key = { it.id }) { item ->
-                    Card(
-                        onClick = { open(item) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = LegendShapes.Control,
-                        colors = CardDefaults.cardColors(containerColor = if (item.isRead) LegendColors.SurfaceElevated else LegendColors.GoldSoft),
-                    ) {
-                        Column(Modifier.padding(LegendSpacing.Md), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Micro)) {
-                            Text(item.title, style = LegendTypography.CardTitle, color = LegendColors.TextPrimary)
-                            Text(item.detail, style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                            if (row.size < 3) Spacer(Modifier.weight((3 - row.size).toFloat()))
                         }
                     }
                 }
             }
+            readFailure?.let { item { Text(it, color = LegendColors.Error) } }
+            failure?.let { item { Text(it, color = LegendColors.Error) } }
+            if (page == "Notifications") {
+                if (state is LoadState.Error) item { Text(state.message, color = LegendColors.Error); TextButton(onClick = retry) { Text("Retry") } }
+                if (state is LoadState.Loading) item { CircularProgressIndicator() }
+                if (snapshot != null && snapshot.workChannelsVersion != 1) item { Text("Work notifications are temporarily unavailable.") }
+                if (notices.isEmpty() && snapshot?.workChannelsVersion == 1) item { Text("No work notifications yet.") }
+                items(notices, key = { it.id }) { notice ->
+                    WorkRecordCard(notice.title, notice.detail, if (notice.isRead) "Read" else "New", if (notice.isRead) "info" else "warning") {
+                        open(notice)
+
+                    }
+                }
+            } else {
+                item { OutlinedTextField(search, { search = it }, label = { Text("Search work") }, modifier = Modifier.fillMaxWidth()) }
+                item {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        (listOf("All businesses") + businesses).forEach { name -> FilterChip(business == name, { business = name }, label = { Text(name) }) }
+                    }
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        (listOf("All stages") + stages).forEach { name -> FilterChip(stage == name, { stage = name }, label = { Text(name) }) }
+                    }
+                    Text("Closed includes cancelled, declined and returned records. Reading a notification never completes work.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                }
+                if (orders is LoadState.Error || leads is LoadState.Error) item {
+                    Text("Work could not be refreshed.", color = LegendColors.Error)
+                    TextButton(onClick = retryOrders) { Text("Refresh work") }
+                }
+                items(shownLeads, key = { it.id }) { lead -> WorkRecordCard(lead.displayName, lead.businessName, lead.stage, lead.tone) { openLead(lead) } }
+                items(shownOrders, key = { it.id }) { order -> WorkRecordCard(order.orderNumber, "${order.businessName.orEmpty()} · ${order.items.sumOf { it.quantity }} items", order.fulfillmentStatus, order.tone) { openOrder(order) } }
+                if (shownLeads.isEmpty() && shownOrders.isEmpty()) item { Text("No work matches these filters.", color = LegendColors.TextSecondary) }
+                item {
+                    TextButton(onClick = loadMore) { Text("Load more work") }
+                    Text("Filters apply to loaded records. Load more to include older work; refresh after changes made elsewhere.", style = LegendTypography.Supporting, color = LegendColors.TextSecondary)
+                    TextButton(onClick = retryOrders) { Text("Refresh work") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkLeadSheet(lead: MobileWorkLead, saving: Boolean, failure: String?, dismiss: () -> Unit, save: (String, String) -> Unit) {
+    var stage by remember(lead.id) { mutableStateOf("") }
+    var note by remember(lead.id) { mutableStateOf("") }
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = LegendColors.Surface) {
+        LazyColumn(Modifier.fillMaxWidth().imePadding(), contentPadding = PaddingValues(LegendSpacing.Lg), verticalArrangement = Arrangement.spacedBy(LegendSpacing.Sm)) {
+            item { LegendSectionPill(lead.displayName, eyebrow = lead.businessName); WorkStatus(lead.stage, lead.tone) }
+            lead.email?.let { item { Text(it, color = LegendColors.TextPrimary) } }
+            lead.phone?.let { item { Text(it, color = LegendColors.TextPrimary) } }
+            lead.detail?.let { item { Text(it, color = LegendColors.TextSecondary) } }
+            item { Text(if (lead.allowedStages.isEmpty()) "This record is read only." else "Next stage", style = LegendTypography.CardTitle, color = LegendColors.TextPrimary) }
+            items(lead.allowedStages) { option -> FilterChip(selected = stage == option, onClick = { stage = option }, label = { Text(option) }) }
+            if (lead.kind != "inquiry") item { OutlinedTextField(note, { note = it }, label = { Text("Follow-up note (optional)") }, modifier = Modifier.fillMaxWidth()) }
+            failure?.let { item { Text(it, color = LegendColors.Error) } }
+            item { Button(onClick = { save(stage, note) }, enabled = !saving && stage.isNotEmpty() && stage != lead.stage && note.length <= 4000,
+                colors = ButtonDefaults.buttonColors(containerColor = LegendColors.Navy), modifier = Modifier.fillMaxWidth()) { Text(if (saving) "Saving…" else "Save stage") } }
         }
     }
 }
@@ -9023,7 +9101,7 @@ private fun WorkOrderSheet(order: MobileWorkOrder, saving: Boolean, failure: Str
             item { OutlinedTextField(value = carrier, onValueChange = { carrier = it }, label = { Text(legendLocalized("Carrier")) }, modifier = Modifier.fillMaxWidth()) }
             item { OutlinedTextField(value = tracking, onValueChange = { tracking = it }, label = { Text(legendLocalized("Tracking number")) }, modifier = Modifier.fillMaxWidth()) }
             failure?.let { item { Text(legendLocalized(it), color = MaterialTheme.colorScheme.error) } }
-            item { Button(onClick = { save(status, carrier, tracking) }, enabled = !saving, modifier = Modifier.fillMaxWidth()) { Text(legendLocalized("Save fulfillment")) } }
+            item { Button(onClick = { save(status, carrier, tracking) }, enabled = !saving && status in order.allowedStatuses, modifier = Modifier.fillMaxWidth()) { Text(legendLocalized("Save fulfillment")) } }
         }
     }
 }

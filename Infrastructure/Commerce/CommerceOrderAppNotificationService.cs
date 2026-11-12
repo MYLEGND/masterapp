@@ -30,6 +30,9 @@ public sealed class CommerceOrderNotificationOptions
 public sealed class CommerceOrderAppNotificationService(MasterAppDbContext db, INotificationEngine notifications,
     IOptions<CommerceOrderNotificationOptions> options)
 {
+    public static Guid NotificationId(Guid orderId, MessagingActor actor) => new Guid(SHA256.HashData(
+        Encoding.UTF8.GetBytes($"commerce-order:{orderId:D}:{actor.ParticipantType}:{actor.UserId.ToLowerInvariant()}"))[..16]);
+
     public async Task<int> DeliverPendingAsync(CancellationToken ct, int offset = 0)
     {
         if (!options.Value.TryGetStart(out var start)) return 0;
@@ -60,7 +63,7 @@ public sealed class CommerceOrderAppNotificationService(MasterAppDbContext db, I
                 }
                 foreach (var (key, actor) in recipients)
                 {
-                    var id = new Guid(SHA256.HashData(Encoding.UTF8.GetBytes($"commerce-order:{order.Id:D}:{key}"))[..16]);
+                    var id = NotificationId(order.Id, actor);
                     if (await db.MobileActivityNotifications.AnyAsync(x => x.Id == id, ct)) continue;
                     await notifications.StageAsync(new MobileActivityNotification {
                         Id = id, RecipientUserId = actor.UserId, RecipientParticipantType = actor.ParticipantType,

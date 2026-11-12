@@ -6398,3 +6398,68 @@ It was read-back verified against all source digests. Dependencies were removed
 from the checkout after tests, with no lockfile changes. No deployment or store
 operation occurred. Draft protected integration is prepared with explicit holds;
 do not merge/deploy until required acceptance and current-head gates are satisfied.
+
+### 2026-11-11 — Mobile Work pipeline continuation
+
+Founder scope now includes branded, actionable mobile Work management for leads and
+store orders in the same pending native release. Continuation base and last verified
+remote task HEAD: 689cac7b75e11fe4a7b3af8f8d0a11e387e6326b, branch
+isolation/ad-measurement-canonical-20261109. Session preflight passed at that base.
+AI implementation d4094d8c4707d347f89cc357740b773dd8797385 remains preserved;
+PR775 is draft. Prior five-app deployment remains complete and must not be replayed.
+
+Implemented: Notifications, Leads, Orders, Completed and Closed views on iOS/Android,
+existing navy/gold branding, orange review / blue progress / green completed / red
+closed status accents with text labels, search and business/stage filters, paged
+history, clickable notifications resolved by existing deterministic record identity,
+lead stage editing and order fulfillment with canonical allowed transitions. Filters
+explicitly cover loaded records. Linked inquiries display the existing CRM contact
+as the one actionable lifecycle record; they cannot reappear as a duplicate pipeline
+on later pages. Historical notifications without an accessible source explain that
+limitation rather than inventing a record. Notification read state is not completion.
+
+Authority: existing BusinessWorkspaceService settings/contact revision/history,
+WebsiteInquiryAuthority, Leads/Clients outcome owners and ParfaitOrderService retain
+mutation ownership. MobileWorkLeadsController is a scoped transport, not a new CRM.
+Business membership/capability and assigned-agent scope are rechecked; configured
+stages, expected revision/timestamp and canonical order validation are enforced.
+No database schema, checkout, refund, payment, identity or new service changes.
+Both native stores await exact scoped record readback after saving and discard
+older pending loads; a failed readback is an unconfirmed outcome, never a claim
+that the write did not happen. Superseded non-actionable Work lists and two-tab
+presentation are replaced in the existing Swift/Compose owners, with no second UI.
+Xcode's concurrent project version35→36 change is preserved; Codex did not change
+signing, build an archive or submit to either store.
+
+Validation:63 focused server tests PASS in /private/tmp/legend-work-final-server.log
+(MobileWorkPipelineTests, MobileWorkOrderTests, MobileCommerceHttpTests and
+WebsiteLeadAppNotificationTests). Includes actual test-host HTTP persistence,
+foreign-business denial, stale revision rejection, configured business stages,
+atomic inquiry status updates, pagination/notification targeting and linked-record
+deduplication. Test-host authentication and SQLite fixtures are synthetic.
+Android compileDebugKotlin plus WorkNotificationsContractTest PASS in
+/private/tmp/legend-work-final-android.log. iOS3 focused Simulator tests PASS in
+/private/tmp/legend-work-final-ios.log, xcresult
+/private/tmp/legend-assistant-ios-build/Logs/Test/Test-Legend-2026.11.11_22-05-54--0700.xcresult.
+These cover canonical save/readback, stale save rejection, notification separation,
+pending pre-save refresh ordering and five SwiftUI rendered pages at390pt.
+Rendered grid screenshots inspected at /private/tmp/legend-work-grid-rendered;
+these are synthetic components, not authenticated end-to-end acceptance. A final
+error-message-only edit clarifies unconfirmed order updates; it does not invalidate
+behavioral evidence. NU1900 audit-network warnings remain, no dependency upgrades.
+
+Astra read-only review drove corrections for allowed order stages, canonical-owner
+concurrency, linked CRM identity, history paging, before-paging deduplication and
+post-save readback races. Exact-source preservation acceptance is recorded externally
+against final file digests; release acceptance remains withheld. No Work backend
+support is deployed. Required affected runtime is Portal plus native hosts; shared
+library consumer impact must be included in existing admission, not inferred away.
+No migration required. Existing AI authenticated HTTPS/Founder test dependency and
+its release holds above remain. Actual authenticated native Work/AI journeys, real
+microphone and paid transcription are NOT VERIFIED. No paid calls occurred.
+
+Remaining release work: protected integration with current-head/required checks,
+fresh candidate-bound admission and selective direct Mac stop/deploy/restart of
+required backend support, exact runtime provenance, then authenticated Simulator
+record/stage, account-switch, keyboard/navigation and AI/audio acceptance. Do not
+archive until these gates are satisfied. No gates are waived by source preservation.

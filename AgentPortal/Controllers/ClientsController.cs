@@ -4234,6 +4234,7 @@ namespace AgentPortal.Controllers;
 
     public sealed class OutcomeRequest
     {
+        public DateTime? ExpectedUpdatedUtc { get; set; }
         public string ClientUserId { get; set; } = "";
         public string OutcomeCode { get; set; } = "";
         public string? CustomNote { get; set; }
@@ -6246,6 +6247,8 @@ namespace AgentPortal.Controllers;
 
         var profile = await GetOwnedClientProfileAsync(agentOid, request.ClientUserId);
         if (profile == null) return Forbid();
+        if (request.ExpectedUpdatedUtc.HasValue && profile.UpdatedUtc != request.ExpectedUpdatedUtc.Value)
+            return Conflict(new { message = "This record changed. Refresh before saving." });
 
         var plan = BuildOutcomePlan(request.OutcomeCode);
         if (plan == null) return BadRequest("Unknown outcome.");

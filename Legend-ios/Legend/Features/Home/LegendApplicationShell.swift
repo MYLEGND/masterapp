@@ -11299,92 +11299,215 @@ private struct LegendCrmSearchField: View {
 
 /// Work is a channel of the same server ledger; opening a row acknowledges that
 /// exact recipient-scoped notification, never the unrelated personal channel.
-private struct LegendWorkNotificationsSheet: View {
+private func legendWorkColor(_ tone: String) -> Color {
+    switch tone {
+    case "success": return LegendNextColor.success
+    case "danger": return LegendNextColor.danger
+    case "info": return LegendNextColor.information
+    default: return LegendNextColor.warning
+    }
+}
+
+private struct LegendWorkStatus: View {
+    let label: String
+    let tone: String
+    var body: some View {
+        Text(legendCrmLabel(label)).font(LegendNextTypography.caption.weight(.semibold))
+            .foregroundStyle(legendWorkColor(tone))
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(legendWorkColor(tone).opacity(0.12), in: Capsule())
+    }
+}
+
+struct LegendWorkNotificationsSheet: View {
     @ObservedObject var store: MobileNotificationStore
     let openConversation: (UUID) -> Void
-    @State private var showsOrders = false
+    @State private var page = "Notifications"
+    @State private var business = "All businesses"
+    @State private var search = ""
+    @State private var stage = "All stages"
     @State private var selectedOrder: MobileWorkOrder?
+    @State private var selectedLead: MobileWorkLead?
+    @State private var navigationFailure: String?
     @Environment(\.dismiss) private var dismiss
-
-    private var items: [MobileNotificationItem] {
-        store.workSnapshot?.notifications.filter { $0.channel == "work" } ?? []
+    private let pages = ["Notifications", "Leads", "Orders", "Completed", "Closed"]
+    init(store: MobileNotificationStore, initialPage: String = "Notifications", openConversation: @escaping (UUID) -> Void) {
+        self.store = store; self.openConversation = openConversation; _page = State(initialValue: initialPage)
     }
-
+    private var items: [MobileNotificationItem] { store.workSnapshot?.notifications.filter { $0.channel == "work" } ?? [] }
+    private var businesses: [String] { Array(Set(store.workLeads.map(\.businessName) + store.workOrders.compactMap(\.businessName))).sorted() }
+    private func matches(_ name: String, _ text: String, _ state: String) -> Bool {
+        (business == "All businesses" || business == name) && (search.isEmpty || text.localizedCaseInsensitiveContains(search)) &&
+            (stage == "All stages" || stage == state)
+    }
+    private var leads: [MobileWorkLead] {
+        store.workLeads.filter { row in
+            (page == "Leads" ? row.bucket == "active" : page == "Completed" ? row.bucket == "completed" : page == "Closed" && row.bucket == "closed") &&
+                matches(row.businessName, row.displayName + " " + row.businessName + " " + (row.email ?? ""), row.stage)
+        }
+    }
+    private var orders: [MobileWorkOrder] {
+        store.workOrders.filter { row in
+            (page == "Orders" ? (row.bucket ?? "active") == "active" : page == "Completed" ? row.bucket == "completed" : page == "Closed" && row.bucket == "closed") &&
+                matches(row.businessName ?? "", row.orderNumber + " " + (row.businessName ?? ""), row.fulfillmentStatus)
+        }
+    }
+    private var stages: [String] { Array(Set(store.workLeads.map(\.stage) + store.workOrders.map(\.fulfillmentStatus))).sorted() }
     var body: some View {
         NavigationStack {
             LegendScrollView(tracksNavigationChrome: false) {
-                VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
-                    LegendNextSheetHeader(eyebrow: LegendLocalized("Your business"), title: LegendLocalized("Work"), detail: LegendLocalized("Notifications and orders to fulfill."), dismiss: { dismiss() })
-                Picker(LegendLocalized("Work"), selection: $showsOrders) {
-                    Text(LegendLocalized("Notifications")).tag(false)
-                    Text(LegendLocalized("Orders")).tag(true)
-                }.pickerStyle(.segmented)
-                if showsOrders {
-                    if let failure = store.workFailure {
-                        Text(failure).foregroundStyle(LegendNextColor.danger)
-                        Button(LegendLocalized("Retry")) { Task { await store.loadWorkOrders() } }
-                    }
-                    if store.isLoadingWork { ProgressView() }
-                    else if store.workOrders.isEmpty && store.workFailure == nil {
-                        Text(LegendLocalized("No orders awaiting fulfillment."))
-                    }
-                    ForEach(store.workOrders) { order in
-                        Button { selectedOrder = order } label: {
-                            VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                                Text(order.orderNumber).font(LegendNextTypography.cardTitle)
-                                Text(order.businessName ?? "").font(.caption)
-                                Text("\(order.items.reduce(0) { $0 + $1.quantity }) items · \(order.fulfillmentStatus)")
-                                    .font(LegendNextTypography.supporting)
-                            }
-                        }.buttonStyle(.plain)
-                    }
-                } else {
-                if store.workSnapshot != nil && store.workSnapshot?.workChannelsVersion != 1 {
-                    Text(LegendLocalized("Work notifications are temporarily unavailable. Please retry later."))
-                }
-                if store.workNotificationsFailed {
-                    Text(LegendLocalized("Notifications could not be refreshed."))
-                    Button(LegendLocalized("Retry")) { Task { await store.loadWorkNotifications() } }
-                }
-                if store.isLoadingWorkNotifications && store.workSnapshot == nil {
-                    ProgressView()
-                } else if items.isEmpty && !store.workNotificationsFailed && store.workSnapshot?.workChannelsVersion == 1 {
-                    Text(LegendLocalized("No work notifications yet."))
-                        .foregroundStyle(LegendNextColor.textSecondary)
-                }
-                ForEach(items) { item in
-                    Button {
-                        Task {
-                            await store.markRead(item.id)
-                            if let id = item.conversationID { openConversation(id) }
-                        }
-                    } label: {
-                        HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
-                            Image(systemName: item.isRead ? "briefcase" : "circle.fill")
-                                .foregroundStyle(LegendNextColor.goldBright)
-                            VStack(alignment: .leading, spacing: LegendNextSpacing.micro) {
-                                Text(item.title).font(LegendNextTypography.cardTitle)
-                                Text(item.detail).font(LegendNextTypography.supporting)
-                                    .foregroundStyle(LegendNextColor.textSecondary)
-                                Text(item.occurredUTC, style: .relative).font(.caption)
-                            }
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(eyebrow: LegendLocalized("Your business"), title: LegendLocalized("Work"),
+                        detail: LegendLocalized("Review, follow up and fulfill. Every update stays with its business record."), dismiss: { dismiss() })
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: LegendNextSpacing.xs)], spacing: LegendNextSpacing.xs) {
+                        ForEach(pages, id: \.self) { title in
+                            Button { page = title; stage = "All stages"; navigationFailure = nil } label: {
+                                Text(LegendLocalized(title)).font(LegendNextTypography.label)
+                                    .frame(maxWidth: .infinity).padding(.horizontal, 8).padding(.vertical, 12)
+                                    .foregroundStyle(page == title ? LegendNextColor.contactTitle : LegendNextColor.textPrimary)
+                                    .background(page == title ? LegendNextColor.navy : LegendNextColor.surfaceInset, in: Capsule())
+                            }.buttonStyle(.plain)
                         }
                     }
-                    .buttonStyle(.plain)
-                }
-                }
+                    if page != "Notifications" {
+                        TextField(LegendLocalized("Search work"), text: $search).textFieldStyle(.roundedBorder)
+                        HStack {
+                            Picker(LegendLocalized("Business"), selection: $business) {
+                                Text(LegendLocalized("All businesses")).tag("All businesses")
+                                ForEach(businesses, id: \.self) { Text($0).tag($0) }
+                            }.tint(LegendNextColor.navy)
+                            Spacer()
+                            Picker(LegendLocalized("Stage"), selection: $stage) {
+                                Text(LegendLocalized("All stages")).tag("All stages")
+                                ForEach(stages, id: \.self) { Text(legendCrmLabel($0)).tag($0) }
+                            }.tint(LegendNextColor.navy)
+                        }
+                        HStack(spacing: 8) {
+                            LegendWorkStatus(label: "Review", tone: "warning")
+                            LegendWorkStatus(label: "In progress", tone: "info")
+                            LegendWorkStatus(label: "Done", tone: "success")
+                        }
+                        Text(LegendLocalized("Closed includes cancelled, declined and returned records. Reading a notification never completes work."))
+                            .font(LegendNextTypography.caption).foregroundStyle(LegendNextColor.textSecondary)
+                    }
+                    if let navigationFailure { Text(navigationFailure).foregroundStyle(LegendNextColor.danger) }
+                    if page == "Notifications" { notifications }
+                    else {
+                        if store.isLoadingWork || store.isLoadingLeads { ProgressView() }
+                        if let failure = store.workFailure { retry(failure) }
+                        if let failure = store.leadFailure { retry(failure) }
+                        ForEach(leads) { lead in
+                            Button { selectedLead = lead } label: {
+                                workCard(title: lead.displayName, detail: lead.businessName, status: lead.stage, tone: lead.tone, icon: "person.crop.rectangle")
+                            }.buttonStyle(.plain)
+                        }
+                        ForEach(orders) { order in
+                            Button { selectedOrder = order } label: {
+                                workCard(title: order.orderNumber, detail: "\(order.businessName ?? "Business") · \(order.items.reduce(0) { $0 + $1.quantity }) items",
+                                    status: order.fulfillmentStatus, tone: order.tone ?? "warning", icon: "shippingbox")
+                            }.buttonStyle(.plain)
+                        }
+                        if leads.isEmpty && orders.isEmpty && !store.isLoadingWork && !store.isLoadingLeads && store.workFailure == nil && store.leadFailure == nil {
+                            Text(LegendLocalized("No work matches these filters.")).foregroundStyle(LegendNextColor.textSecondary)
+                        }
+                        Button(LegendLocalized("Load more work")) { Task { await store.loadWorkLeads(more: true); await store.loadWorkOrders(more: true) } }
+                            .buttonStyle(LegendNextButtonStyle(kind: .secondary)).disabled(store.isLoadingWork || store.isLoadingLeads)
+                        Text(LegendLocalized("Filters apply to loaded records. Load more to include older work; refresh after changes made elsewhere."))
+                            .font(LegendNextTypography.caption).foregroundStyle(LegendNextColor.textSecondary)
+                    }
+                }.padding(LegendNextSpacing.md).foregroundStyle(LegendNextColor.textPrimary)
             }
-                .padding(LegendNextSpacing.md)
+            .background(LegendNextCanvas()).toolbar(.hidden, for: .navigationBar)
+            .refreshable { await refresh() }.task { await refresh() }
+            .sheet(item: $selectedOrder, onDismiss: { Task { await refresh() } }) { LegendWorkOrderEditor(order: $0, store: store) }
+            .sheet(item: $selectedLead, onDismiss: { Task { await refresh() } }) { LegendWorkLeadEditor(lead: $0, store: store) }
+        }.tint(LegendNextColor.navy)
+    }
+    private var notifications: some View {
+        VStack(alignment: .leading, spacing: LegendNextSpacing.sm) {
+            if store.isLoadingWorkNotifications { ProgressView() }
+            if store.workNotificationsFailed { retry("Notifications could not be refreshed.") }
+            if store.workSnapshot != nil && store.workSnapshot?.workChannelsVersion != 1 { retry("Work notifications are temporarily unavailable.") }
+            if items.isEmpty && store.workSnapshot?.workChannelsVersion == 1 { Text(LegendLocalized("No work notifications yet.")) }
+            ForEach(items) { item in
+                Button {
+                    navigationFailure = nil
+                    Task {
+                        await store.markRead(item.id)
+                        if let id = item.conversationID { openConversation(id) }
+                        else if let order = store.workOrders.first(where: { $0.notificationId == item.id }) { selectedOrder = order }
+                        else if let lead = store.workLeads.first(where: { $0.notificationId == item.id }) { selectedLead = lead }
+                        else {
+                            do {
+                                let target = try await store.resolveWorkNotification(item)
+                                selectedLead = target.0; selectedOrder = target.1
+                                if target.0 == nil && target.1 == nil { navigationFailure = "No accessible management record is linked to this notification. It may be historical test activity or a record that is no longer assigned to you." }
+                            } catch { navigationFailure = "The record could not be opened. Refresh and retry." }
+                        }
+                    }
+                } label: {
+                    workCard(title: item.title, detail: item.detail, status: item.isRead ? "Read" : "New",
+                        tone: item.isRead ? "info" : "warning", icon: item.kind == "StoreOrder" ? "shippingbox" : "bell.badge")
+                }.buttonStyle(.plain)
             }
-            .scrollContentBackground(.hidden)
-            .background(LegendNextCanvas())
-            .font(LegendNextTypography.supporting)
-            .tint(LegendNextColor.gold)
-            .toolbar(.hidden, for: .navigationBar)
-            .refreshable { await store.loadWorkNotifications(); await store.loadWorkOrders() }
-            .task { await store.loadWorkNotifications(); await store.loadWorkOrders() }
-            .sheet(item: $selectedOrder) { order in LegendWorkOrderEditor(order: order, store: store) }
         }
+    }
+    private func retry(_ message: String) -> some View {
+        VStack(alignment: .leading) {
+            Text(LegendLocalized(message)).foregroundStyle(LegendNextColor.danger)
+            Button(LegendLocalized("Refresh work")) { Task { await refresh() } }.buttonStyle(LegendNextButtonStyle(kind: .secondary))
+        }
+    }
+    private func workCard(title: String, detail: String, status: String, tone: String, icon: String) -> some View {
+        HStack(alignment: .top, spacing: LegendNextSpacing.sm) {
+            Image(systemName: icon).foregroundStyle(legendWorkColor(tone)).frame(width: 24).padding(.top, 3)
+            VStack(alignment: .leading, spacing: LegendNextSpacing.xs) {
+                Text(title).font(LegendNextTypography.cardTitle).multilineTextAlignment(.leading)
+                Text(detail).font(LegendNextTypography.supporting).foregroundStyle(LegendNextColor.textSecondary).multilineTextAlignment(.leading)
+                LegendWorkStatus(label: status, tone: tone)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(LegendNextColor.textSecondary)
+        }.padding(LegendNextSpacing.md).background(LegendNextColor.surfaceElevated, in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(legendWorkColor(tone).opacity(0.22), lineWidth: 1))
+    }
+    private func refresh() async { await store.loadWorkNotifications(); await store.loadWorkLeads(); await store.loadWorkOrders() }
+}
+
+private struct LegendWorkLeadEditor: View {
+    let lead: MobileWorkLead
+    @ObservedObject var store: MobileNotificationStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var stage = ""
+    @State private var note = ""
+    var body: some View {
+        NavigationStack {
+            LegendScrollView(tracksNavigationChrome: false) {
+                VStack(alignment: .leading, spacing: LegendNextSpacing.md) {
+                    LegendNextSheetHeader(eyebrow: lead.businessName, title: lead.displayName, detail: LegendLocalized("Lead journey"), dismiss: { dismiss() })
+                    LegendWorkStatus(label: lead.stage, tone: lead.tone)
+                    if let email = lead.email { Text(email).textSelection(.enabled) }
+                    if let phone = lead.phone { Text(phone).textSelection(.enabled) }
+                    if let detail = lead.detail { Text(detail).font(LegendNextTypography.supporting) }
+                    if lead.allowedStages.isEmpty { Text(LegendLocalized("This record is read only.")) }
+                    else {
+                        Text(LegendLocalized("Next stage")).font(LegendNextTypography.cardTitle)
+                        Picker(LegendLocalized("Stage"), selection: $stage) {
+                            Text(LegendLocalized("Choose stage")).tag("")
+                            ForEach(lead.allowedStages, id: \.self) { Text(legendCrmLabel($0)).tag($0) }
+                        }.pickerStyle(.menu)
+                        if lead.kind != "inquiry" {
+                            TextField(LegendLocalized("Follow-up note (optional)"), text: $note, axis: .vertical).lineLimit(3...6).textFieldStyle(.roundedBorder)
+                        }
+                        if let failure = store.leadFailure { Text(failure).foregroundStyle(LegendNextColor.danger) }
+                        Button(LegendLocalized(store.savingLead ? "Saving…" : "Save stage")) {
+                            Task { if await store.updateStage(lead, stage: stage, note: note) { dismiss() } }
+                        }.buttonStyle(LegendNextButtonStyle(kind: .primary)).disabled(store.savingLead || stage.isEmpty || stage == lead.stage || note.count > 4000)
+                        Text(LegendLocalized("Changes update the existing record. Closed work stays available in Work → Closed."))
+                            .font(LegendNextTypography.caption).foregroundStyle(LegendNextColor.textSecondary)
+                    }
+                }.padding(LegendNextSpacing.md).foregroundStyle(LegendNextColor.textPrimary)
+            }.background(LegendNextCanvas()).toolbar(.hidden, for: .navigationBar)
+        }.tint(LegendNextColor.navy)
     }
 }
 
@@ -11424,11 +11547,13 @@ private struct LegendWorkOrderEditor: View {
                     TextField(LegendLocalized("Carrier"), text: $carrier)
                     TextField(LegendLocalized("Tracking number"), text: $tracking).textInputAutocapitalization(.never)
                     if let failure = store.workFailure { Text(failure).foregroundStyle(LegendNextColor.danger) }
+                    if order.allowedStatuses.isEmpty { Text(LegendLocalized("Payment or return review is required before fulfillment can change.")) }
                     Button(LegendLocalized("Save fulfillment")) {
                         Task { if await store.fulfill(order, status: status, carrier: carrier, tracking: tracking) { dismiss() } }
-                    }.disabled(store.savingOrderID != nil)
+                    }.buttonStyle(LegendNextButtonStyle(kind: .primary)).disabled(store.savingOrderID != nil || !order.allowedStatuses.contains(status))
                 }
             }
+            .scrollContentBackground(.hidden).background(LegendNextCanvas()).foregroundStyle(LegendNextColor.textPrimary).tint(LegendNextColor.navy)
             .navigationTitle(LegendLocalized("Order"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button(LegendLocalized("Close")) { dismiss() } } }

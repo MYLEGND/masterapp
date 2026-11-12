@@ -216,7 +216,16 @@ class NotificationRepository(private val client: LegendApiClient) {
     suspend fun dismissEngineering(role: String, id: String) = request { client.api.dismissEngineering(role, id).legendBody() }
     suspend fun engineeringNotifications(role: String) = request { client.api.engineeringNotifications(role).legendBody() }
     suspend fun workNotifications(role: String) = request { client.api.workNotifications(role).legendBody() }
-    suspend fun workOrders(role: String) = request { client.api.workOrders(role).legendBody() }
+    suspend fun workLeadRecord(role: String, row: MobileWorkLead) = request { client.api.workLeads(role, recordId = row.recordId).legendBody().single { it.id == row.id } }
+    suspend fun workOrderRecord(role: String, row: MobileWorkOrder) = request { client.api.workOrders(role, recordId = row.id).legendBody().single { it.id == row.id } }
+    suspend fun workLeadTarget(role: String, id: String) = request { client.api.workLeads(role, notificationId = id).legendBody() }
+    suspend fun workOrderTarget(role: String, id: String) = request { client.api.workOrders(role, notificationId = id).legendBody() }
+    suspend fun workOrders(role: String, skip: Int = 0) = request { client.api.workOrders(role, skip).legendBody() }
+    suspend fun workLeads(role: String, skip: Int = 0) = request { client.api.workLeads(role, skip).legendBody() }
+    suspend fun updateWorkStage(role: String, lead: MobileWorkLead, stage: String, note: String) = request {
+        client.api.updateWorkStage(role, MobileWorkStageInput(lead.kind, lead.recordId, lead.businessId, lead.profileId,
+            stage, lead.stage, note, lead.updatedUtc, lead.revision)).legendBody()
+    }
     suspend fun fulfillOrder(role: String, order: MobileWorkOrder, status: String, carrier: String, tracking: String) = request {
         client.api.fulfillOrder(role, order.id, MobileWorkFulfillmentInput(order.businessId, order.profileId,
             status, carrier, tracking, order.updatedUtc)).legendBody()

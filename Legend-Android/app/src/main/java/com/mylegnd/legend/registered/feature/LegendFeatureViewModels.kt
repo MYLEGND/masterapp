@@ -10,6 +10,7 @@ import com.mylegnd.legend.registered.core.network.JourneyDashboard
 import com.mylegnd.legend.registered.core.network.NotificationItem
 import com.mylegnd.legend.registered.core.network.NotificationBadge
 import com.mylegnd.legend.registered.core.network.MobileWorkOrder
+import com.mylegnd.legend.registered.core.network.MobileWorkLead
 import com.mylegnd.legend.registered.core.network.NotificationSnapshot
 import com.mylegnd.legend.registered.core.network.SocialViewRequest
 import com.mylegnd.legend.registered.core.realtime.LegendMessagingRealtimeEvent
@@ -1124,6 +1125,58 @@ class NotificationsViewModel(
     private val role: String,
     private val isFounder: Boolean = false,
 ) : ViewModel() {
+    private val _leads = MutableStateFlow<LoadState<List<MobileWorkLead>>>(LoadState.Idle)
+    val leads = _leads.asStateFlow()
+    private val _savingLead = MutableStateFlow(false)
+    val savingLead = _savingLead.asStateFlow()
+    private val _leadFailure = MutableStateFlow<String?>(null)
+    val leadFailure = _leadFailure.asStateFlow()
+    private var leadGeneration = 0
+    private var orderGeneration = 0
+    private var leadOffset = 0
+    private var orderOffset = 0
+    private var loadingLeads = false
+    private var loadingOrders = false
+    fun loadWorkLeads(more: Boolean = false) = viewModelScope.launch {
+        if (loadingLeads || _savingLead.value) return@launch
+        loadingLeads = true
+        val epoch = leadGeneration
+        val previous = (_leads.value as? LoadState.Data)?.value.orEmpty()
+        val offset = if (more) leadOffset + 100 else 0
+        val result = repository.workLeads(role, offset)
+        if (epoch != leadGeneration) { loadingLeads = false; return@launch }
+        if (result is LoadState.Data) { _leads.value = LoadState.Data((if (more) previous + result.value else result.value).distinctBy { it.id }); leadOffset = offset }
+        else _leads.value = result
+        loadingLeads = false
+    }
+    fun updateWorkStage(lead: MobileWorkLead, stage: String, note: String, completed: () -> Unit) = viewModelScope.launch {
+        if (_savingLead.value) return@launch
+        _savingLead.value = true; _leadFailure.value = null; leadGeneration++
+        when (val result = repository.updateWorkStage(role, lead, stage, note)) {
+            is LoadState.Data -> when (val readback = repository.workLeadRecord(role, lead)) {
+                is LoadState.Data -> {
+                    _leads.value = LoadState.Data((_leads.value as? LoadState.Data)?.value.orEmpty().filter { it.id != lead.id } + readback.value)
+                    completed()
+                }
+                else -> _leadFailure.value = "The save response arrived, but the current record could not be confirmed. Refresh before retrying."
+            }
+            is LoadState.Error -> _leadFailure.value = result.message
+            else -> _leadFailure.value = "Stage was not confirmed. Refresh before retrying."
+        }
+        _savingLead.value = false
+    }
+    fun resolveWorkNotification(item: NotificationItem, openLead: (MobileWorkLead) -> Unit, openOrder: (MobileWorkOrder) -> Unit) = viewModelScope.launch {
+        _workReadFailure.value = null
+        if (item.kind == "StoreOrder" || item.kind == "OrderFulfillment") {
+            val result = repository.workOrderTarget(role, item.id)
+            val row = (result as? LoadState.Data)?.value?.firstOrNull()
+            if (row != null) openOrder(row) else _workReadFailure.value = "No accessible order is linked to this notification, or it could not be loaded. Refresh and retry."
+        } else {
+            val result = repository.workLeadTarget(role, item.id)
+            val row = (result as? LoadState.Data)?.value?.firstOrNull()
+            if (row != null) openLead(row) else _workReadFailure.value = "No accessible management record is linked to this notification. It may be historical test activity or no longer assigned to you."
+        }
+    }
     private val _workState = MutableStateFlow<LoadState<NotificationSnapshot>>(LoadState.Idle)
     val workState = _workState.asStateFlow()
     fun loadWorkNotifications() = viewModelScope.launch {
@@ -1138,20 +1191,31 @@ class NotificationsViewModel(
     private val _orderFailure = MutableStateFlow<String?>(null)
     val orderFailure = _orderFailure.asStateFlow()
 
-    fun loadOrders() = viewModelScope.launch {
-        _orders.value = LoadState.Loading
-        val result = repository.workOrders(role)
-        _orders.value = if (result is LoadState.Error && result.status == 404)
-            LoadState.Error("Order management is temporarily unavailable. Please retry later.", status = 404)
-        else result
+    fun loadOrders(more: Boolean = false) = viewModelScope.launch {
+        if (loadingOrders || _savingOrder.value != null) return@launch
+        loadingOrders = true
+        val epoch = orderGeneration
+        val previous = (_orders.value as? LoadState.Data)?.value.orEmpty()
+        val offset = if (more) orderOffset + 100 else 0
+        val result = repository.workOrders(role, offset)
+        if (epoch != orderGeneration) { loadingOrders = false; return@launch }
+        if (result is LoadState.Data) { _orders.value = LoadState.Data((if (more) previous + result.value else result.value).distinctBy { it.id }); orderOffset = offset }
+        else _orders.value = result
+        loadingOrders = false
     }
 
     fun fulfillOrder(order: MobileWorkOrder, status: String, carrier: String, tracking: String, completed: () -> Unit) = viewModelScope.launch {
         if (_savingOrder.value != null) return@launch
-        _savingOrder.value = order.id
+        _savingOrder.value = order.id; orderGeneration++
         _orderFailure.value = null
         when (val result = repository.fulfillOrder(role, order, status, carrier, tracking)) {
-            is LoadState.Data -> { loadOrders(); completed() }
+            is LoadState.Data -> when (val readback = repository.workOrderRecord(role, order)) {
+                is LoadState.Data -> {
+                    _orders.value = LoadState.Data((_orders.value as? LoadState.Data)?.value.orEmpty().filter { it.id != order.id } + readback.value)
+                    completed()
+                }
+                else -> _orderFailure.value = "The save response arrived, but the current order could not be confirmed. Refresh before retrying."
+            }
             is LoadState.Error -> _orderFailure.value = result.message
             else -> _orderFailure.value = "Order was not saved. Refresh and review its current state before retrying."
         }

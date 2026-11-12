@@ -47,6 +47,13 @@ public sealed class MobileAgentCrmService(MasterAppDbContext db)
                 (Matches(r.Id, id) || Matches(r.SourceLeadId, id))));
     }
 
+    public async Task<IReadOnlyList<MobileCrmRecord>> WorkLeadsAsync(MobileResolvedActor actor, CancellationToken ct)
+    {
+        RequireAgent(actor);
+        return (await RecordsAsync(actor.Actor.UserId.ToLowerInvariant(), ct))
+            .Where(r => r.Kind == "Lead" || r.SourceLeadId != null).ToArray();
+    }
+
     private async Task<List<MobileCrmRecord>> RecordsAsync(string owner, CancellationToken ct)
     {
         var closed = await CrmArchiveScope.ClosedClientKeysAsync(db, ct);
