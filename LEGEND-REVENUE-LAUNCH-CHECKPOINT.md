@@ -6474,3 +6474,45 @@ all23 file digests were read back and verified before commit. PR775 now covers A
 and Work, remains draft/unmerged. Fast-track verified unchanged at
 8ce18161bcdaf4a396d4a831c7b55f31612b3da3. Release holds above remain unchanged;
 no new production runtime identity or archive readiness is claimed.
+
+### 2026-11-11 — Authorized archive and direct backend release continuation
+
+Founder explicitly requested creating the archive for his TestFlight upload, then
+the direct Mac Azure stop/deploy/restart flow. This supersedes the earlier archive
+sequencing restriction. Signed Release archive1.0.1(36) completed successfully at
+/Users/zacowen/Library/Developer/Xcode/Archives/2026-11-11/Legend-1.0.1-build36-f491fb485.xcarchive.
+App and both extensions match1.0.1(36); codesign --verify --deep --strict passed.
+Embedded provenance is clean f491fb4859867842d3879875ed16c461cd93711d. Opened in
+Organizer for Founder upload. No Apple upload, signing/provisioning changes or new
+credentials were performed. Archive evidence is in the existing admission directory
+f491fb485/archive.json; /private/tmp/legend-build36-archive.log reports ARCHIVE SUCCEEDED.
+
+Founder explicitly answered "Defer authenticated local testing; test after deployment"
+for backend candidate f491fb485 (archive1.0.1 build36). This defers authenticated local
+AI/Work testing only; package/security/schema/recovery/independent deployment review
+remain required. No prior cbaf waiver is inherited. Post-deployment authenticated
+native acceptance remains outstanding and is not implied by archive creation.
+
+Fresh CI security43159529601 passed. Architecture43159529587 and commerce43159529716
+failed for two diagnosed reasons: canonical impact lacked BusinessWorkspaceCrm.cs;
+the existing inquiry isolation fixture used EF InMemory, which cannot ExecuteUpdate.
+Correction adds that exact shared CRM path to the existing all-managed-host map and
+regression, and runs the inquiry ownership/revocation test on synthetic SQLite with
+persisted readback. Production authority and application bytes are unchanged.
+Focused relational/inquiry+Work11 tests PASS; focused universal impact tests PASS.
+Fresh required CI must run on the reviewed control correction before deployment.
+
+Canonical impact now selects Portal, Client, Protect and Parfait for shared managed
+lead/CRM changes; static Website is unaffected. This is a new selective four-app
+release, never replay of prior five-target effects. Portal package for f491fb485 is
+prepared using release-package.py build-component, SHA256
+64d3482ab72b5dc45f3d5c8264dd7dce6b19d711b342452fb6afeb9e18df7014,
+/private/tmp/legend-mobile-release-f491fb485/agentportal.zip. Other affected packages
+and fresh admission remain pending. Native phase owner recovered at
+/Users/zacowen/Documents/Codex/2026-11-03/new-chat/work/deploy-reviewed-parfait-native.py,
+SHA256ba5ba2017e00226a853309c642247c69fe5ce5356e11d4c57637fc92292dc590.
+Rebind this existing owner under independent review for new identities/receipts and
+four targets; do not execute its obsolete cbaf exception/resume bindings. Azure Portal
+was observed Running with last active successful deploymentd5c7ffc3ce044aa8af7c2e581e8e0604.
+No Azure mutation has occurred in this continuation. Protected integration remains
+pending and nonpublishing; retain completed production receipts and archive.

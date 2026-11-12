@@ -180,6 +180,7 @@ class UniversalFastTrackAdmissionTests(unittest.TestCase):
                  'Infrastructure/Businesses/BusinessWorkspaceActionsController.cs',
                  'Infrastructure/Businesses/BusinessWorkspaceCommitmentsController.cs',
                  'Infrastructure/Businesses/BusinessWorkspaceService.cs',
+                 'Infrastructure/Businesses/BusinessWorkspaceCrm.cs',
                  'Infrastructure/Businesses/BusinessWorkspaceService.Team.cs',
                  'Infrastructure/Identity/ClientEntraLifecycleService.cs',
                  'SHARED/Analytics/ScopeContext.cs', 'SHARED/Crm/BusinessWorkspaceModels.cs']

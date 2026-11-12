@@ -4962,6 +4962,7 @@ def fast_track_scope(paths):
         'Infrastructure/Data/Configurations/ReceptionistModelConfiguration.Guide.cs',
         'Infrastructure/Households/HouseholdMembershipService.cs',
         'Infrastructure/Businesses/BusinessWorkspaceService.cs',
+        'Infrastructure/Businesses/BusinessWorkspaceCrm.cs',
         'Infrastructure/Businesses/BusinessWorkspaceService.Team.cs',
         'Infrastructure/Businesses/BusinessWorkspaceService.Training.cs',
         'Infrastructure/Identity/ClientEntraLifecycleService.cs',

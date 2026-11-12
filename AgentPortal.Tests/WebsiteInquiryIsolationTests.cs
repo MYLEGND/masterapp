@@ -635,7 +635,7 @@ public sealed class WebsiteInquiryIsolationTests
     [Fact]
     public async Task ManagementCannotReadOrChangeAnotherBusinessAndRevocationIsImmediate()
     {
-        using var f = new Fixture();
+        using var f = new Fixture(relational: true);
         await f.SeedPublishedAsync();
         var profile = new ClientProfile { ClientUserId = Guid.NewGuid().ToString(), CrmNotes = "{\"recordType\":\"BusinessClient\"}" };
         var member = new CommerceBusinessMember { CommerceBusinessId = f.BusinessId, ClientProfileId = profile.Id };
@@ -655,6 +655,8 @@ public sealed class WebsiteInquiryIsolationTests
         await f.Db.SaveChangesAsync();
         Assert.IsType<UnauthorizedResult>(await f.Controller.Manage(ticket, CancellationToken.None));
         Assert.IsType<UnauthorizedResult>(await f.Controller.Status(new(ticket, own.Id, "Closed"), CancellationToken.None));
+        await f.Db.Entry(own).ReloadAsync();
+        await f.Db.Entry(other).ReloadAsync();
         Assert.Equal("Contacted", own.Status);
         Assert.Equal("New", other.Status);
     }
@@ -1295,16 +1297,26 @@ public sealed class WebsiteInquiryIsolationTests
 
     private sealed class Fixture : IDisposable
     {
-        public MasterAppDbContext Db { get; } = new(new DbContextOptionsBuilder<MasterAppDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        public MasterAppDbContext Db { get; }
+        private readonly Microsoft.Data.Sqlite.SqliteConnection? _connection;
         public Guid BusinessId { get; } = Guid.NewGuid();
         public Guid VersionId { get; } = Guid.NewGuid();
         public WebsiteInquiriesController Controller { get; }
         public Mock<IWebsiteInquiryEmailSender> EmailSender { get; } = new();
         private readonly WebsiteIntakeRecipientResolver _recipients;
         private readonly WebsiteEditorTicketProtector _tickets = new(new EphemeralDataProtectionProvider());
-        public Fixture(string origin = "https://business.example")
+        public Fixture(string origin = "https://business.example", bool relational = false)
         {
+            var options = new DbContextOptionsBuilder<MasterAppDbContext>();
+            if (relational)
+            {
+                _connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+                _connection.Open();
+                options.UseSqlite(_connection);
+            }
+            else options.UseInMemoryDatabase(Guid.NewGuid().ToString());
+            Db = new MasterAppDbContext(options.Options);
+            if (relational) Db.Database.EnsureCreated();
             var config = new ConfigurationBuilder().AddInMemoryCollection(new[]
             {
                 new System.Collections.Generic.KeyValuePair<string, string?>("Founder:Upn", "founder@example.org")
@@ -1389,6 +1401,6 @@ public sealed class WebsiteInquiryIsolationTests
         public string Ticket(ClientProfile profile) => _tickets.Protect(new WebsiteEditorTicket(
             WebsiteEditorSiteKeys.Business, WebsiteEditorSiteKeys.BusinessOwnerKey(BusinessId), null, false,
             DateTime.UtcNow.AddMinutes(10), BusinessId, ActorUserId: profile.ClientUserId, ActorClientProfileId: profile.Id));
-        public void Dispose() { _tickets.Dispose(); Db.Dispose(); }
+        public void Dispose() { _tickets.Dispose(); Db.Dispose(); _connection?.Dispose(); }
     }
 }
